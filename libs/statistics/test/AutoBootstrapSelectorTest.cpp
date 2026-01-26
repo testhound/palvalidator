@@ -25,11 +25,13 @@
 #include <numeric>
 
 #include "AutoBootstrapSelector.h"
+#include "BootstrapPenaltyCalculator.h"
 #include "number.h"
 
 // Alias for convenience
 using Decimal        = double; // Or num::DefaultNumber if preferred
 using Selector       = palvalidator::analysis::AutoBootstrapSelector<Decimal>;
+using PenaltyCalc    = palvalidator::analysis::BootstrapPenaltyCalculator<Decimal>;
 using Candidate      = Selector::Candidate;
 using Result         = Selector::Result;
 using ScoringWeights = Selector::ScoringWeights;
@@ -799,7 +801,7 @@ TEST_CASE("computeBCaStabilityPenalty: Normal cases - no penalty",
     SECTION("All parameters well within thresholds")
     {
         // Small z0, small accel, mild skewness
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.05,    // z0 (well below threshold ~0.25)
             0.02,    // accel (well below threshold 0.10)
             0.5      // skew_boot (well below threshold ~2.0)
@@ -815,7 +817,7 @@ TEST_CASE("computeBCaStabilityPenalty: Normal cases - no penalty",
         // kBcaASoftThreshold = 0.10
         // kBcaSkewThreshold ≈ 2.0
         
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.25,    // z0 at threshold
             0.10,    // accel at threshold
             2.0      // skew at threshold
@@ -827,7 +829,7 @@ TEST_CASE("computeBCaStabilityPenalty: Normal cases - no penalty",
     
     SECTION("Zero parameters (perfectly unbiased, no acceleration, symmetric)")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.0,     // z0 = 0 (no bias)
             0.0,     // accel = 0 (constant SE)
             0.0      // skew = 0 (perfectly symmetric)
@@ -839,7 +841,7 @@ TEST_CASE("computeBCaStabilityPenalty: Normal cases - no penalty",
     SECTION("Mild negative parameters")
     {
         // BCa parameters can be negative; sign shouldn't matter for penalty
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             -0.1,    // negative z0 (still within threshold)
             -0.05,   // negative accel
             -0.8     // negative skew (mild)
@@ -854,7 +856,7 @@ TEST_CASE("computeBCaStabilityPenalty: Non-finite parameters",
 {
     SECTION("NaN z0 returns infinity")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             std::numeric_limits<double>::quiet_NaN(),
             0.05,
             1.0
@@ -865,7 +867,7 @@ TEST_CASE("computeBCaStabilityPenalty: Non-finite parameters",
     
     SECTION("NaN accel returns infinity")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.1,
             std::numeric_limits<double>::quiet_NaN(),
             1.0
@@ -876,7 +878,7 @@ TEST_CASE("computeBCaStabilityPenalty: Non-finite parameters",
     
     SECTION("Infinite z0 returns infinity")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             std::numeric_limits<double>::infinity(),
             0.05,
             1.0
@@ -887,7 +889,7 @@ TEST_CASE("computeBCaStabilityPenalty: Non-finite parameters",
     
     SECTION("Infinite accel returns infinity")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.1,
             std::numeric_limits<double>::infinity(),
             1.0
@@ -898,7 +900,7 @@ TEST_CASE("computeBCaStabilityPenalty: Non-finite parameters",
     
     SECTION("Both z0 and accel non-finite")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             std::numeric_limits<double>::quiet_NaN(),
             std::numeric_limits<double>::infinity(),
             1.0
@@ -910,7 +912,7 @@ TEST_CASE("computeBCaStabilityPenalty: Non-finite parameters",
     SECTION("NaN skewness does not cause infinity (only z0 and accel are checked)")
     {
         // skew_boot is used in calculations but doesn't trigger infinity on NaN
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.1,
             0.05,
             std::numeric_limits<double>::quiet_NaN()
@@ -927,7 +929,7 @@ TEST_CASE("computeBCaStabilityPenalty: z0 penalty component",
     SECTION("z0 slightly over threshold incurs small penalty")
     {
         // Assuming threshold ≈ 0.25
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.30,    // z0 slightly over threshold
             0.05,    // accel OK
             1.0      // skew OK
@@ -939,7 +941,7 @@ TEST_CASE("computeBCaStabilityPenalty: z0 penalty component",
     
     SECTION("z0 well over threshold incurs larger penalty")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.50,    // z0 well over threshold
             0.05,    // accel OK
             1.0      // skew OK
@@ -950,10 +952,10 @@ TEST_CASE("computeBCaStabilityPenalty: z0 penalty component",
     
     SECTION("Negative z0 with same magnitude has same penalty")
     {
-        double penalty_pos = Selector::computeBCaStabilityPenalty(
+        double penalty_pos = PenaltyCalc::computeBCaStabilityPenalty(
             0.40, 0.05, 1.0
         );
-        double penalty_neg = Selector::computeBCaStabilityPenalty(
+        double penalty_neg = PenaltyCalc::computeBCaStabilityPenalty(
             -0.40, 0.05, 1.0
         );
         
@@ -963,10 +965,10 @@ TEST_CASE("computeBCaStabilityPenalty: z0 penalty component",
     SECTION("z0 penalty increases quadratically")
     {
         // Test that doubling the excess more than doubles the penalty
-        double penalty_small = Selector::computeBCaStabilityPenalty(
+        double penalty_small = PenaltyCalc::computeBCaStabilityPenalty(
             0.30, 0.05, 1.0  // Small excess
         );
-        double penalty_double = Selector::computeBCaStabilityPenalty(
+        double penalty_double = PenaltyCalc::computeBCaStabilityPenalty(
             0.35, 0.05, 1.0  // Double the excess (assuming threshold ~0.25)
         );
         
@@ -984,7 +986,7 @@ TEST_CASE("computeBCaStabilityPenalty: acceleration penalty component",
     SECTION("accel over threshold incurs penalty")
     {
         // Threshold is 0.10 for mild skewness
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.1,     // z0 OK
             0.15,    // accel over threshold
             1.0      // skew mild
@@ -995,10 +997,10 @@ TEST_CASE("computeBCaStabilityPenalty: acceleration penalty component",
     
     SECTION("Negative accel with same magnitude has same penalty")
     {
-        double penalty_pos = Selector::computeBCaStabilityPenalty(
+        double penalty_pos = PenaltyCalc::computeBCaStabilityPenalty(
             0.1, 0.15, 1.0
         );
-        double penalty_neg = Selector::computeBCaStabilityPenalty(
+        double penalty_neg = PenaltyCalc::computeBCaStabilityPenalty(
             0.1, -0.15, 1.0
         );
         
@@ -1007,7 +1009,7 @@ TEST_CASE("computeBCaStabilityPenalty: acceleration penalty component",
     
     SECTION("Very large accel incurs substantial penalty")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.1,     // z0 OK
             0.30,    // accel very large
             1.0      // skew mild
@@ -1023,7 +1025,7 @@ TEST_CASE("computeBCaStabilityPenalty: skewness penalty component",
     SECTION("Moderate skewness (< threshold) has no skew penalty")
     {
         // Assuming skew threshold ≈ 2.0
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.1,     // z0 OK
             0.05,    // accel OK
             1.5      // skew below threshold
@@ -1035,7 +1037,7 @@ TEST_CASE("computeBCaStabilityPenalty: skewness penalty component",
     SECTION("High skewness (> threshold) incurs skew penalty")
     {
         // Assuming skew threshold ≈ 2.0
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.1,     // z0 OK
             0.05,    // accel OK
             3.0      // skew over threshold
@@ -1046,7 +1048,7 @@ TEST_CASE("computeBCaStabilityPenalty: skewness penalty component",
     
     SECTION("Extreme skewness incurs large penalty")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.1,     // z0 OK
             0.05,    // accel OK
             5.0      // extreme skew
@@ -1057,10 +1059,10 @@ TEST_CASE("computeBCaStabilityPenalty: skewness penalty component",
     
     SECTION("Negative skewness treated same as positive")
     {
-        double penalty_pos = Selector::computeBCaStabilityPenalty(
+        double penalty_pos = PenaltyCalc::computeBCaStabilityPenalty(
             0.1, 0.05, 4.0
         );
-        double penalty_neg = Selector::computeBCaStabilityPenalty(
+        double penalty_neg = PenaltyCalc::computeBCaStabilityPenalty(
             0.1, 0.05, -4.0
         );
         
@@ -1074,13 +1076,13 @@ TEST_CASE("computeBCaStabilityPenalty: Adaptive thresholds based on skewness",
     SECTION("High skewness (> 2.0) increases z0 penalty via multiplier")
     {
         // Same z0, but different skewness levels
-        double penalty_low_skew = Selector::computeBCaStabilityPenalty(
+        double penalty_low_skew = PenaltyCalc::computeBCaStabilityPenalty(
             0.35,    // z0 over threshold
             0.05,    // accel OK
             1.0      // skew < 2.0 (multiplier = 1.0)
         );
         
-        double penalty_high_skew = Selector::computeBCaStabilityPenalty(
+        double penalty_high_skew = PenaltyCalc::computeBCaStabilityPenalty(
             0.35,    // same z0
             0.05,    // accel OK
             2.5      // skew > 2.0 (multiplier = 1.5)
@@ -1097,13 +1099,13 @@ TEST_CASE("computeBCaStabilityPenalty: Adaptive thresholds based on skewness",
         // Should pass with low skew (threshold 0.10)
         // Should fail with extreme skew (threshold 0.08)
         
-        double penalty_mild_skew = Selector::computeBCaStabilityPenalty(
+        double penalty_mild_skew = PenaltyCalc::computeBCaStabilityPenalty(
             0.1,     // z0 OK
             0.09,    // accel between 0.08 and 0.10
             2.0      // skew ≤ 3.0 → threshold 0.10
         );
         
-        double penalty_extreme_skew = Selector::computeBCaStabilityPenalty(
+        double penalty_extreme_skew = PenaltyCalc::computeBCaStabilityPenalty(
             0.1,     // z0 OK
             0.09,    // accel between 0.08 and 0.10
             3.5      // skew > 3.0 → threshold 0.08
@@ -1117,10 +1119,10 @@ TEST_CASE("computeBCaStabilityPenalty: Adaptive thresholds based on skewness",
     SECTION("Skewness exactly at 2.0 uses multiplier 1.0")
     {
         // At the boundary, should use base multiplier
-        double penalty_at_boundary = Selector::computeBCaStabilityPenalty(
+        double penalty_at_boundary = PenaltyCalc::computeBCaStabilityPenalty(
             0.35, 0.05, 2.0  // skew exactly 2.0
         );
-        double penalty_below = Selector::computeBCaStabilityPenalty(
+        double penalty_below = PenaltyCalc::computeBCaStabilityPenalty(
             0.35, 0.05, 1.99  // skew just below 2.0
         );
         
@@ -1130,10 +1132,10 @@ TEST_CASE("computeBCaStabilityPenalty: Adaptive thresholds based on skewness",
     
     SECTION("Skewness exactly at 3.0 triggers stricter accel threshold")
     {
-        double penalty_at_boundary = Selector::computeBCaStabilityPenalty(
+        double penalty_at_boundary = PenaltyCalc::computeBCaStabilityPenalty(
             0.1, 0.09, 3.0  // skew exactly 3.0 → threshold 0.08
         );
-        double penalty_below = Selector::computeBCaStabilityPenalty(
+        double penalty_below = PenaltyCalc::computeBCaStabilityPenalty(
             0.1, 0.09, 2.99  // skew just below 3.0 → threshold 0.10
         );
         
@@ -1149,18 +1151,18 @@ TEST_CASE("computeBCaStabilityPenalty: Combined penalties",
     SECTION("Multiple sources of penalty combine additively")
     {
         // Get individual penalties
-        double z0_only = Selector::computeBCaStabilityPenalty(
+        double z0_only = PenaltyCalc::computeBCaStabilityPenalty(
             0.40, 0.05, 1.0  // Only z0 over threshold
         );
-        double accel_only = Selector::computeBCaStabilityPenalty(
+        double accel_only = PenaltyCalc::computeBCaStabilityPenalty(
             0.1, 0.15, 1.0  // Only accel over threshold
         );
-        double skew_only = Selector::computeBCaStabilityPenalty(
+        double skew_only = PenaltyCalc::computeBCaStabilityPenalty(
             0.1, 0.05, 3.5  // Only skew over threshold
         );
         
         // Get combined penalty
-        double combined = Selector::computeBCaStabilityPenalty(
+        double combined = PenaltyCalc::computeBCaStabilityPenalty(
             0.40, 0.15, 3.5  // All over thresholds
         );
         
@@ -1178,7 +1180,7 @@ TEST_CASE("computeBCaStabilityPenalty: Combined penalties",
     
     SECTION("Pathological case: all parameters extremely bad")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             1.0,     // z0 very large
             0.5,     // accel very large
             10.0     // skew extreme
@@ -1209,11 +1211,11 @@ TEST_CASE("computeBCaStabilityPenalty: Custom ScoringWeights",
             200.0  // bca_a_scale (2x default of 100.0)
         );
         
-        double penalty_default = Selector::computeBCaStabilityPenalty(
+        double penalty_default = PenaltyCalc::computeBCaStabilityPenalty(
             0.35, 0.12, 1.0, default_weights
         );
         
-        double penalty_larger = Selector::computeBCaStabilityPenalty(
+        double penalty_larger = PenaltyCalc::computeBCaStabilityPenalty(
             0.35, 0.12, 1.0, larger_weights
         );
         
@@ -1233,11 +1235,11 @@ TEST_CASE("computeBCaStabilityPenalty: Custom ScoringWeights",
             50.0   // bca_a_scale (0.5x default)
         );
         
-        double penalty_default = Selector::computeBCaStabilityPenalty(
+        double penalty_default = PenaltyCalc::computeBCaStabilityPenalty(
             0.35, 0.12, 1.0, default_weights
         );
         
-        double penalty_smaller = Selector::computeBCaStabilityPenalty(
+        double penalty_smaller = PenaltyCalc::computeBCaStabilityPenalty(
             0.35, 0.12, 1.0, smaller_weights
         );
         
@@ -1255,7 +1257,7 @@ TEST_CASE("computeBCaStabilityPenalty: Custom ScoringWeights",
             0.0   // bca_a_scale = 0
         );
         
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.50,    // z0 way over threshold
             0.20,    // accel way over threshold
             1.5,     // skew mild (so no skew penalty)
@@ -1272,7 +1274,7 @@ TEST_CASE("computeBCaStabilityPenalty: Custom ScoringWeights",
         ScoringWeights default_weights;
         
         // Default weights should produce penalties for violations
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.40,    // z0 over threshold
             0.15,    // accel over threshold
             1.0,     // skew OK
@@ -1292,7 +1294,7 @@ TEST_CASE("computeBCaStabilityPenalty: Edge cases",
 {
     SECTION("Extremely small but positive parameters")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             1e-10,   // z0 ≈ 0
             1e-10,   // accel ≈ 0
             1e-10    // skew ≈ 0
@@ -1303,7 +1305,7 @@ TEST_CASE("computeBCaStabilityPenalty: Edge cases",
     
     SECTION("Parameters exactly at machine epsilon")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             std::numeric_limits<double>::epsilon(),
             std::numeric_limits<double>::epsilon(),
             std::numeric_limits<double>::epsilon()
@@ -1314,7 +1316,7 @@ TEST_CASE("computeBCaStabilityPenalty: Edge cases",
     
     SECTION("Very large but finite parameters")
     {
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             1e6,     // z0 huge
             1e6,     // accel huge
             1e6      // skew huge
@@ -1334,7 +1336,7 @@ TEST_CASE("computeBCaStabilityPenalty: Debug logging",
     {
         std::ostringstream log;
         
-        Selector::computeBCaStabilityPenalty(
+        PenaltyCalc::computeBCaStabilityPenalty(
             0.3, 0.1, 2.5,  // High skewness
             ScoringWeights(),
             &log
@@ -1349,7 +1351,7 @@ TEST_CASE("computeBCaStabilityPenalty: Debug logging",
     {
         std::ostringstream log;
         
-        Selector::computeBCaStabilityPenalty(
+        PenaltyCalc::computeBCaStabilityPenalty(
             0.4, 0.05, 1.0,  // z0 over threshold
             ScoringWeights(),
             &log
@@ -1363,7 +1365,7 @@ TEST_CASE("computeBCaStabilityPenalty: Debug logging",
     SECTION("No output when all parameters OK and no logging stream")
     {
         // This should not crash and should return 0
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             0.1, 0.05, 1.0,
             ScoringWeights(),
             nullptr  // No logging
@@ -1389,7 +1391,7 @@ TEST_CASE("computeBCaStabilityPenalty: Consistency with summarizeBCa",
         ScoringWeights weights;
         std::ostringstream log;
         
-        double penalty = Selector::computeBCaStabilityPenalty(
+        double penalty = PenaltyCalc::computeBCaStabilityPenalty(
             z0, accel, skew_boot, weights, &log
         );
         

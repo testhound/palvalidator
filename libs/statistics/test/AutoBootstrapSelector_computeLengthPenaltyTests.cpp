@@ -24,12 +24,14 @@
 #include <algorithm>
 
 #include "AutoBootstrapSelector.h"
+#include "BootstrapPenaltyCalculator.h"
 #include "number.h"
 
 // Alias for convenience
-using Decimal  = double;
-using Selector = palvalidator::analysis::AutoBootstrapSelector<Decimal>;
-using MethodId = Selector::Result::MethodId;
+using Decimal   = double;
+using Selector  = palvalidator::analysis::AutoBootstrapSelector<Decimal>;
+using PenaltyCalc = palvalidator::analysis::BootstrapPenaltyCalculator<Decimal>;
+using MethodId  = Selector::Result::MethodId;
 
 // -----------------------------------------------------------------------------
 // Helper Functions
@@ -125,7 +127,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Edge cases",
     SECTION("Empty bootstrap statistics returns zero penalty")
     {
         std::vector<double> empty_stats;
-        double penalty = Selector::computeLengthPenalty_Percentile(
+        double penalty = PenaltyCalc::computeLengthPenalty_Percentile(
             1.0, empty_stats, 0.95, MethodId::Percentile,
             normalized_length, median_val);
         
@@ -137,7 +139,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Edge cases",
     SECTION("Single statistic returns zero penalty")
     {
         std::vector<double> single = {1.5};
-        double penalty = Selector::computeLengthPenalty_Percentile(
+        double penalty = PenaltyCalc::computeLengthPenalty_Percentile(
             1.0, single, 0.95, MethodId::BCa,
             normalized_length, median_val);
         
@@ -147,7 +149,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Edge cases",
     SECTION("Zero actual length returns zero penalty")
     {
         std::vector<double> stats = createBootstrapStats(1.0, 0.2, 100);
-        double penalty = Selector::computeLengthPenalty_Percentile(
+        double penalty = PenaltyCalc::computeLengthPenalty_Percentile(
             0.0, stats, 0.95, MethodId::Basic,
             normalized_length, median_val);
         
@@ -157,7 +159,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Edge cases",
     SECTION("Degenerate distribution (all identical) returns zero penalty")
     {
         std::vector<double> degenerate(100, 5.0);
-        double penalty = Selector::computeLengthPenalty_Percentile(
+        double penalty = PenaltyCalc::computeLengthPenalty_Percentile(
             1.0, degenerate, 0.95, MethodId::Percentile,
             normalized_length, median_val);
         
@@ -175,7 +177,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Median computation",
     SECTION("Median of odd-sized sample")
     {
         std::vector<double> stats = {1.0, 2.0, 3.0, 4.0, 5.0};
-        Selector::computeLengthPenalty_Percentile(
+        PenaltyCalc::computeLengthPenalty_Percentile(
             1.0, stats, 0.95, MethodId::Percentile,
             normalized_length, median_val);
         
@@ -185,7 +187,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Median computation",
     SECTION("Median of even-sized sample")
     {
         std::vector<double> stats = {1.0, 2.0, 3.0, 4.0};
-        Selector::computeLengthPenalty_Percentile(
+        PenaltyCalc::computeLengthPenalty_Percentile(
             1.0, stats, 0.95, MethodId::BCa,
             normalized_length, median_val);
         
@@ -210,7 +212,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Normalized length at ideal",
         double normalized_length;
         double median_val;
         
-        double penalty = Selector::computeLengthPenalty_Percentile(
+        double penalty = PenaltyCalc::computeLengthPenalty_Percentile(
             ideal_length, stats, 0.95, MethodId::Percentile,
             normalized_length, median_val);
         
@@ -237,7 +239,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Penalty for too-short intervals",
         double actual_length = 0.5 * ideal;
         double normalized_length, median_val;
         
-        double penalty = Selector::computeLengthPenalty_Percentile(
+        double penalty = PenaltyCalc::computeLengthPenalty_Percentile(
             actual_length, stats, 0.95, MethodId::Percentile,
             normalized_length, median_val);
         
@@ -252,7 +254,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Penalty for too-short intervals",
         double actual_length = 0.8 * ideal;
         double normalized_length, median_val;
         
-        double penalty = Selector::computeLengthPenalty_Percentile(
+        double penalty = PenaltyCalc::computeLengthPenalty_Percentile(
             actual_length, stats, 0.95, MethodId::BCa,
             normalized_length, median_val);
         
@@ -275,7 +277,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Penalty for too-wide intervals",
         double actual_length = 2.5 * ideal;
         double normalized_length, median_val;
         
-        double penalty = Selector::computeLengthPenalty_Percentile(
+        double penalty = PenaltyCalc::computeLengthPenalty_Percentile(
             actual_length, stats, 0.95, MethodId::Percentile,
             normalized_length, median_val);
         
@@ -290,7 +292,7 @@ TEST_CASE("computeLengthPenalty_Percentile: Penalty for too-wide intervals",
         double actual_length = 1.8 * ideal;
         double normalized_length, median_val;
         
-        double penalty = Selector::computeLengthPenalty_Percentile(
+        double penalty = PenaltyCalc::computeLengthPenalty_Percentile(
             actual_length, stats, 0.95, MethodId::Basic,
             normalized_length, median_val);
         
@@ -314,14 +316,14 @@ TEST_CASE("computeLengthPenalty_Percentile: MOutOfN has wider tolerance",
         double normalized_length, median_val;
         
         // Standard method gets penalized
-        double penalty_standard = Selector::computeLengthPenalty_Percentile(
+        double penalty_standard = PenaltyCalc::computeLengthPenalty_Percentile(
             actual_length, stats, 0.95, MethodId::Percentile,
             normalized_length, median_val);
         
         REQUIRE(penalty_standard > 0.1);  // (4.0 - 1.8)^2 = 4.84
         
         // MOutOfN does not get penalized
-        double penalty_moutofn = Selector::computeLengthPenalty_Percentile(
+        double penalty_moutofn = PenaltyCalc::computeLengthPenalty_Percentile(
             actual_length, stats, 0.95, MethodId::MOutOfN,
             normalized_length, median_val);
         
@@ -333,7 +335,7 @@ TEST_CASE("computeLengthPenalty_Percentile: MOutOfN has wider tolerance",
         double actual_length = 7.0 * ideal;
         double normalized_length, median_val;
         
-        double penalty = Selector::computeLengthPenalty_Percentile(
+        double penalty = PenaltyCalc::computeLengthPenalty_Percentile(
             actual_length, stats, 0.95, MethodId::MOutOfN,
             normalized_length, median_val);
         
@@ -350,13 +352,13 @@ TEST_CASE("computeLengthPenalty_Percentile: All percentile-like methods agree",
     
     double norm_perc, norm_bca, norm_basic, med;
     
-    double penalty_perc = Selector::computeLengthPenalty_Percentile(
+    double penalty_perc = PenaltyCalc::computeLengthPenalty_Percentile(
         test_length, stats, 0.95, MethodId::Percentile, norm_perc, med);
     
-    double penalty_bca = Selector::computeLengthPenalty_Percentile(
+    double penalty_bca = PenaltyCalc::computeLengthPenalty_Percentile(
         test_length, stats, 0.95, MethodId::BCa, norm_bca, med);
     
-    double penalty_basic = Selector::computeLengthPenalty_Percentile(
+    double penalty_basic = PenaltyCalc::computeLengthPenalty_Percentile(
         test_length, stats, 0.95, MethodId::Basic, norm_basic, med);
     
     // All should get same normalized length (same ideal reference)
@@ -380,7 +382,7 @@ TEST_CASE("computeLengthPenalty_Normal: Edge cases",
     
     SECTION("Zero actual length returns zero penalty")
     {
-        double penalty = Selector::computeLengthPenalty_Normal(
+        double penalty = PenaltyCalc::computeLengthPenalty_Normal(
             0.0, 5.0, 0.95, normalized_length, median_placeholder);
         
         REQUIRE(penalty == 0.0);
@@ -389,7 +391,7 @@ TEST_CASE("computeLengthPenalty_Normal: Edge cases",
     
     SECTION("Zero SE returns zero penalty")
     {
-        double penalty = Selector::computeLengthPenalty_Normal(
+        double penalty = PenaltyCalc::computeLengthPenalty_Normal(
             10.0, 0.0, 0.95, normalized_length, median_placeholder);
         
         REQUIRE(penalty == 0.0);
@@ -398,7 +400,7 @@ TEST_CASE("computeLengthPenalty_Normal: Edge cases",
     
     SECTION("Negative SE returns zero penalty")
     {
-        double penalty = Selector::computeLengthPenalty_Normal(
+        double penalty = PenaltyCalc::computeLengthPenalty_Normal(
             10.0, -2.0, 0.95, normalized_length, median_placeholder);
         
         REQUIRE(penalty == 0.0);
@@ -406,7 +408,7 @@ TEST_CASE("computeLengthPenalty_Normal: Edge cases",
     
     SECTION("Median placeholder is set to 0")
     {
-        Selector::computeLengthPenalty_Normal(
+        PenaltyCalc::computeLengthPenalty_Normal(
             10.0, 5.0, 0.95, normalized_length, median_placeholder);
         
         REQUIRE(median_placeholder == 0.0);
@@ -424,7 +426,7 @@ TEST_CASE("computeLengthPenalty_Normal: Ideal length is z*SE",
         
         double normalized_length, median;
         
-        double penalty = Selector::computeLengthPenalty_Normal(
+        double penalty = PenaltyCalc::computeLengthPenalty_Normal(
             ideal, se, 0.95, normalized_length, median);
         
         // Normalized should be exactly 1.0 (actual = ideal)
@@ -442,7 +444,7 @@ TEST_CASE("computeLengthPenalty_Normal: Ideal length is z*SE",
         
         double normalized_length, median;
         
-        double penalty = Selector::computeLengthPenalty_Normal(
+        double penalty = PenaltyCalc::computeLengthPenalty_Normal(
             ideal, se, 0.90, normalized_length, median);
         
         REQUIRE(normalized_length == Catch::Approx(1.0).epsilon(0.01));
@@ -462,7 +464,7 @@ TEST_CASE("computeLengthPenalty_Normal: Penalty calculations",
         double actual = 0.5 * ideal;  // = 9.8
         double normalized_length, median;
         
-        double penalty = Selector::computeLengthPenalty_Normal(
+        double penalty = PenaltyCalc::computeLengthPenalty_Normal(
             actual, se, 0.95, normalized_length, median);
         
         REQUIRE(normalized_length == Catch::Approx(0.5).epsilon(0.01));
@@ -476,7 +478,7 @@ TEST_CASE("computeLengthPenalty_Normal: Penalty calculations",
         double actual = 2.5 * ideal;  // = 49.0
         double normalized_length, median;
         
-        double penalty = Selector::computeLengthPenalty_Normal(
+        double penalty = PenaltyCalc::computeLengthPenalty_Normal(
             actual, se, 0.95, normalized_length, median);
         
         REQUIRE(normalized_length == Catch::Approx(2.5).epsilon(0.01));
@@ -490,7 +492,7 @@ TEST_CASE("computeLengthPenalty_Normal: Penalty calculations",
         double actual = 1.2 * ideal;
         double normalized_length, median;
         
-        double penalty = Selector::computeLengthPenalty_Normal(
+        double penalty = PenaltyCalc::computeLengthPenalty_Normal(
             actual, se, 0.95, normalized_length, median);
         
         REQUIRE(normalized_length == Catch::Approx(1.2).epsilon(0.01));
@@ -526,10 +528,10 @@ TEST_CASE("computeLengthPenalty_Normal: Different from percentile reference",
         
         double norm_perc, norm_normal, med;
         
-        Selector::computeLengthPenalty_Percentile(
+        PenaltyCalc::computeLengthPenalty_Percentile(
             test_length, stats, 0.95, MethodId::Percentile, norm_perc, med);
         
-        Selector::computeLengthPenalty_Normal(
+        PenaltyCalc::computeLengthPenalty_Normal(
             test_length, se, 0.95, norm_normal, med);
         
         // Different ideals → different normalized lengths
@@ -556,7 +558,7 @@ TEST_CASE("computeLengthPenalty_PercentileT: Edge cases",
     SECTION("Empty T* statistics returns zero penalty")
     {
         std::vector<double> empty;
-        double penalty = Selector::computeLengthPenalty_PercentileT(
+        double penalty = PenaltyCalc::computeLengthPenalty_PercentileT(
             1.0, empty, 5.0, 0.95, normalized_length, median_val);
         
         REQUIRE(penalty == 0.0);
@@ -567,7 +569,7 @@ TEST_CASE("computeLengthPenalty_PercentileT: Edge cases",
     SECTION("Zero SE_hat returns zero penalty")
     {
         std::vector<double> t_stats = createTStatistics(0.0, 1.0, 100);
-        double penalty = Selector::computeLengthPenalty_PercentileT(
+        double penalty = PenaltyCalc::computeLengthPenalty_PercentileT(
             10.0, t_stats, 0.0, 0.95, normalized_length, median_val);
         
         REQUIRE(penalty == 0.0);
@@ -576,7 +578,7 @@ TEST_CASE("computeLengthPenalty_PercentileT: Edge cases",
     SECTION("Zero actual length returns zero penalty")
     {
         std::vector<double> t_stats = createTStatistics(0.0, 1.0, 100);
-        double penalty = Selector::computeLengthPenalty_PercentileT(
+        double penalty = PenaltyCalc::computeLengthPenalty_PercentileT(
             0.0, t_stats, 3.0, 0.95, normalized_length, median_val);
         
         REQUIRE(penalty == 0.0);
@@ -591,7 +593,7 @@ TEST_CASE("computeLengthPenalty_PercentileT: Median of T* distribution",
         std::vector<double> t_stats = createTStatistics(0.0, 1.5, 1000);
         double normalized_length, median_val;
         
-        Selector::computeLengthPenalty_PercentileT(
+        PenaltyCalc::computeLengthPenalty_PercentileT(
             10.0, t_stats, 3.0, 0.95, normalized_length, median_val);
         
         // Should be very close to 0 for symmetric distribution
@@ -617,7 +619,7 @@ TEST_CASE("computeLengthPenalty_PercentileT: Ideal is (t_hi - t_lo) * SE_hat",
         
         double normalized_length, median_val;
         
-        double penalty = Selector::computeLengthPenalty_PercentileT(
+        double penalty = PenaltyCalc::computeLengthPenalty_PercentileT(
             ideal_length, t_stats, se_hat, 0.95,
             normalized_length, median_val);
         
@@ -644,7 +646,7 @@ TEST_CASE("computeLengthPenalty_PercentileT: Penalty calculations",
         double actual = 0.6 * ideal;
         double normalized_length, median_val;
         
-        double penalty = Selector::computeLengthPenalty_PercentileT(
+        double penalty = PenaltyCalc::computeLengthPenalty_PercentileT(
             actual, t_stats, se_hat, 0.95, normalized_length, median_val);
         
         REQUIRE(normalized_length == Catch::Approx(0.6).epsilon(0.01));
@@ -658,7 +660,7 @@ TEST_CASE("computeLengthPenalty_PercentileT: Penalty calculations",
         double actual = 2.2 * ideal;
         double normalized_length, median_val;
         
-        double penalty = Selector::computeLengthPenalty_PercentileT(
+        double penalty = PenaltyCalc::computeLengthPenalty_PercentileT(
             actual, t_stats, se_hat, 0.95, normalized_length, median_val);
         
         REQUIRE(normalized_length == Catch::Approx(2.2).epsilon(0.01));
@@ -672,7 +674,7 @@ TEST_CASE("computeLengthPenalty_PercentileT: Penalty calculations",
         double actual = 1.3 * ideal;
         double normalized_length, median_val;
         
-        double penalty = Selector::computeLengthPenalty_PercentileT(
+        double penalty = PenaltyCalc::computeLengthPenalty_PercentileT(
             actual, t_stats, se_hat, 0.95, normalized_length, median_val);
         
         REQUIRE(normalized_length == Catch::Approx(1.3).epsilon(0.01));
@@ -712,11 +714,11 @@ TEST_CASE("computeLengthPenalty_PercentileT: Different from theta* reference",
         double test_length = 30.0;
         double norm_perc, norm_pt, med;
         
-        Selector::computeLengthPenalty_Percentile(
+        PenaltyCalc::computeLengthPenalty_Percentile(
             test_length, theta_stats, 0.95, MethodId::Percentile,
             norm_perc, med);
         
-        Selector::computeLengthPenalty_PercentileT(
+        PenaltyCalc::computeLengthPenalty_PercentileT(
             test_length, t_stats, se_hat, 0.95, norm_pt, med);
         
         INFO("Percentile normalized: " << norm_perc);
@@ -751,7 +753,7 @@ TEST_CASE("Method-specific functions: Correct theoretical ideals",
         double perc_ideal = computeQuantile(sorted_theta, 0.975) - 
                            computeQuantile(sorted_theta, 0.025);
         
-        double penalty_perc = Selector::computeLengthPenalty_Percentile(
+        double penalty_perc = PenaltyCalc::computeLengthPenalty_Percentile(
             perc_ideal, theta_stats, 0.95, MethodId::Percentile,
             normalized, median);
         
@@ -761,7 +763,7 @@ TEST_CASE("Method-specific functions: Correct theoretical ideals",
         // Normal: ideal = 2 * z * SE
         double normal_ideal = 2.0 * 1.96 * se;
         
-        double penalty_normal = Selector::computeLengthPenalty_Normal(
+        double penalty_normal = PenaltyCalc::computeLengthPenalty_Normal(
             normal_ideal, se, 0.95, normalized, median);
         
         REQUIRE(normalized == Catch::Approx(1.0).epsilon(0.02));
@@ -773,7 +775,7 @@ TEST_CASE("Method-specific functions: Correct theoretical ideals",
         double pt_ideal = (computeQuantile(sorted_t, 0.975) - 
                           computeQuantile(sorted_t, 0.025)) * se_hat;
         
-        double penalty_pt = Selector::computeLengthPenalty_PercentileT(
+        double penalty_pt = PenaltyCalc::computeLengthPenalty_PercentileT(
             pt_ideal, t_stats, se_hat, 0.95, normalized, median);
         
         REQUIRE(normalized == Catch::Approx(1.0).epsilon(0.02));
@@ -794,10 +796,10 @@ TEST_CASE("Percentile-like methods share reference, z-based methods share refere
     
     SECTION("Percentile, BCa, Basic all use same theta* reference")
     {
-        Selector::computeLengthPenalty_Percentile(
+        PenaltyCalc::computeLengthPenalty_Percentile(
             test_length, theta_stats, 0.95, MethodId::Percentile, norm1, med);
         
-        Selector::computeLengthPenalty_Percentile(
+        PenaltyCalc::computeLengthPenalty_Percentile(
             test_length, theta_stats, 0.95, MethodId::BCa, norm2, med);
         
         REQUIRE(norm1 == Catch::Approx(norm2).margin(1e-10));
@@ -805,10 +807,10 @@ TEST_CASE("Percentile-like methods share reference, z-based methods share refere
     
     SECTION("Normal uses z*SE, not theta* quantiles")
     {
-        Selector::computeLengthPenalty_Percentile(
+        PenaltyCalc::computeLengthPenalty_Percentile(
             test_length, theta_stats, 0.95, MethodId::Percentile, norm1, med);
         
-        Selector::computeLengthPenalty_Normal(
+        PenaltyCalc::computeLengthPenalty_Normal(
             test_length, se, 0.95, norm2, med);
         
         // These should generally differ (unless distribution is perfectly normal)
@@ -818,10 +820,10 @@ TEST_CASE("Percentile-like methods share reference, z-based methods share refere
     
     SECTION("PercentileT uses T*, not theta*")
     {
-        Selector::computeLengthPenalty_Percentile(
+        PenaltyCalc::computeLengthPenalty_Percentile(
             test_length, theta_stats, 0.95, MethodId::Percentile, norm1, med);
         
-        Selector::computeLengthPenalty_PercentileT(
+        PenaltyCalc::computeLengthPenalty_PercentileT(
             test_length, t_stats, se_hat, 0.95, norm2, med);
         
         // These should differ (different distributions)

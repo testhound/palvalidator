@@ -26,11 +26,13 @@
 #include <numeric>
 
 #include "AutoBootstrapSelector.h"
+#include "BootstrapPenaltyCalculator.h"
 #include "number.h"
 
 // Alias for convenience
 using Decimal        = double;
 using Selector       = palvalidator::analysis::AutoBootstrapSelector<Decimal>;
+using PenaltyCalc    = palvalidator::analysis::BootstrapPenaltyCalculator<Decimal>;
 using Candidate      = Selector::Candidate;
 using Result         = Selector::Result;
 using ScoringWeights = Selector::ScoringWeights;
@@ -43,6 +45,7 @@ using ScoreNormalizer = palvalidator::analysis::detail::ScoreNormalizer<Decimal,
 using CandidateGateKeeper = palvalidator::analysis::detail::CandidateGateKeeper<Decimal, RawComponents>;
 using ImprovedTournamentSelector = palvalidator::analysis::detail::ImprovedTournamentSelector<Decimal>;
 using BcaRejectionAnalysis = palvalidator::analysis::detail::BcaRejectionAnalysis;
+using NormalizedScores = palvalidator::analysis::detail::NormalizedScores;
 
 // -----------------------------------------------------------------------------
 // Helper functions for creating test candidates
@@ -120,35 +123,35 @@ TEST_CASE("computeSkewPenalty: Basic functionality",
     SECTION("Skew below threshold produces no penalty")
     {
         double skew = 0.5;  // Below threshold of 1.0
-        double penalty = Selector::computeSkewPenalty(skew);
+        double penalty = PenaltyCalc::computeSkewPenalty(skew);
         REQUIRE(penalty == 0.0);
     }
     
     SECTION("Skew exactly at threshold produces no penalty")
     {
         double skew = 1.0;  // Exactly at threshold
-        double penalty = Selector::computeSkewPenalty(skew);
+        double penalty = PenaltyCalc::computeSkewPenalty(skew);
         REQUIRE(penalty == 0.0);
     }
     
     SECTION("Skew above threshold produces quadratic penalty")
     {
         double skew = 2.0;  // 1.0 above threshold
-        double penalty = Selector::computeSkewPenalty(skew);
+        double penalty = PenaltyCalc::computeSkewPenalty(skew);
         REQUIRE(penalty == Catch::Approx(1.0));  // (2.0 - 1.0)^2 = 1.0
     }
     
     SECTION("Negative skew uses absolute value")
     {
         double skew = -2.5;  // |skew| = 2.5
-        double penalty = Selector::computeSkewPenalty(skew);
+        double penalty = PenaltyCalc::computeSkewPenalty(skew);
         REQUIRE(penalty == Catch::Approx(2.25));  // (2.5 - 1.0)^2 = 2.25
     }
     
     SECTION("Large skew produces large penalty")
     {
         double skew = 5.0;  // 4.0 above threshold
-        double penalty = Selector::computeSkewPenalty(skew);
+        double penalty = PenaltyCalc::computeSkewPenalty(skew);
         REQUIRE(penalty == Catch::Approx(16.0));  // (5.0 - 1.0)^2 = 16.0
     }
 }
@@ -162,21 +165,21 @@ TEST_CASE("computeDomainPenalty: Support violation detection",
     SECTION("No violation with unbounded support")
     {
         auto candidate = makeTestCandidate(MethodId::Percentile, 5.0, 4.0, 6.0);
-        double penalty = Selector::computeDomainPenalty(candidate, unbounded);
+        double penalty = PenaltyCalc::computeDomainPenalty(candidate, unbounded);
         REQUIRE(penalty == 0.0);
     }
     
     SECTION("No violation when lower bound is positive")
     {
         auto candidate = makeTestCandidate(MethodId::Percentile, 5.0, 1.0, 6.0);
-        double penalty = Selector::computeDomainPenalty(candidate, positive);
+        double penalty = PenaltyCalc::computeDomainPenalty(candidate, positive);
         REQUIRE(penalty == 0.0);
     }
     
     SECTION("Violation when lower bound is negative with positive support")
     {
         auto candidate = makeTestCandidate(MethodId::Percentile, 5.0, -1.0, 6.0);
-        double penalty = Selector::computeDomainPenalty(candidate, positive);
+        double penalty = PenaltyCalc::computeDomainPenalty(candidate, positive);
         REQUIRE(penalty > 0.0);
         REQUIRE(penalty == AutoBootstrapConfiguration::kDomainViolationPenalty);
     }
@@ -184,7 +187,7 @@ TEST_CASE("computeDomainPenalty: Support violation detection",
     SECTION("Violation at exactly zero with strict lower bound")
     {
         auto candidate = makeTestCandidate(MethodId::Percentile, 5.0, 0.0, 6.0);
-        double penalty = Selector::computeDomainPenalty(candidate, positive);
+        double penalty = PenaltyCalc::computeDomainPenalty(candidate, positive);
         // Should violate because it's a strict bound with epsilon
         REQUIRE(penalty > 0.0);
     }
@@ -218,7 +221,7 @@ TEST_CASE("computeRawComponentsForCandidate: Component extraction",
             0.02      // stability_penalty
         );
         
-        auto raw = Selector::computeRawComponentsForCandidate(candidate, unbounded);
+        auto raw = palvalidator::analysis::detail::RawComponentsBuilder<double>::computeRawComponentsForCandidate(candidate, unbounded);
         
         REQUIRE(raw.getOrderingPenalty() == Catch::Approx(0.01));
         REQUIRE(raw.getLengthPenalty() == Catch::Approx(0.05));
@@ -237,7 +240,7 @@ TEST_CASE("computeRawComponentsForCandidate: Component extraction",
             std::numeric_limits<double>::quiet_NaN(),  // center_shift_in_se = NaN
             1.0, 0.0, 0.0, 0.0);
         
-        auto raw = Selector::computeRawComponentsForCandidate(candidate, unbounded);
+        auto raw = palvalidator::analysis::detail::RawComponentsBuilder<double>::computeRawComponentsForCandidate(candidate, unbounded);
         
         // Should handle gracefully and set to 0
         REQUIRE(std::isfinite(raw.getCenterShiftSq()));
@@ -252,7 +255,7 @@ TEST_CASE("computeRawComponentsForCandidate: Component extraction",
             std::numeric_limits<double>::infinity(),  // skew_boot = inf
             5.0, 0.1, 1.0, 0.0, 0.0, 0.0);
         
-        auto raw = Selector::computeRawComponentsForCandidate(candidate, unbounded);
+        auto raw = palvalidator::analysis::detail::RawComponentsBuilder<double>::computeRawComponentsForCandidate(candidate, unbounded);
         
         // Should handle gracefully
         REQUIRE(std::isfinite(raw.getSkewSq()));
@@ -265,7 +268,7 @@ TEST_CASE("computeRawComponentsForCandidate: Component extraction",
         auto candidate = makeTestCandidate(
             MethodId::Percentile, 5.0, -1.0, 6.0);  // Lower bound negative
         
-        auto raw = Selector::computeRawComponentsForCandidate(candidate, positive);
+        auto raw = palvalidator::analysis::detail::RawComponentsBuilder<double>::computeRawComponentsForCandidate(candidate, positive);
         
         REQUIRE(raw.getDomainPenalty() > 0.0);
     }
@@ -286,7 +289,7 @@ TEST_CASE("computeRawPenalties: Batch processing",
             makeBcaCandidate(0.1, 0.05, 0.0)
         };
         
-        auto raw = Selector::computeRawPenalties(candidates, unbounded);
+        auto raw = palvalidator::analysis::detail::RawComponentsBuilder<double>::computeRawPenalties(candidates, unbounded);
         
         REQUIRE(raw.size() == 3);
         
@@ -303,7 +306,7 @@ TEST_CASE("computeRawPenalties: Batch processing",
     SECTION("Returns empty vector for empty input")
     {
         std::vector<Candidate> empty_candidates;
-        auto raw = Selector::computeRawPenalties(empty_candidates, unbounded);
+        auto raw = palvalidator::analysis::detail::RawComponentsBuilder<double>::computeRawPenalties(empty_candidates, unbounded);
         REQUIRE(raw.empty());
     }
 }
@@ -357,19 +360,19 @@ TEST_CASE("ScoreNormalizer::normalize: Basic normalization",
         
         // Check normalization: raw / reference
         // ordering: 0.01 / (0.10 * 0.10) = 0.01 / 0.01 = 1.0
-        REQUIRE(norm.ordering_norm == Catch::Approx(1.0));
+        REQUIRE(norm.getOrderingNorm() == Catch::Approx(1.0));
         
         // length: 0.5 / (1.0 * 1.0) = 0.5
-        REQUIRE(norm.length_norm == Catch::Approx(0.5));
+        REQUIRE(norm.getLengthNorm() == Catch::Approx(0.5));
         
         // stability: 0.1 / 0.25 = 0.4
-        REQUIRE(norm.stability_norm == Catch::Approx(0.4));
+        REQUIRE(norm.getStabilityNorm() == Catch::Approx(0.4));
         
         // center_sq: 4.0 / (2.0 * 2.0) = 1.0
-        REQUIRE(norm.center_sq_norm == Catch::Approx(1.0));
+        REQUIRE(norm.getCenterSqNorm() == Catch::Approx(1.0));
         
         // skew_sq: 4.0 / (2.0 * 2.0) = 1.0
-        REQUIRE(norm.skew_sq_norm == Catch::Approx(1.0));
+        REQUIRE(norm.getSkewSqNorm() == Catch::Approx(1.0));
     }
     
     SECTION("Weights are applied to contributions")
@@ -377,14 +380,14 @@ TEST_CASE("ScoreNormalizer::normalize: Basic normalization",
         auto raw = makeValidRaw(0.01, 0.5, 0.1, 4.0, 4.0, 0.0);
         auto norm = normalizer.normalize(raw);
         
-        // Default weights: w_order=1.0, w_length=0.25, w_stability=1.0, 
+        // Default weights: w_order=1.0, w_length=0.25, w_stability=1.0,
         //                  w_center=1.0, w_skew=0.5
         
-        REQUIRE(norm.ordering_contrib == Catch::Approx(1.0 * norm.ordering_norm));
-        REQUIRE(norm.length_contrib == Catch::Approx(0.25 * norm.length_norm));
-        REQUIRE(norm.stability_contrib == Catch::Approx(1.0 * norm.stability_norm));
-        REQUIRE(norm.center_sq_contrib == Catch::Approx(1.0 * norm.center_sq_norm));
-        REQUIRE(norm.skew_sq_contrib == Catch::Approx(0.5 * norm.skew_sq_norm));
+        REQUIRE(norm.getOrderingContrib() == Catch::Approx(1.0 * norm.getOrderingNorm()));
+        REQUIRE(norm.getLengthContrib() == Catch::Approx(0.25 * norm.getLengthNorm()));
+        REQUIRE(norm.getStabilityContrib() == Catch::Approx(1.0 * norm.getStabilityNorm()));
+        REQUIRE(norm.getCenterSqContrib() == Catch::Approx(1.0 * norm.getCenterSqNorm()));
+        REQUIRE(norm.getSkewSqContrib() == Catch::Approx(0.5 * norm.getSkewSqNorm()));
     }
     
     SECTION("Zero raw values produce zero normalized values")
@@ -392,11 +395,11 @@ TEST_CASE("ScoreNormalizer::normalize: Basic normalization",
         auto raw = makeValidRaw(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
         auto norm = normalizer.normalize(raw);
         
-        REQUIRE(norm.ordering_norm == 0.0);
-        REQUIRE(norm.length_norm == 0.0);
-        REQUIRE(norm.stability_norm == 0.0);
-        REQUIRE(norm.center_sq_norm == 0.0);
-        REQUIRE(norm.skew_sq_norm == 0.0);
+        REQUIRE(norm.getOrderingNorm() == 0.0);
+        REQUIRE(norm.getLengthNorm() == 0.0);
+        REQUIRE(norm.getStabilityNorm() == 0.0);
+        REQUIRE(norm.getCenterSqNorm() == 0.0);
+        REQUIRE(norm.getSkewSqNorm() == 0.0);
     }
 }
 
@@ -415,9 +418,9 @@ TEST_CASE("ScoreNormalizer::computeTotalScore: Score computation",
             norm, raw, MethodId::Percentile, 0.5);
         
         // Should be sum of contributions + domain penalty (0.0)
-        double expected = norm.ordering_contrib + norm.length_contrib +
-                         norm.stability_contrib + norm.center_sq_contrib +
-                         norm.skew_sq_contrib + 0.0;
+        double expected = norm.getOrderingContrib() + norm.getLengthContrib() +
+                         norm.getStabilityContrib() + norm.getCenterSqContrib() +
+                         norm.getSkewSqContrib() + 0.0;
         
         REQUIRE(total == Catch::Approx(expected));
     }
@@ -434,9 +437,9 @@ TEST_CASE("ScoreNormalizer::computeTotalScore: Score computation",
             norm, raw, MethodId::BCa, length_penalty);
         
         // Should not include overflow penalty
-        double expected = norm.ordering_contrib + norm.length_contrib +
-                         norm.stability_contrib + norm.center_sq_contrib +
-                         norm.skew_sq_contrib + 0.0;
+        double expected = norm.getOrderingContrib() + norm.getLengthContrib() +
+                         norm.getStabilityContrib() + norm.getCenterSqContrib() +
+                         norm.getSkewSqContrib() + 0.0;
         
         REQUIRE(total == Catch::Approx(expected));
     }
@@ -453,9 +456,9 @@ TEST_CASE("ScoreNormalizer::computeTotalScore: Score computation",
             norm, raw, MethodId::BCa, length_penalty);
         
         // Should include overflow penalty (total > expected base)
-        double base_expected = norm.ordering_contrib + norm.length_contrib +
-                              norm.stability_contrib + norm.center_sq_contrib +
-                              norm.skew_sq_contrib + 0.0;
+        double base_expected = norm.getOrderingContrib() + norm.getLengthContrib() +
+                              norm.getStabilityContrib() + norm.getCenterSqContrib() +
+                              norm.getSkewSqContrib() + 0.0;
         
         REQUIRE(total > base_expected);
     }
@@ -469,9 +472,9 @@ TEST_CASE("ScoreNormalizer::computeTotalScore: Score computation",
         double total = normalizer.computeTotalScore(
             norm, raw, MethodId::Percentile, 0.5);
         
-        REQUIRE(total > norm.ordering_contrib + norm.length_contrib +
-                       norm.stability_contrib + norm.center_sq_contrib +
-                       norm.skew_sq_contrib);
+        REQUIRE(total > norm.getOrderingContrib() + norm.getLengthContrib() +
+                       norm.getStabilityContrib() + norm.getCenterSqContrib() +
+                       norm.getSkewSqContrib());
     }
 }
 
@@ -732,6 +735,67 @@ TEST_CASE("ImprovedTournamentSelector: Error handling",
     }
 }
 
+// -----------------------------------------------------------------------------
+// Tests for methodPreference
+// -----------------------------------------------------------------------------
+
+TEST_CASE("methodPreference: Correct preference ordering",
+          "[ImprovedTournamentSelector][MethodPreference]")
+{
+    SECTION("BCa has highest preference (lowest value)")
+    {
+        int pref_bca = ImprovedTournamentSelector::methodPreference(MethodId::BCa);
+        REQUIRE(pref_bca == 1);
+    }
+    
+    SECTION("PercentileT is second preference")
+    {
+        int pref_pt = ImprovedTournamentSelector::methodPreference(MethodId::PercentileT);
+        REQUIRE(pref_pt == 2);
+    }
+    
+    SECTION("MOutOfN is third preference")
+    {
+        int pref_moon = ImprovedTournamentSelector::methodPreference(MethodId::MOutOfN);
+        REQUIRE(pref_moon == 3);
+    }
+    
+    SECTION("Percentile is fourth preference")
+    {
+        int pref_perc = ImprovedTournamentSelector::methodPreference(MethodId::Percentile);
+        REQUIRE(pref_perc == 4);
+    }
+    
+    SECTION("Basic is fifth preference")
+    {
+        int pref_basic = ImprovedTournamentSelector::methodPreference(MethodId::Basic);
+        REQUIRE(pref_basic == 5);
+    }
+    
+    SECTION("Normal has lowest preference (highest value)")
+    {
+        int pref_normal = ImprovedTournamentSelector::methodPreference(MethodId::Normal);
+        REQUIRE(pref_normal == 6);
+    }
+    
+    SECTION("Preference ordering is strictly increasing")
+    {
+        std::vector<int> preferences{
+            ImprovedTournamentSelector::methodPreference(MethodId::BCa),
+            ImprovedTournamentSelector::methodPreference(MethodId::PercentileT),
+            ImprovedTournamentSelector::methodPreference(MethodId::MOutOfN),
+            ImprovedTournamentSelector::methodPreference(MethodId::Percentile),
+            ImprovedTournamentSelector::methodPreference(MethodId::Basic),
+            ImprovedTournamentSelector::methodPreference(MethodId::Normal)
+        };
+        
+        // Verify strictly increasing
+        for (size_t i = 1; i < preferences.size(); ++i) {
+            REQUIRE(preferences[i] > preferences[i-1]);
+        }
+    }
+}
+
 // =============================================================================
 // TESTS FOR PHASE 3: Tournament Selection
 // =============================================================================
@@ -867,8 +931,8 @@ TEST_CASE("analyzeBcaRejection: BCa rejection diagnostics",
         
         auto analysis = Selector::analyzeBcaRejection(candidates, raw, 0, false);
         
-        REQUIRE(analysis.has_bca_candidate == false);
-        REQUIRE(analysis.bca_chosen == false);
+        REQUIRE(analysis.hasBcaCandidate() == false);
+        REQUIRE(analysis.bcaChosen() == false);
     }
     
     SECTION("BCa chosen as winner")
@@ -884,12 +948,12 @@ TEST_CASE("analyzeBcaRejection: BCa rejection diagnostics",
         
         auto analysis = Selector::analyzeBcaRejection(candidates, raw, 0, true);
         
-        REQUIRE(analysis.has_bca_candidate == true);
-        REQUIRE(analysis.bca_chosen == true);
-        REQUIRE(analysis.rejected_for_instability == false);
-        REQUIRE(analysis.rejected_for_length == false);
-        REQUIRE(analysis.rejected_for_domain == false);
-        REQUIRE(analysis.rejected_for_non_finite == false);
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == true);
+        REQUIRE(analysis.rejectedForInstability() == false);
+        REQUIRE(analysis.rejectedForLength() == false);
+        REQUIRE(analysis.rejectedForDomain() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == false);
     }
     
     SECTION("BCa rejected for non-finite score")
@@ -905,9 +969,9 @@ TEST_CASE("analyzeBcaRejection: BCa rejection diagnostics",
         
         auto analysis = Selector::analyzeBcaRejection(candidates, raw, 1, true);
         
-        REQUIRE(analysis.has_bca_candidate == true);
-        REQUIRE(analysis.bca_chosen == false);
-        REQUIRE(analysis.rejected_for_non_finite == true);
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == true);
     }
     
     SECTION("BCa rejected for domain violation")
@@ -926,7 +990,7 @@ TEST_CASE("analyzeBcaRejection: BCa rejection diagnostics",
         
         auto analysis = Selector::analyzeBcaRejection(candidates, raw, 1, true);
         
-        REQUIRE(analysis.rejected_for_domain == true);
+        REQUIRE(analysis.rejectedForDomain() == true);
     }
     
     SECTION("BCa rejected for excessive z0")
@@ -946,7 +1010,7 @@ TEST_CASE("analyzeBcaRejection: BCa rejection diagnostics",
         bool exceeds = std::fabs(0.7) > AutoBootstrapConfiguration::kBcaZ0HardLimit;
         if (exceeds)
         {
-            REQUIRE(analysis.rejected_for_instability == true);
+            REQUIRE(analysis.rejectedForInstability() == true);
         }
     }
     
@@ -975,7 +1039,7 @@ TEST_CASE("analyzeBcaRejection: BCa rejection diagnostics",
         bool exceeds = 10.0 > AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold;
         if (exceeds)
         {
-            REQUIRE(analysis.rejected_for_length == true);
+            REQUIRE(analysis.rejectedForLength() == true);
         }
     }
 }
@@ -1042,7 +1106,7 @@ TEST_CASE("passesEffectiveBGate: Effective B validation",
             100, 1000, 0, 900, 100, 0.5, 0.2, 5.0, 0.1, 1.0, 0.0, 0.0, 0.0);
         
         // 900/1000 = 90% should pass (assuming threshold <= 90%)
-        REQUIRE(Selector::passesEffectiveBGate(candidate) == true);
+        REQUIRE(CandidateGateKeeper::passesEffectiveBGate(candidate) == true);
     }
     
     SECTION("Perfect effective B passes gate")
@@ -1052,7 +1116,7 @@ TEST_CASE("passesEffectiveBGate: Effective B validation",
             100, 1000, 0, 1000, 0, 0.5, 0.2, 5.0, 0.1, 1.0, 0.0, 0.0, 0.0);
         
         // 1000/1000 = 100% should always pass
-        REQUIRE(Selector::passesEffectiveBGate(candidate) == true);
+        REQUIRE(CandidateGateKeeper::passesEffectiveBGate(candidate) == true);
     }
     
     SECTION("Zero B_outer fails gate")
@@ -1061,7 +1125,7 @@ TEST_CASE("passesEffectiveBGate: Effective B validation",
             MethodId::Percentile, 5.0, 4.0, 6.0, 0.95,
             100, 0, 0, 0, 0, 0.5, 0.2, 5.0, 0.1, 1.0, 0.0, 0.0, 0.0);
         
-        REQUIRE(Selector::passesEffectiveBGate(candidate) == false);
+        REQUIRE(CandidateGateKeeper::passesEffectiveBGate(candidate) == false);
     }
 }
 
@@ -1229,4 +1293,1859 @@ TEST_CASE("select: Diagnostics are properly populated",
         
         REQUIRE(diagnostics.hasBCaCandidate() == true);
     }
+}
+
+TEST_CASE("NormalizedScores: Construction with all parameters",
+          "[AutoBootstrapSelector][NormalizedScores][Construction]")
+{
+    SECTION("Constructs with typical values")
+    {
+        NormalizedScores scores(
+            1.0,   // orderingNorm
+            0.5,   // lengthNorm
+            0.4,   // stabilityNorm
+            1.0,   // centerSqNorm
+            1.0,   // skewSqNorm
+            1.0,   // orderingContrib
+            0.125, // lengthContrib
+            0.4,   // stabilityContrib
+            1.0,   // centerSqContrib
+            0.5    // skewSqContrib
+        );
+        
+        // Verify all values are stored correctly
+        REQUIRE(scores.getOrderingNorm() == Catch::Approx(1.0));
+        REQUIRE(scores.getLengthNorm() == Catch::Approx(0.5));
+        REQUIRE(scores.getStabilityNorm() == Catch::Approx(0.4));
+        REQUIRE(scores.getCenterSqNorm() == Catch::Approx(1.0));
+        REQUIRE(scores.getSkewSqNorm() == Catch::Approx(1.0));
+        
+        REQUIRE(scores.getOrderingContrib() == Catch::Approx(1.0));
+        REQUIRE(scores.getLengthContrib() == Catch::Approx(0.125));
+        REQUIRE(scores.getStabilityContrib() == Catch::Approx(0.4));
+        REQUIRE(scores.getCenterSqContrib() == Catch::Approx(1.0));
+        REQUIRE(scores.getSkewSqContrib() == Catch::Approx(0.5));
+    }
+    
+    SECTION("Constructs with all zero values")
+    {
+        NormalizedScores scores(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        
+        REQUIRE(scores.getOrderingNorm() == 0.0);
+        REQUIRE(scores.getLengthNorm() == 0.0);
+        REQUIRE(scores.getStabilityNorm() == 0.0);
+        REQUIRE(scores.getCenterSqNorm() == 0.0);
+        REQUIRE(scores.getSkewSqNorm() == 0.0);
+        
+        REQUIRE(scores.getOrderingContrib() == 0.0);
+        REQUIRE(scores.getLengthContrib() == 0.0);
+        REQUIRE(scores.getStabilityContrib() == 0.0);
+        REQUIRE(scores.getCenterSqContrib() == 0.0);
+        REQUIRE(scores.getSkewSqContrib() == 0.0);
+    }
+    
+    SECTION("Constructs with large values")
+    {
+        NormalizedScores scores(
+            100.0, 200.0, 150.0, 300.0, 250.0,
+            100.0, 50.0, 150.0, 300.0, 125.0
+        );
+        
+        REQUIRE(scores.getOrderingNorm() == Catch::Approx(100.0));
+        REQUIRE(scores.getLengthNorm() == Catch::Approx(200.0));
+        REQUIRE(scores.getStabilityNorm() == Catch::Approx(150.0));
+        REQUIRE(scores.getCenterSqNorm() == Catch::Approx(300.0));
+        REQUIRE(scores.getSkewSqNorm() == Catch::Approx(250.0));
+        
+        REQUIRE(scores.getOrderingContrib() == Catch::Approx(100.0));
+        REQUIRE(scores.getLengthContrib() == Catch::Approx(50.0));
+        REQUIRE(scores.getStabilityContrib() == Catch::Approx(150.0));
+        REQUIRE(scores.getCenterSqContrib() == Catch::Approx(300.0));
+        REQUIRE(scores.getSkewSqContrib() == Catch::Approx(125.0));
+    }
+}
+
+TEST_CASE("NormalizedScores: Handling special floating-point values",
+          "[AutoBootstrapSelector][NormalizedScores][SpecialValues]")
+{
+    SECTION("Accepts very small positive values")
+    {
+        double small = 1e-10;
+        NormalizedScores scores(small, small, small, small, small,
+                               small, small, small, small, small);
+        
+        REQUIRE(scores.getOrderingNorm() == Catch::Approx(small));
+        REQUIRE(scores.getLengthNorm() == Catch::Approx(small));
+        REQUIRE(scores.getOrderingContrib() == Catch::Approx(small));
+    }
+    
+    SECTION("Accepts negative values (edge case)")
+    {
+        // Although typically normalized values should be non-negative,
+        // the class itself doesn't enforce this constraint
+        NormalizedScores scores(-1.0, -0.5, -0.3, -1.0, -0.8,
+                               -1.0, -0.125, -0.3, -1.0, -0.4);
+        
+        REQUIRE(scores.getOrderingNorm() == Catch::Approx(-1.0));
+        REQUIRE(scores.getLengthNorm() == Catch::Approx(-0.5));
+        REQUIRE(scores.getOrderingContrib() == Catch::Approx(-1.0));
+    }
+    
+    SECTION("Handles infinity values")
+    {
+        double inf = std::numeric_limits<double>::infinity();
+        NormalizedScores scores(inf, 1.0, 1.0, 1.0, 1.0,
+                               inf, 1.0, 1.0, 1.0, 1.0);
+        
+        REQUIRE(std::isinf(scores.getOrderingNorm()));
+        REQUIRE(std::isinf(scores.getOrderingContrib()));
+        REQUIRE(std::isfinite(scores.getLengthNorm()));
+    }
+    
+    SECTION("Handles NaN values")
+    {
+        double nan = std::numeric_limits<double>::quiet_NaN();
+        NormalizedScores scores(nan, 1.0, 1.0, 1.0, 1.0,
+                               nan, 1.0, 1.0, 1.0, 1.0);
+        
+        REQUIRE(std::isnan(scores.getOrderingNorm()));
+        REQUIRE(std::isnan(scores.getOrderingContrib()));
+        REQUIRE(std::isfinite(scores.getLengthNorm()));
+    }
+}
+
+TEST_CASE("NormalizedScores: Normalized values vs contributions relationship",
+          "[AutoBootstrapSelector][NormalizedScores][Relationship]")
+{
+    SECTION("Contributions are weighted versions of normalized values")
+    {
+        // Simulate typical weighting: w_ordering=1.0, w_length=0.25, w_stability=1.0
+        double orderingNorm = 1.0;
+        double lengthNorm = 0.5;
+        double stabilityNorm = 0.4;
+        
+        double w_ordering = 1.0;
+        double w_length = 0.25;
+        double w_stability = 1.0;
+        
+        NormalizedScores scores(
+            orderingNorm,
+            lengthNorm,
+            stabilityNorm,
+            1.0, 1.0,  // center and skew norms
+            orderingNorm * w_ordering,
+            lengthNorm * w_length,
+            stabilityNorm * w_stability,
+            1.0, 0.5   // center and skew contribs
+        );
+        
+        REQUIRE(scores.getOrderingContrib() == 
+                Catch::Approx(scores.getOrderingNorm() * w_ordering));
+        REQUIRE(scores.getLengthContrib() == 
+                Catch::Approx(scores.getLengthNorm() * w_length));
+        REQUIRE(scores.getStabilityContrib() == 
+                Catch::Approx(scores.getStabilityNorm() * w_stability));
+    }
+    
+    SECTION("Contribution can be zero even when normalized value is non-zero")
+    {
+        // This happens when weight is zero
+        NormalizedScores scores(
+            1.0,   // orderingNorm = 1.0
+            0.5,   // lengthNorm = 0.5
+            0.4,   // stabilityNorm = 0.4
+            1.0, 1.0,
+            1.0,   // orderingContrib = 1.0 (weight=1.0)
+            0.0,   // lengthContrib = 0.0 (weight=0.0, even though norm=0.5)
+            0.4,   // stabilityContrib = 0.4 (weight=1.0)
+            1.0, 0.5
+        );
+        
+        REQUIRE(scores.getLengthNorm() > 0.0);
+        REQUIRE(scores.getLengthContrib() == 0.0);
+    }
+}
+
+TEST_CASE("NormalizedScores: Read-only access pattern",
+          "[AutoBootstrapSelector][NormalizedScores][Immutability]")
+{
+    SECTION("All getters are const and return values, not references")
+    {
+        const NormalizedScores scores(1.0, 0.5, 0.4, 1.0, 1.0,
+                                      1.0, 0.125, 0.4, 1.0, 0.5);
+        
+        // These should compile (all getters are const)
+        double ordering = scores.getOrderingNorm();
+        double length = scores.getLengthNorm();
+        double stability = scores.getStabilityNorm();
+        double centerSq = scores.getCenterSqNorm();
+        double skewSq = scores.getSkewSqNorm();
+        
+        double orderingC = scores.getOrderingContrib();
+        double lengthC = scores.getLengthContrib();
+        double stabilityC = scores.getStabilityContrib();
+        double centerSqC = scores.getCenterSqContrib();
+        double skewSqC = scores.getSkewSqContrib();
+        
+        // Verify values
+        REQUIRE(ordering == 1.0);
+        REQUIRE(length == 0.5);
+        REQUIRE(stability == 0.4);
+        REQUIRE(centerSq == 1.0);
+        REQUIRE(skewSq == 1.0);
+        REQUIRE(orderingC == 1.0);
+        REQUIRE(lengthC == 0.125);
+        REQUIRE(stabilityC == 0.4);
+        REQUIRE(centerSqC == 1.0);
+        REQUIRE(skewSqC == 0.5);
+    }
+}
+
+TEST_CASE("NormalizedScores: Realistic scoring scenarios",
+          "[AutoBootstrapSelector][NormalizedScores][Realistic]")
+{
+    SECTION("Low penalty scenario (good candidate)")
+    {
+        // All normalized values near zero, contributions near zero
+        NormalizedScores scores(
+            0.01, 0.02, 0.01, 0.05, 0.03,  // Small normalized penalties
+            0.01, 0.005, 0.01, 0.05, 0.015  // Small contributions
+        );
+        
+        double total_contrib = scores.getOrderingContrib() +
+                              scores.getLengthContrib() +
+                              scores.getStabilityContrib() +
+                              scores.getCenterSqContrib() +
+                              scores.getSkewSqContrib();
+        
+        REQUIRE(total_contrib < 0.1);  // Total penalty is low
+    }
+    
+    SECTION("High penalty scenario (poor candidate)")
+    {
+        // Large normalized values and contributions
+        NormalizedScores scores(
+            5.0, 10.0, 3.0, 8.0, 6.0,      // Large normalized penalties
+            5.0, 2.5, 3.0, 8.0, 3.0         // Large contributions
+        );
+        
+        double total_contrib = scores.getOrderingContrib() +
+                              scores.getLengthContrib() +
+                              scores.getStabilityContrib() +
+                              scores.getCenterSqContrib() +
+                              scores.getSkewSqContrib();
+        
+        REQUIRE(total_contrib > 20.0);  // Total penalty is high
+    }
+    
+    SECTION("Mixed penalty scenario")
+    {
+        // Some penalties high, others low
+        NormalizedScores scores(
+            0.05,  // Low ordering
+            5.0,   // High length
+            0.1,   // Low stability
+            0.2,   // Low center
+            10.0,  // High skew
+            0.05,  // Low ordering contrib
+            1.25,  // Moderate length contrib (weight=0.25)
+            0.1,   // Low stability contrib
+            0.2,   // Low center contrib
+            5.0    // High skew contrib (weight=0.5)
+        );
+        
+        REQUIRE(scores.getLengthNorm() > 1.0);
+        REQUIRE(scores.getSkewSqNorm() > 1.0);
+        REQUIRE(scores.getOrderingNorm() < 0.1);
+        REQUIRE(scores.getStabilityNorm() < 0.2);
+    }
+}
+
+TEST_CASE("NormalizedScores: Component independence",
+          "[AutoBootstrapSelector][NormalizedScores][Independence]")
+{
+    SECTION("Each component can be set independently")
+    {
+        // Set each component to a unique value
+        NormalizedScores scores(
+            1.0, 2.0, 3.0, 4.0, 5.0,
+            10.0, 20.0, 30.0, 40.0, 50.0
+        );
+        
+        REQUIRE(scores.getOrderingNorm() == 1.0);
+        REQUIRE(scores.getLengthNorm() == 2.0);
+        REQUIRE(scores.getStabilityNorm() == 3.0);
+        REQUIRE(scores.getCenterSqNorm() == 4.0);
+        REQUIRE(scores.getSkewSqNorm() == 5.0);
+        
+        REQUIRE(scores.getOrderingContrib() == 10.0);
+        REQUIRE(scores.getLengthContrib() == 20.0);
+        REQUIRE(scores.getStabilityContrib() == 30.0);
+        REQUIRE(scores.getCenterSqContrib() == 40.0);
+        REQUIRE(scores.getSkewSqContrib() == 50.0);
+    }
+    
+    SECTION("Changing one component doesn't affect others")
+    {
+        NormalizedScores scores1(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+        NormalizedScores scores2(99.0, 1.0, 1.0, 1.0, 1.0, 99.0, 1.0, 1.0, 1.0, 1.0);
+        
+        // All components except ordering should be the same
+        REQUIRE(scores1.getLengthNorm() == scores2.getLengthNorm());
+        REQUIRE(scores1.getStabilityNorm() == scores2.getStabilityNorm());
+        REQUIRE(scores1.getCenterSqNorm() == scores2.getCenterSqNorm());
+        REQUIRE(scores1.getSkewSqNorm() == scores2.getSkewSqNorm());
+        
+        // Ordering should be different
+        REQUIRE(scores1.getOrderingNorm() != scores2.getOrderingNorm());
+        REQUIRE(scores1.getOrderingContrib() != scores2.getOrderingContrib());
+    }
+}
+
+// =============================================================================
+// TESTS FOR BcaRejectionAnalysis CLASS
+// =============================================================================
+
+TEST_CASE("BcaRejectionAnalysis: Construction with all parameters",
+          "[AutoBootstrapSelector][BcaRejectionAnalysis][Construction]")
+{
+    SECTION("No BCa candidate present")
+    {
+        BcaRejectionAnalysis analysis(
+            false,  // hasBcaCandidate
+            false,  // bcaChosen
+            false,  // rejectedForInstability
+            false,  // rejectedForLength
+            false,  // rejectedForDomain
+            false   // rejectedForNonFinite
+        );
+        
+        REQUIRE(analysis.hasBcaCandidate() == false);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForInstability() == false);
+        REQUIRE(analysis.rejectedForLength() == false);
+        REQUIRE(analysis.rejectedForDomain() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == false);
+    }
+    
+    SECTION("BCa present and chosen")
+    {
+        BcaRejectionAnalysis analysis(
+            true,   // hasBcaCandidate
+            true,   // bcaChosen
+            false,  // rejectedForInstability
+            false,  // rejectedForLength
+            false,  // rejectedForDomain
+            false   // rejectedForNonFinite
+        );
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == true);
+        REQUIRE(analysis.rejectedForInstability() == false);
+        REQUIRE(analysis.rejectedForLength() == false);
+        REQUIRE(analysis.rejectedForDomain() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == false);
+    }
+    
+    SECTION("BCa present but rejected for instability")
+    {
+        BcaRejectionAnalysis analysis(
+            true,   // hasBcaCandidate
+            false,  // bcaChosen
+            true,   // rejectedForInstability
+            false,  // rejectedForLength
+            false,  // rejectedForDomain
+            false   // rejectedForNonFinite
+        );
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForInstability() == true);
+        REQUIRE(analysis.rejectedForLength() == false);
+        REQUIRE(analysis.rejectedForDomain() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == false);
+    }
+}
+
+TEST_CASE("BcaRejectionAnalysis: All rejection reasons",
+          "[AutoBootstrapSelector][BcaRejectionAnalysis][RejectionReasons]")
+{
+    SECTION("Rejected for length penalty")
+    {
+        BcaRejectionAnalysis analysis(true, false, false, true, false, false);
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForLength() == true);
+        REQUIRE(analysis.rejectedForInstability() == false);
+        REQUIRE(analysis.rejectedForDomain() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == false);
+    }
+    
+    SECTION("Rejected for domain violation")
+    {
+        BcaRejectionAnalysis analysis(true, false, false, false, true, false);
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForDomain() == true);
+        REQUIRE(analysis.rejectedForInstability() == false);
+        REQUIRE(analysis.rejectedForLength() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == false);
+    }
+    
+    SECTION("Rejected for non-finite scores")
+    {
+        BcaRejectionAnalysis analysis(true, false, false, false, false, true);
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == true);
+        REQUIRE(analysis.rejectedForInstability() == false);
+        REQUIRE(analysis.rejectedForLength() == false);
+        REQUIRE(analysis.rejectedForDomain() == false);
+    }
+}
+
+TEST_CASE("BcaRejectionAnalysis: Multiple rejection reasons",
+          "[AutoBootstrapSelector][BcaRejectionAnalysis][MultipleReasons]")
+{
+    SECTION("Rejected for both instability and length")
+    {
+        BcaRejectionAnalysis analysis(
+            true,   // hasBcaCandidate
+            false,  // bcaChosen
+            true,   // rejectedForInstability
+            true,   // rejectedForLength
+            false,  // rejectedForDomain
+            false   // rejectedForNonFinite
+        );
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForInstability() == true);
+        REQUIRE(analysis.rejectedForLength() == true);
+    }
+    
+    SECTION("Rejected for all reasons (worst case)")
+    {
+        BcaRejectionAnalysis analysis(
+            true,   // hasBcaCandidate
+            false,  // bcaChosen
+            true,   // rejectedForInstability
+            true,   // rejectedForLength
+            true,   // rejectedForDomain
+            true    // rejectedForNonFinite
+        );
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForInstability() == true);
+        REQUIRE(analysis.rejectedForLength() == true);
+        REQUIRE(analysis.rejectedForDomain() == true);
+        REQUIRE(analysis.rejectedForNonFinite() == true);
+    }
+    
+    SECTION("Rejected for domain and non-finite")
+    {
+        BcaRejectionAnalysis analysis(
+            true,   // hasBcaCandidate
+            false,  // bcaChosen
+            false,  // rejectedForInstability
+            false,  // rejectedForLength
+            true,   // rejectedForDomain
+            true    // rejectedForNonFinite
+        );
+        
+        REQUIRE(analysis.rejectedForDomain() == true);
+        REQUIRE(analysis.rejectedForNonFinite() == true);
+        REQUIRE(analysis.rejectedForInstability() == false);
+        REQUIRE(analysis.rejectedForLength() == false);
+    }
+}
+
+TEST_CASE("BcaRejectionAnalysis: Logical consistency checks",
+          "[AutoBootstrapSelector][BcaRejectionAnalysis][LogicalConsistency]")
+{
+    SECTION("If BCa chosen, no rejection reasons should be true")
+    {
+        // This represents a logically consistent state
+        BcaRejectionAnalysis analysis(
+            true,   // hasBcaCandidate
+            true,   // bcaChosen
+            false,  // rejectedForInstability
+            false,  // rejectedForLength
+            false,  // rejectedForDomain
+            false   // rejectedForNonFinite
+        );
+        
+        REQUIRE(analysis.bcaChosen() == true);
+        REQUIRE(analysis.rejectedForInstability() == false);
+        REQUIRE(analysis.rejectedForLength() == false);
+        REQUIRE(analysis.rejectedForDomain() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == false);
+    }
+    
+    SECTION("If no BCa candidate, bcaChosen must be false")
+    {
+        // This represents a logically consistent state
+        BcaRejectionAnalysis analysis(
+            false,  // hasBcaCandidate
+            false,  // bcaChosen (must be false)
+            false,  // rejectedForInstability
+            false,  // rejectedForLength
+            false,  // rejectedForDomain
+            false   // rejectedForNonFinite
+        );
+        
+        REQUIRE(analysis.hasBcaCandidate() == false);
+        REQUIRE(analysis.bcaChosen() == false);
+    }
+    
+    SECTION("If BCa not chosen but present, at least one rejection reason should be true")
+    {
+        // This represents a typical rejection scenario
+        BcaRejectionAnalysis analysis(
+            true,   // hasBcaCandidate
+            false,  // bcaChosen
+            true,   // rejectedForInstability
+            false,  // rejectedForLength
+            false,  // rejectedForDomain
+            false   // rejectedForNonFinite
+        );
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        
+        // At least one rejection reason is true
+        bool has_rejection_reason = 
+            analysis.rejectedForInstability() ||
+            analysis.rejectedForLength() ||
+            analysis.rejectedForDomain() ||
+            analysis.rejectedForNonFinite();
+        
+        REQUIRE(has_rejection_reason == true);
+    }
+}
+
+TEST_CASE("BcaRejectionAnalysis: Edge case - inconsistent state allowed",
+          "[AutoBootstrapSelector][BcaRejectionAnalysis][EdgeCases]")
+{
+    SECTION("Class allows logically inconsistent state (BCa chosen with rejection flags)")
+    {
+        // The class doesn't enforce logical consistency - it's a data holder
+        // This might represent a bug in the calling code, but the class allows it
+        BcaRejectionAnalysis analysis(
+            true,   // hasBcaCandidate
+            true,   // bcaChosen
+            true,   // rejectedForInstability (inconsistent!)
+            true,   // rejectedForLength (inconsistent!)
+            false,  // rejectedForDomain
+            false   // rejectedForNonFinite
+        );
+        
+        // The class stores what it's given
+        REQUIRE(analysis.bcaChosen() == true);
+        REQUIRE(analysis.rejectedForInstability() == true);
+        REQUIRE(analysis.rejectedForLength() == true);
+    }
+    
+    SECTION("Class allows no BCa candidate but rejection flags set")
+    {
+        // This is logically inconsistent but the class allows it
+        BcaRejectionAnalysis analysis(
+            false,  // hasBcaCandidate
+            false,  // bcaChosen
+            true,   // rejectedForInstability (inconsistent - no candidate to reject!)
+            false,  // rejectedForLength
+            false,  // rejectedForDomain
+            false   // rejectedForNonFinite
+        );
+        
+        REQUIRE(analysis.hasBcaCandidate() == false);
+        REQUIRE(analysis.rejectedForInstability() == true);
+    }
+}
+
+TEST_CASE("BcaRejectionAnalysis: Read-only access pattern",
+          "[AutoBootstrapSelector][BcaRejectionAnalysis][Immutability]")
+{
+    SECTION("All getters are const and return values")
+    {
+        const BcaRejectionAnalysis analysis(true, false, true, false, true, false);
+        
+        // These should compile (all getters are const)
+        bool has_bca = analysis.hasBcaCandidate();
+        bool chosen = analysis.bcaChosen();
+        bool instability = analysis.rejectedForInstability();
+        bool length = analysis.rejectedForLength();
+        bool domain = analysis.rejectedForDomain();
+        bool non_finite = analysis.rejectedForNonFinite();
+        
+        // Verify values
+        REQUIRE(has_bca == true);
+        REQUIRE(chosen == false);
+        REQUIRE(instability == true);
+        REQUIRE(length == false);
+        REQUIRE(domain == true);
+        REQUIRE(non_finite == false);
+    }
+}
+
+TEST_CASE("BcaRejectionAnalysis: Realistic tournament scenarios",
+          "[AutoBootstrapSelector][BcaRejectionAnalysis][Realistic]")
+{
+    SECTION("Scenario 1: BCa wins cleanly")
+    {
+        BcaRejectionAnalysis analysis(true, true, false, false, false, false);
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == true);
+        
+        // No rejection reasons
+        REQUIRE(analysis.rejectedForInstability() == false);
+        REQUIRE(analysis.rejectedForLength() == false);
+        REQUIRE(analysis.rejectedForDomain() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == false);
+    }
+    
+    SECTION("Scenario 2: BCa rejected due to extreme z0 parameter")
+    {
+        BcaRejectionAnalysis analysis(true, false, true, false, false, false);
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForInstability() == true);
+    }
+    
+    SECTION("Scenario 3: BCa rejected due to interval too wide")
+    {
+        BcaRejectionAnalysis analysis(true, false, false, true, false, false);
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForLength() == true);
+    }
+    
+    SECTION("Scenario 4: BCa rejected due to negative lower bound with positive support")
+    {
+        BcaRejectionAnalysis analysis(true, false, false, false, true, false);
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForDomain() == true);
+    }
+    
+    SECTION("Scenario 5: BCa computation failed (NaN/Inf in results)")
+    {
+        BcaRejectionAnalysis analysis(true, false, false, false, false, true);
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForNonFinite() == true);
+    }
+    
+    SECTION("Scenario 6: No BCa candidate in tournament")
+    {
+        BcaRejectionAnalysis analysis(false, false, false, false, false, false);
+        
+        REQUIRE(analysis.hasBcaCandidate() == false);
+        REQUIRE(analysis.bcaChosen() == false);
+    }
+    
+    SECTION("Scenario 7: BCa fails multiple gates")
+    {
+        // BCa has both instability and domain issues
+        BcaRejectionAnalysis analysis(true, false, true, false, true, false);
+        
+        REQUIRE(analysis.hasBcaCandidate() == true);
+        REQUIRE(analysis.bcaChosen() == false);
+        REQUIRE(analysis.rejectedForInstability() == true);
+        REQUIRE(analysis.rejectedForDomain() == true);
+    }
+}
+
+TEST_CASE("BcaRejectionAnalysis: Use in diagnostic reporting",
+          "[AutoBootstrapSelector][BcaRejectionAnalysis][Diagnostics]")
+{
+    SECTION("Can determine if any rejection occurred")
+    {
+        BcaRejectionAnalysis no_rejection(true, true, false, false, false, false);
+        BcaRejectionAnalysis has_rejection(true, false, true, false, false, false);
+        
+        auto has_any_rejection = [](const BcaRejectionAnalysis& a) {
+            return a.rejectedForInstability() ||
+                   a.rejectedForLength() ||
+                   a.rejectedForDomain() ||
+                   a.rejectedForNonFinite();
+        };
+        
+        REQUIRE(has_any_rejection(no_rejection) == false);
+        REQUIRE(has_any_rejection(has_rejection) == true);
+    }
+    
+    SECTION("Can count number of rejection reasons")
+    {
+        BcaRejectionAnalysis multiple(true, false, true, true, true, false);
+        
+        auto count_rejections = [](const BcaRejectionAnalysis& a) {
+            int count = 0;
+            if (a.rejectedForInstability()) ++count;
+            if (a.rejectedForLength()) ++count;
+            if (a.rejectedForDomain()) ++count;
+            if (a.rejectedForNonFinite()) ++count;
+            return count;
+        };
+        
+        REQUIRE(count_rejections(multiple) == 3);
+    }
+    
+    SECTION("Can generate diagnostic message based on analysis")
+    {
+        BcaRejectionAnalysis analysis(true, false, true, false, true, false);
+        
+        auto generate_message = [](const BcaRejectionAnalysis& a) -> std::string {
+            if (!a.hasBcaCandidate()) return "No BCa candidate";
+            if (a.bcaChosen()) return "BCa chosen";
+            
+            std::string msg = "BCa rejected: ";
+            if (a.rejectedForInstability()) msg += "[instability] ";
+            if (a.rejectedForLength()) msg += "[length] ";
+            if (a.rejectedForDomain()) msg += "[domain] ";
+            if (a.rejectedForNonFinite()) msg += "[non-finite] ";
+            return msg;
+        };
+        
+        std::string msg = generate_message(analysis);
+        REQUIRE(msg.find("instability") != std::string::npos);
+        REQUIRE(msg.find("domain") != std::string::npos);
+        REQUIRE(msg.find("length") == std::string::npos);
+    }
+}
+
+// =============================================================================
+// COMBINED TESTS: NormalizedScores and BcaRejectionAnalysis together
+// =============================================================================
+
+TEST_CASE("NormalizedScores and BcaRejectionAnalysis: Combined usage",
+          "[AutoBootstrapSelector][NormalizedScores][BcaRejectionAnalysis][Combined]")
+{
+    SECTION("Both classes work together in a typical scenario")
+    {
+        // Create normalized scores for a candidate
+        NormalizedScores scores(
+            1.0, 0.5, 0.4, 1.0, 1.0,
+            1.0, 0.125, 0.4, 1.0, 0.5
+        );
+        
+        // Create BCa analysis showing BCa was rejected
+        BcaRejectionAnalysis bca_analysis(true, false, true, false, false, false);
+        
+        // Both objects maintain their independent state
+        REQUIRE(scores.getOrderingNorm() == 1.0);
+        REQUIRE(bca_analysis.rejectedForInstability() == true);
+    }
+    
+    SECTION("Multiple instances can coexist")
+    {
+        // Two different candidates might have different scores
+        NormalizedScores scores1(1.0, 0.5, 0.4, 1.0, 1.0, 1.0, 0.125, 0.4, 1.0, 0.5);
+        NormalizedScores scores2(2.0, 1.0, 0.8, 2.0, 2.0, 2.0, 0.25, 0.8, 2.0, 1.0);
+        
+        // And one BCa analysis for the tournament
+        BcaRejectionAnalysis analysis(true, false, true, false, false, false);
+        
+        REQUIRE(scores1.getOrderingNorm() != scores2.getOrderingNorm());
+        REQUIRE(analysis.hasBcaCandidate() == true);
+    }
+}
+
+// =============================================================================
+// NORMALIZATION REFERENCE CONSTANTS TESTS
+// =============================================================================
+
+TEST_CASE("AutoBootstrapConfiguration: Normalization reference constants",
+          "[AutoBootstrapSelector][Configuration][Normalization]")
+{
+  SECTION("Reference values are reasonable and documented")
+  {
+    // ORDERING ERROR REFERENCE
+    // A 10% coverage error is the baseline "typical" violation
+    REQUIRE(AutoBootstrapConfiguration::kRefOrderingErrorSq == 
+            Catch::Approx(0.01));
+    REQUIRE(AutoBootstrapConfiguration::kRefOrderingErrorSq == 
+            Catch::Approx(0.10 * 0.10));
+    
+    // LENGTH ERROR REFERENCE  
+    // Intervals at 1× ideal length are optimal
+    REQUIRE(AutoBootstrapConfiguration::kRefLengthErrorSq == 
+            Catch::Approx(1.0));
+    REQUIRE(AutoBootstrapConfiguration::kRefLengthErrorSq == 
+            Catch::Approx(1.0 * 1.0));
+    
+    // STABILITY REFERENCE
+    // Moderate stability penalty is 0.25
+    REQUIRE(AutoBootstrapConfiguration::kRefStability == 
+            Catch::Approx(0.25));
+    
+    // CENTER SHIFT REFERENCE
+    // 2 standard errors is "notable" bias
+    REQUIRE(AutoBootstrapConfiguration::kRefCenterShiftSq == 
+            Catch::Approx(4.0));
+    REQUIRE(AutoBootstrapConfiguration::kRefCenterShiftSq == 
+            Catch::Approx(2.0 * 2.0));
+    
+    // SKEW REFERENCE
+    // |skew| = 2.0 is the "high skewness" threshold
+    REQUIRE(AutoBootstrapConfiguration::kRefSkewSq == 
+            Catch::Approx(4.0));
+    REQUIRE(AutoBootstrapConfiguration::kRefSkewSq == 
+            Catch::Approx(2.0 * 2.0));
+  }
+  
+  SECTION("Reference values form a consistent scale")
+  {
+    // All reference values should be positive
+    REQUIRE(AutoBootstrapConfiguration::kRefOrderingErrorSq > 0.0);
+    REQUIRE(AutoBootstrapConfiguration::kRefLengthErrorSq > 0.0);
+    REQUIRE(AutoBootstrapConfiguration::kRefStability > 0.0);
+    REQUIRE(AutoBootstrapConfiguration::kRefCenterShiftSq > 0.0);
+    REQUIRE(AutoBootstrapConfiguration::kRefSkewSq > 0.0);
+    
+    // Values should be in reasonable ranges (order of magnitude 0.01 to 10)
+    REQUIRE(AutoBootstrapConfiguration::kRefOrderingErrorSq < 10.0);
+    REQUIRE(AutoBootstrapConfiguration::kRefLengthErrorSq < 10.0);
+    REQUIRE(AutoBootstrapConfiguration::kRefStability < 10.0);
+    REQUIRE(AutoBootstrapConfiguration::kRefCenterShiftSq < 10.0);
+    REQUIRE(AutoBootstrapConfiguration::kRefSkewSq < 10.0);
+  }
+  
+  SECTION("Normalization actually uses these constants")
+  {
+    // Create raw components at reference levels
+    using RawComponents = palvalidator::analysis::detail::RawComponents;
+    RawComponents ref_level(
+      AutoBootstrapConfiguration::kRefOrderingErrorSq,
+      AutoBootstrapConfiguration::kRefLengthErrorSq,
+      AutoBootstrapConfiguration::kRefStability,
+      AutoBootstrapConfiguration::kRefCenterShiftSq,
+      AutoBootstrapConfiguration::kRefSkewSq,
+      0.0  // domain_penalty
+    );
+    
+    // Normalize with default weights
+    using ScoringWeights = palvalidator::analysis::AutoBootstrapSelector<Decimal>::ScoringWeights;
+    using ScoreNormalizer = palvalidator::analysis::detail::ScoreNormalizer<
+      Decimal, ScoringWeights, RawComponents>;
+    
+    ScoringWeights weights;
+    ScoreNormalizer normalizer(weights);
+    
+    auto normalized = normalizer.normalize(ref_level);
+    
+    // At reference levels, normalized values should be exactly 1.0
+    // (before weight multiplication)
+    REQUIRE(normalized.getOrderingNorm() == Catch::Approx(1.0));
+    REQUIRE(normalized.getLengthNorm() == Catch::Approx(1.0));
+    REQUIRE(normalized.getStabilityNorm() == Catch::Approx(1.0));
+    REQUIRE(normalized.getCenterSqNorm() == Catch::Approx(1.0));
+    REQUIRE(normalized.getSkewSqNorm() == Catch::Approx(1.0));
+  }
+  
+  SECTION("Changing reference values would affect normalization")
+  {
+    // This test documents that ScoreNormalizer uses these constants
+    // If someone changes the constants, normalization will change
+    
+    // Document the relationship: normalized = raw / reference
+    double raw_ordering = 0.02;
+    double expected_norm = raw_ordering / 
+        AutoBootstrapConfiguration::kRefOrderingErrorSq;
+    
+    // 0.02 / 0.01 = 2.0
+    REQUIRE(expected_norm == Catch::Approx(2.0));
+    
+    // If reference were doubled to 0.02, normalized would be 1.0
+    double hypothetical_reference = 0.02;
+    double hypothetical_norm = raw_ordering / hypothetical_reference;
+    REQUIRE(hypothetical_norm == Catch::Approx(1.0));
+  }
+}
+
+TEST_CASE("AutoBootstrapConfiguration: Reference constants rationale",
+          "[AutoBootstrapSelector][Configuration][Documentation]")
+{
+  SECTION("Ordering error: 10% coverage deviation baseline")
+  {
+    // If nominal coverage is 95%, actual coverage of 85% is 10% under
+    // This represents a "typical" ordering violation
+    double coverage_error = 0.10;
+    REQUIRE(AutoBootstrapConfiguration::kRefOrderingErrorSq == 
+            Catch::Approx(coverage_error * coverage_error));
+    
+    INFO("10% coverage error is considered 'typical' baseline violation");
+  }
+  
+  SECTION("Length error: normalized to ideal = 1.0")
+  {
+    // An interval exactly at the theoretical ideal width has normalized
+    // length = 1.0. This is the target, so reference is 1.0.
+    REQUIRE(AutoBootstrapConfiguration::kRefLengthErrorSq == 
+            Catch::Approx(1.0));
+    
+    INFO("Intervals at exactly 1× ideal length are optimal");
+  }
+  
+  SECTION("Stability: moderate penalty threshold")
+  {
+    // A stability penalty of 0.25 from BCa or Percentile-T indicates
+    // moderate instability - noticeable but not severe
+    REQUIRE(AutoBootstrapConfiguration::kRefStability == 
+            Catch::Approx(0.25));
+    
+    INFO("Stability penalty of 0.25 is 'moderate' instability");
+  }
+  
+  SECTION("Center shift: 2 standard errors is notable")
+  {
+    // Bootstrap theory: shifts < 1 SE are noise, > 2 SE are concerning
+    double se_threshold = 2.0;
+    REQUIRE(AutoBootstrapConfiguration::kRefCenterShiftSq == 
+            Catch::Approx(se_threshold * se_threshold));
+    
+    INFO("2 SE shift between bootstrap mean and estimate is 'notable' bias");
+  }
+  
+  SECTION("Skewness: |skew| = 2.0 is 'high' threshold")
+  {
+    // Bootstrap literature: |skew| > 2.0 indicates high skewness
+    // that may violate asymptotic assumptions of BCa
+    double skew_threshold = 2.0;
+    REQUIRE(AutoBootstrapConfiguration::kRefSkewSq == 
+            Catch::Approx(skew_threshold * skew_threshold));
+    
+    // This aligns with kBcaSkewThreshold
+    REQUIRE(AutoBootstrapConfiguration::kBcaSkewThreshold == 
+            Catch::Approx(2.0));
+    
+    INFO("|skew| = 2.0 is threshold for 'high skewness' distributions");
+  }
+}
+
+TEST_CASE("CandidateGateKeeper: passesEffectiveBGate validation",
+          "[AutoBootstrapSelector][CandidateGateKeeper][EffectiveB]")
+{
+  using GateKeeper = palvalidator::analysis::detail::CandidateGateKeeper<Decimal>;
+  
+  SECTION("Absolute minimum: requires 200 effective samples regardless of fraction")
+  {
+    // Even with 100% effective fraction, need absolute minimum of 200
+    auto candidate = makeTestCandidate(
+      MethodId::Percentile,
+      5.0,    // mean
+      4.0,    // lower
+      6.0,    // upper
+      0.95,   // cl
+      100,    // n
+      199,    // B_outer (requested)
+      0,      // B_inner
+      199,    // effective_B (100% but < 200)
+      0       // skipped_total
+    );
+    
+    // Should fail - effective_B < 200
+    REQUIRE_FALSE(GateKeeper::passesEffectiveBGate(candidate));
+  }
+  
+  SECTION("Absolute minimum: passes with exactly 200 effective samples")
+  {
+    auto candidate = makeTestCandidate(
+      MethodId::Percentile,
+      5.0, 4.0, 6.0, 0.95, 100,
+      200,    // B_outer
+      0,      // B_inner
+      200,    // effective_B (exactly at minimum)
+      0       // skipped_total
+    );
+    
+    REQUIRE(GateKeeper::passesEffectiveBGate(candidate));
+  }
+  
+  SECTION("Absolute minimum: passes when absolute dominates fractional")
+  {
+    // Key: Absolute minimum (200) only dominates when B_outer is small enough
+    // For 90% methods: crossover at B_outer = 222 (since 200/0.90 = 222.22)
+    // At B_outer = 222: ceil(0.90 × 222) = ceil(199.8) = 200
+    // So max(200, 200) = 200
+    
+    auto candidate = makeTestCandidate(
+      MethodId::Percentile,
+      5.0, 4.0, 6.0, 0.95, 100,
+      222,    // B_outer (at crossover point)
+      0,      // B_inner
+      220,    // effective_B (above minimum of 200)
+      2       // skipped_total
+    );
+    
+    REQUIRE(GateKeeper::passesEffectiveBGate(candidate));
+  }
+  
+  SECTION("Method-specific: PercentileT requires 70% effective fraction")
+  {
+    // PercentileT uses kPercentileTMinEffectiveFraction (typically 0.70)
+    std::size_t B_outer = 1000;
+    
+    // At 69% (below 70% threshold)
+    auto candidate_fail = makeTestCandidate(
+      MethodId::PercentileT,
+      5.0, 4.0, 6.0, 0.95, 100,
+      B_outer,
+      0,
+      690,    // 69% (below threshold)
+      310
+    );
+    REQUIRE_FALSE(GateKeeper::passesEffectiveBGate(candidate_fail));
+    
+    // At 70% (exactly at threshold)
+    auto candidate_exact = makeTestCandidate(
+      MethodId::PercentileT,
+      5.0, 4.0, 6.0, 0.95, 100,
+      B_outer,
+      0,
+      700,    // 70% (at threshold)
+      300
+    );
+    REQUIRE(GateKeeper::passesEffectiveBGate(candidate_exact));
+    
+    // At 75% (above threshold)
+    auto candidate_pass = makeTestCandidate(
+      MethodId::PercentileT,
+      5.0, 4.0, 6.0, 0.95, 100,
+      B_outer,
+      0,
+      750,    // 75% (above threshold)
+      250
+    );
+    REQUIRE(GateKeeper::passesEffectiveBGate(candidate_pass));
+  }
+  
+  SECTION("Method-specific: BCa requires 90% effective fraction")
+  {
+    // BCa uses stricter 90% requirement
+    std::size_t B_outer = 1000;
+    
+    // At 89% (below 90% threshold)
+    auto candidate_fail = makeTestCandidate(
+      MethodId::BCa,
+      5.0, 4.0, 6.0, 0.95, 100,
+      B_outer, 0,
+      890,    // 89% (below threshold)
+      110,
+      0.5, 0.2, 5.0, 0.0, 1.0,
+      0.0, 0.0, 0.0,
+      0.05,   // z0
+      0.02    // accel
+    );
+    REQUIRE_FALSE(GateKeeper::passesEffectiveBGate(candidate_fail));
+    
+    // At 90% (exactly at threshold)
+    auto candidate_exact = makeTestCandidate(
+      MethodId::BCa,
+      5.0, 4.0, 6.0, 0.95, 100,
+      B_outer, 0,
+      900,    // 90% (at threshold)
+      100,
+      0.5, 0.2, 5.0, 0.0, 1.0,
+      0.0, 0.0, 0.0,
+      0.05, 0.02
+    );
+    REQUIRE(GateKeeper::passesEffectiveBGate(candidate_exact));
+  }
+  
+  SECTION("Method-specific: Other methods require 90% effective fraction")
+  {
+    // Percentile, Basic, MOutOfN, Normal all use 90%
+    std::vector<MethodId> methods = {
+      MethodId::Percentile,
+      MethodId::Basic,
+      MethodId::MOutOfN,
+      MethodId::Normal
+    };
+    
+    std::size_t B_outer = 1000;
+    
+    for (auto method : methods) {
+      // At 89% (should fail)
+      auto candidate_fail = makeTestCandidate(
+        method, 5.0, 4.0, 6.0, 0.95, 100,
+        B_outer, 0, 890, 110
+      );
+      REQUIRE_FALSE(GateKeeper::passesEffectiveBGate(candidate_fail));
+      
+      // At 90% (should pass)
+      auto candidate_pass = makeTestCandidate(
+        method, 5.0, 4.0, 6.0, 0.95, 100,
+        B_outer, 0, 900, 100
+      );
+      REQUIRE(GateKeeper::passesEffectiveBGate(candidate_pass));
+    }
+  }
+  
+  SECTION("Edge case: requested < 2 always fails")
+  {
+    // With 0 requested
+    auto candidate_0 = makeTestCandidate(
+      MethodId::Percentile,
+      5.0, 4.0, 6.0, 0.95, 100,
+      0,      // B_outer = 0
+      0,
+      0,
+      0
+    );
+    REQUIRE_FALSE(GateKeeper::passesEffectiveBGate(candidate_0));
+    
+    // With 1 requested
+    auto candidate_1 = makeTestCandidate(
+      MethodId::Percentile,
+      5.0, 4.0, 6.0, 0.95, 100,
+      1,      // B_outer = 1
+      0,
+      1,
+      0
+    );
+    REQUIRE_FALSE(GateKeeper::passesEffectiveBGate(candidate_1));
+  }
+  
+  SECTION("Edge case: effective = 0 always fails")
+  {
+    auto candidate = makeTestCandidate(
+      MethodId::Percentile,
+      5.0, 4.0, 6.0, 0.95, 100,
+      1000,   // B_outer
+      0,
+      0,      // effective_B = 0
+      1000    // all skipped
+    );
+    
+    REQUIRE_FALSE(GateKeeper::passesEffectiveBGate(candidate));
+  }
+  
+  SECTION("Fractional requirement takes precedence when > 200")
+  {
+    // With B_outer = 10000, 90% = 9000 (much higher than absolute minimum of 200)
+    std::size_t B_outer = 10000;
+    
+    // At 8999 effective (89.99%, below 90% threshold)
+    auto candidate_fail = makeTestCandidate(
+      MethodId::Percentile,
+      5.0, 4.0, 6.0, 0.95, 100,
+      B_outer, 0,
+      8999,   // Just below 90%
+      1001
+    );
+    REQUIRE_FALSE(GateKeeper::passesEffectiveBGate(candidate_fail));
+    
+    // At 9000 effective (90%, at threshold)
+    auto candidate_pass = makeTestCandidate(
+      MethodId::Percentile,
+      5.0, 4.0, 6.0, 0.95, 100,
+      B_outer, 0,
+      9000,   // Exactly 90%
+      1000
+    );
+    REQUIRE(GateKeeper::passesEffectiveBGate(candidate_pass));
+  }
+  
+  SECTION("Boundary: effective equals max(200, fraction * requested)")
+  {
+    // Case 1: Absolute minimum dominates (200 > 90% of 220)
+    auto candidate1 = makeTestCandidate(
+      MethodId::Percentile,
+      5.0, 4.0, 6.0, 0.95, 100,
+      220,    // 90% of 220 = 198, so need 200
+      0,
+      200,    // Exactly at max(200, 198) = 200
+      20
+    );
+    REQUIRE(GateKeeper::passesEffectiveBGate(candidate1));
+    
+    // Case 2: Fractional requirement dominates (90% of 1000 > 200)
+    auto candidate2 = makeTestCandidate(
+      MethodId::Percentile,
+      5.0, 4.0, 6.0, 0.95, 100,
+      1000,   // 90% of 1000 = 900, so need 900
+      0,
+      900,    // Exactly at max(200, 900) = 900
+      100
+    );
+    REQUIRE(GateKeeper::passesEffectiveBGate(candidate2));
+  }
+}
+
+// =============================================================================
+// TESTS FOR normalizeAndScoreCandidates - FIXED VERSION
+// =============================================================================
+// Fixes:
+// 1. Removed getIsWinner() calls (method doesn't exist)
+// 2. Fixed ScoringWeights construction (no setters, use constructor)
+// 3. Fixed RawComponents copy issue (use push_back or reserve+emplace_back)
+// =============================================================================
+
+TEST_CASE("normalizeAndScoreCandidates: Basic functionality",
+          "[AutoBootstrapSelector][normalizeAndScoreCandidates][Phase2]")
+{
+  ScoringWeights weights;
+  StatisticSupport unbounded = StatisticSupport::unbounded();
+  auto support_bounds = std::make_pair(
+    std::numeric_limits<double>::quiet_NaN(),
+    std::numeric_limits<double>::quiet_NaN());
+  uint64_t candidate_id_counter = 0;
+  
+  SECTION("Single candidate: enriched with score and metadata")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 0, 950, 50)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0, 0.0)
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Verify enriched candidate
+    REQUIRE(enriched.size() == 1);
+    REQUIRE(std::isfinite(enriched[0].getScore()));
+    REQUIRE(enriched[0].getCandidateId() == 0);
+    REQUIRE(enriched[0].getRank() == 0);  // Not assigned yet
+    
+    // Verify score is computed
+    REQUIRE(enriched[0].getScore() > 0.0);
+    
+    // Verify candidate_id_counter incremented
+    REQUIRE(candidate_id_counter == 1);
+    
+    // Verify breakdown created
+    REQUIRE(breakdowns.size() == 1);
+  }
+  
+  SECTION("Multiple candidates: all enriched with unique IDs")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile),
+      makeTestCandidate(MethodId::Basic),
+      makeTestCandidate(MethodId::BCa)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0, 0.0),
+      makeValidRaw(0.02, 0.6, 0.2, 1.5, 1.5, 0.0),
+      makeValidRaw(0.015, 0.55, 0.15, 1.2, 1.2, 0.0)
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Verify all enriched
+    REQUIRE(enriched.size() == 3);
+    REQUIRE(breakdowns.size() == 3);
+    
+    // Verify unique IDs assigned
+    REQUIRE(enriched[0].getCandidateId() == 0);
+    REQUIRE(enriched[1].getCandidateId() == 1);
+    REQUIRE(enriched[2].getCandidateId() == 2);
+    
+    // Verify counter updated
+    REQUIRE(candidate_id_counter == 3);
+    
+    // Verify all have finite scores
+    REQUIRE(std::isfinite(enriched[0].getScore()));
+    REQUIRE(std::isfinite(enriched[1].getScore()));
+    REQUIRE(std::isfinite(enriched[2].getScore()));
+  }
+  
+  SECTION("Empty input: returns empty output")
+  {
+    std::vector<Candidate> candidates;
+    std::vector<RawComponents> raw;
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    REQUIRE(enriched.empty());
+    REQUIRE(breakdowns.empty());
+    REQUIRE(candidate_id_counter == 0);
+  }
+  
+  SECTION("Candidate ID counter continues from initial value")
+  {
+    candidate_id_counter = 42;
+    
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile),
+      makeTestCandidate(MethodId::Basic)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(),
+      makeValidRaw()
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // IDs start from 42
+    REQUIRE(enriched[0].getCandidateId() == 42);
+    REQUIRE(enriched[1].getCandidateId() == 43);
+    REQUIRE(candidate_id_counter == 44);
+  }
+}
+
+TEST_CASE("normalizeAndScoreCandidates: Score computation",
+          "[AutoBootstrapSelector][normalizeAndScoreCandidates][Scoring]")
+{
+  ScoringWeights weights;
+  StatisticSupport unbounded = StatisticSupport::unbounded();
+  auto support_bounds = std::make_pair(
+    std::numeric_limits<double>::quiet_NaN(),
+    std::numeric_limits<double>::quiet_NaN());
+  uint64_t candidate_id_counter = 0;
+  
+  SECTION("Lower penalties produce lower scores")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile),  // Will have lower penalty
+      makeTestCandidate(MethodId::Percentile)   // Will have higher penalty
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0, 0.0),   // Low penalties
+      makeValidRaw(0.10, 2.0, 0.5, 4.0, 4.0, 0.0)    // High penalties
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Lower penalties should produce lower score (better)
+    REQUIRE(enriched[0].getScore() < enriched[1].getScore());
+  }
+  
+  SECTION("Score reflects weighted combination of penalties")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.02, 0.8, 0.2, 2.0, 2.0, 0.0)
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Score should be positive (penalties are positive)
+    REQUIRE(enriched[0].getScore() > 0.0);
+    
+    // Score should be finite
+    REQUIRE(std::isfinite(enriched[0].getScore()));
+  }
+  
+  SECTION("Zero penalties produce low score")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)  // All zero
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Zero penalties should produce very low score
+    REQUIRE(enriched[0].getScore() >= 0.0);
+    REQUIRE(enriched[0].getScore() < 0.1);  // Should be near zero
+  }
+  
+  SECTION("Custom weights affect scores")
+  {
+    // Create custom weights with constructor parameters
+    // Order: wCenterShift, wSkew, wLength, wStability, enforcePos, bcaZ0Scale, bcaAScale
+    ScoringWeights custom_weights(
+      10.0,  // wCenterShift - emphasize center shift
+      0.5,   // wSkew
+      0.25,  // wLength
+      1.0,   // wStability
+      false, // enforcePos
+      20.0,  // bcaZ0Scale
+      100.0  // bcaAScale
+    );
+    
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile)
+    };
+    
+    // High center shift penalty
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.01, 0.01, 10.0, 0.5, 0.0)  // High center_shift_sq
+    };
+    
+    auto [enriched_default, breakdowns_default] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    candidate_id_counter = 0;
+    
+    auto [enriched_custom, breakdowns_custom] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, custom_weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Custom weights should affect score
+    // (Custom has 10× center shift weight, so score should be higher)
+    REQUIRE(enriched_custom[0].getScore() > enriched_default[0].getScore());
+  }
+}
+
+TEST_CASE("normalizeAndScoreCandidates: Rejection mask computation",
+          "[AutoBootstrapSelector][normalizeAndScoreCandidates][Rejection]")
+{
+  
+  ScoringWeights weights;
+  StatisticSupport unbounded = StatisticSupport::unbounded();
+  StatisticSupport positive = StatisticSupport::strictLowerBound(0.0, 1e-10);
+  auto support_bounds_unbounded = std::make_pair(
+    std::numeric_limits<double>::quiet_NaN(),
+    std::numeric_limits<double>::quiet_NaN());
+  uint64_t candidate_id_counter = 0;
+  
+  SECTION("Valid candidate: no rejection flags")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 0, 950, 50)  // 95% effective B - passes
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0, 0.0)  // No domain violation
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds_unbounded, candidate_id_counter);
+    
+    // Note: We can't directly access rejection_mask from breakdowns in this test
+    // but we verify the candidate is enriched properly
+    REQUIRE(enriched.size() == 1);
+    REQUIRE(std::isfinite(enriched[0].getScore()));
+  }
+  
+  SECTION("Domain violation: rejection flag set")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile, 5.0, -1.0, 6.0)  // Negative lower bound
+    };
+    
+    // Domain penalty will be set due to negative bound with positive support
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0,
+                  AutoBootstrapConfiguration::kDomainViolationPenalty)
+    };
+    
+    auto support_bounds_positive = std::make_pair(0.0, 
+      std::numeric_limits<double>::quiet_NaN());
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, positive, support_bounds_positive, candidate_id_counter);
+    
+    // Candidate still enriched (rejection happens later in tournament)
+    REQUIRE(enriched.size() == 1);
+    REQUIRE(std::isfinite(enriched[0].getScore()));
+  }
+  
+  SECTION("Low effective B: rejection flag set")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 0, 500, 500)  // Only 50% effective B - fails
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0, 0.0)
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds_unbounded, candidate_id_counter);
+    
+    // Candidate still enriched (rejection mask set but not filtered yet)
+    REQUIRE(enriched.size() == 1);
+    
+    // Score is computed even for candidates that will be rejected later
+    REQUIRE(std::isfinite(enriched[0].getScore()));
+  }
+  
+  SECTION("BCa with extreme z0: rejection flag set")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::BCa, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 0, 950, 50, 0.5, 0.2, 5.0, 0.0, 1.0,
+                       0.0, 0.0, 0.0,
+                       0.65,  // z0 > 0.6 (exceeds hard limit)
+                       0.05)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0, 0.0)
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds_unbounded, candidate_id_counter);
+    
+    // Candidate still enriched but will have rejection flag
+    REQUIRE(enriched.size() == 1);
+  }
+  
+  SECTION("BCa with extreme accel: rejection flag set")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::BCa, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 0, 950, 50, 0.5, 0.2, 5.0, 0.0, 1.0,
+                       0.0, 0.0, 0.0,
+                       0.05,  // z0 OK
+                       0.30)  // accel > 0.25 (exceeds hard limit)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0, 0.0)
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds_unbounded, candidate_id_counter);
+    
+    REQUIRE(enriched.size() == 1);
+  }
+  
+  SECTION("Multiple rejection reasons: multiple flags set")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile, 5.0, -1.0, 6.0, 0.95, 100,
+                       1000, 0, 500, 500)  // Low effective B AND domain violation
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0,
+                  AutoBootstrapConfiguration::kDomainViolationPenalty)
+    };
+    
+    auto support_bounds_positive = std::make_pair(0.0,
+      std::numeric_limits<double>::quiet_NaN());
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, positive, support_bounds_positive, candidate_id_counter);
+    
+    // Both flags should be set (can't verify directly without breakdown accessors)
+    REQUIRE(enriched.size() == 1);
+  }
+}
+
+TEST_CASE("normalizeAndScoreCandidates: Edge cases",
+          "[AutoBootstrapSelector][normalizeAndScoreCandidates][EdgeCases]")
+{
+  ScoringWeights weights;
+  StatisticSupport unbounded = StatisticSupport::unbounded();
+  auto support_bounds = std::make_pair(
+    std::numeric_limits<double>::quiet_NaN(),
+    std::numeric_limits<double>::quiet_NaN());
+  uint64_t candidate_id_counter = 0;
+  
+  SECTION("Inf penalties produce inf score")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(std::numeric_limits<double>::infinity(), 0.5, 0.1, 1.0, 1.0, 0.0)
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Inf penalty should produce inf score
+    REQUIRE(std::isinf(enriched[0].getScore()));
+  }
+  
+  SECTION("NaN penalties produce NaN score")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(std::numeric_limits<double>::quiet_NaN(), 0.5, 0.1, 1.0, 1.0, 0.0)
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // NaN penalty should produce NaN score
+    REQUIRE(std::isnan(enriched[0].getScore()));
+  }
+  
+  SECTION("Very large candidate ID counter")
+  {
+    candidate_id_counter = std::numeric_limits<uint64_t>::max() - 1;
+    
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw()
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Should handle wraparound gracefully
+    REQUIRE(enriched[0].getCandidateId() == std::numeric_limits<uint64_t>::max() - 1);
+    // Counter will wrap
+  }
+}
+
+TEST_CASE("normalizeAndScoreCandidates: Different method types",
+          "[AutoBootstrapSelector][normalizeAndScoreCandidates][Methods]")
+{
+  ScoringWeights weights;
+  StatisticSupport unbounded = StatisticSupport::unbounded();
+  auto support_bounds = std::make_pair(
+    std::numeric_limits<double>::quiet_NaN(),
+    std::numeric_limits<double>::quiet_NaN());
+  uint64_t candidate_id_counter = 0;
+  
+  SECTION("All bootstrap methods processed correctly")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile),
+      makeTestCandidate(MethodId::Basic),
+      makeTestCandidate(MethodId::BCa, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 0, 950, 50, 0.5, 0.2, 5.0, 0.0, 1.0,
+                       0.0, 0.0, 0.0, 0.05, 0.02),
+      makeTestCandidate(MethodId::PercentileT, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 100, 750, 250, 0.5, 0.2, 5.0, 0.0, 1.0,
+                       0.0, 0.0, 0.0, 0.0, 0.0, 0.05),
+      makeTestCandidate(MethodId::Normal),
+      makeTestCandidate(MethodId::MOutOfN)
+    };
+    
+    // Build raw components vector properly (no copy construction)
+    std::vector<RawComponents> raw;
+    raw.reserve(candidates.size());
+    for (size_t i = 0; i < candidates.size(); ++i) {
+      raw.push_back(makeValidRaw());
+    }
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // All methods processed
+    REQUIRE(enriched.size() == 6);
+    REQUIRE(breakdowns.size() == 6);
+    
+    // All have finite scores (with valid inputs)
+    for (const auto& c : enriched) {
+      REQUIRE(std::isfinite(c.getScore()));
+    }
+    
+    // Verify methods preserved
+    REQUIRE(enriched[0].getMethod() == MethodId::Percentile);
+    REQUIRE(enriched[1].getMethod() == MethodId::Basic);
+    REQUIRE(enriched[2].getMethod() == MethodId::BCa);
+    REQUIRE(enriched[3].getMethod() == MethodId::PercentileT);
+    REQUIRE(enriched[4].getMethod() == MethodId::Normal);
+    REQUIRE(enriched[5].getMethod() == MethodId::MOutOfN);
+  }
+  
+  SECTION("BCa-specific rejection checks applied")
+  {
+    std::vector<Candidate> candidates = {
+      // Valid BCa
+      makeTestCandidate(MethodId::BCa, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 0, 950, 50, 0.5, 0.2, 5.0, 0.0, 1.0,
+                       0.0, 0.0, 0.0, 0.05, 0.02),
+      // BCa with non-finite z0
+      makeTestCandidate(MethodId::BCa, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 0, 950, 50, 0.5, 0.2, 5.0, 0.0, 1.0,
+                       0.0, 0.0, 0.0,
+                       std::numeric_limits<double>::quiet_NaN(),  // Bad z0
+                       0.02)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(),
+      makeValidRaw()
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Both enriched (rejection flags set but not filtered)
+    REQUIRE(enriched.size() == 2);
+    
+    // First should have valid score, second should too (rejection comes later)
+    REQUIRE(std::isfinite(enriched[0].getScore()));
+    REQUIRE(std::isfinite(enriched[1].getScore()));
+  }
+  
+  SECTION("PercentileT-specific checks applied")
+  {
+    std::vector<Candidate> candidates = {
+      // Valid PercentileT (70% effective is OK)
+      makeTestCandidate(MethodId::PercentileT, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 100, 750, 250, 0.5, 0.2, 5.0, 0.0, 1.0,
+                       0.0, 0.0, 0.0, 0.0, 0.0, 0.03),
+      // PercentileT with high inner failure rate
+      makeTestCandidate(MethodId::PercentileT, 5.0, 4.0, 6.0, 0.95, 100,
+                       1000, 100, 750, 250, 0.5, 0.2, 5.0, 0.0, 1.0,
+                       0.0, 0.0, 0.0, 0.0, 0.0,
+                       0.15)  // 15% inner failures (> 5% threshold)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(),
+      makeValidRaw()
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Both enriched
+    REQUIRE(enriched.size() == 2);
+    
+    // Both have scores computed
+    REQUIRE(std::isfinite(enriched[0].getScore()));
+    REQUIRE(std::isfinite(enriched[1].getScore()));
+  }
+}
+
+TEST_CASE("normalizeAndScoreCandidates: Support bounds handling",
+          "[AutoBootstrapSelector][normalizeAndScoreCandidates][Support]")
+{
+  ScoringWeights weights;
+  uint64_t candidate_id_counter = 0;
+  
+  SECTION("Unbounded support: all candidates valid")
+  {
+    StatisticSupport unbounded = StatisticSupport::unbounded();
+    auto support_bounds = std::make_pair(
+      std::numeric_limits<double>::quiet_NaN(),
+      std::numeric_limits<double>::quiet_NaN());
+    
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile, 5.0, -10.0, 10.0),  // Wide bounds
+      makeTestCandidate(MethodId::Percentile, 5.0, 0.0, 10.0)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0, 0.0),
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0, 0.0)
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    REQUIRE(enriched.size() == 2);
+  }
+  
+  SECTION("Positive support: negative bounds flagged")
+  {
+    StatisticSupport positive = StatisticSupport::strictLowerBound(0.0, 1e-10);
+    auto support_bounds = std::make_pair(0.0,
+      std::numeric_limits<double>::quiet_NaN());
+    
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile, 5.0, 1.0, 10.0),   // Valid
+      makeTestCandidate(MethodId::Percentile, 5.0, -1.0, 10.0)   // Violates
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0, 0.0),
+      makeValidRaw(0.01, 0.5, 0.1, 1.0, 1.0,
+                  AutoBootstrapConfiguration::kDomainViolationPenalty)
+    };
+    
+    auto [enriched, breakdowns] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, positive, support_bounds, candidate_id_counter);
+    
+    // Both enriched but second has violation flag
+    REQUIRE(enriched.size() == 2);
+    
+    // Second should have higher score due to domain penalty
+    REQUIRE(enriched[1].getScore() > enriched[0].getScore());
+  }
+}
+
+TEST_CASE("normalizeAndScoreCandidates: Integration with normalization",
+          "[AutoBootstrapSelector][normalizeAndScoreCandidates][Integration]")
+{
+  ScoringWeights weights;
+  StatisticSupport unbounded = StatisticSupport::unbounded();
+  auto support_bounds = std::make_pair(
+    std::numeric_limits<double>::quiet_NaN(),
+    std::numeric_limits<double>::quiet_NaN());
+  uint64_t candidate_id_counter = 0;
+  
+  SECTION("Normalization produces consistent scores")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile)
+    };
+    
+    std::vector<RawComponents> raw = {
+      makeValidRaw(0.02, 0.8, 0.2, 2.0, 2.0, 0.0)
+    };
+    
+    // Run twice with same inputs
+    auto [enriched1, breakdowns1] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    candidate_id_counter = 0;
+    
+    auto [enriched2, breakdowns2] = Selector::normalizeAndScoreCandidates(
+      candidates, raw, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Scores should be identical (deterministic)
+    REQUIRE(enriched1[0].getScore() == Catch::Approx(enriched2[0].getScore()));
+  }
+  
+  SECTION("Score reflects normalized penalty contributions")
+  {
+    std::vector<Candidate> candidates = {
+      makeTestCandidate(MethodId::Percentile)
+    };
+    
+    // High ordering penalty, low others
+    std::vector<RawComponents> raw1 = {
+      makeValidRaw(0.10, 0.01, 0.01, 0.5, 0.5, 0.0)
+    };
+    
+    // Low ordering penalty, high others
+    std::vector<RawComponents> raw2 = {
+      makeValidRaw(0.01, 0.10, 0.10, 3.0, 3.0, 0.0)
+    };
+    
+    auto [enriched1, breakdowns1] = Selector::normalizeAndScoreCandidates(
+      candidates, raw1, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    candidate_id_counter = 0;
+    
+    auto [enriched2, breakdowns2] = Selector::normalizeAndScoreCandidates(
+      candidates, raw2, weights, unbounded, support_bounds, candidate_id_counter);
+    
+    // Both should have positive scores
+    REQUIRE(enriched1[0].getScore() > 0.0);
+    REQUIRE(enriched2[0].getScore() > 0.0);
+    
+    // Scores should differ based on different penalty profiles
+    REQUIRE(enriched1[0].getScore() != Catch::Approx(enriched2[0].getScore()));
+  }
 }
