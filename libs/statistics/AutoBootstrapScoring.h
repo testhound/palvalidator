@@ -63,6 +63,11 @@ namespace palvalidator
             m_domain_penalty(domainPenalty)
         {}
 
+	// Copy operations (needed for initializer lists)
+	RawComponents(const RawComponents&) = default;
+	RawComponents& operator=(const RawComponents&) = default;
+	
+	// Move operations (for efficiency)
 	RawComponents(RawComponents&&) noexcept = default;
 	RawComponents& operator=(RawComponents&&) noexcept = default;
 	
@@ -396,7 +401,7 @@ namespace palvalidator
       /**
        * @brief Validates candidates against gating criteria
        */
-      template <class Decimal, class RawComponents>
+      template <class Decimal, class RawComponents = detail::RawComponents>
       class CandidateGateKeeper
       {
       public:
