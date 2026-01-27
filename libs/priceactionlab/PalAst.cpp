@@ -2086,27 +2086,27 @@ LongMarketEntryOnOpen::accept (PalCodeGenVisitor &v)
 }
 
 /**
- * @brief Computes the hash code for this LongMarketEntryOnOpen node.
- * The hash is computed based on the class name ("LongMarketEntryOnOpen")
- * and a one-time random 64-bit number. This implies that different instances
- * will have different hash codes, even if they represent the same logical entry.
- * Consider if this is the desired behavior or if a more deterministic hash is needed.
- * @return The 64-bit hash code.
+ * @brief Computes the deterministic hash code for LongMarketEntryOnOpen.
+ * 
+ * For Common Random Numbers (CRN) reproducibility, the hash must be based
+ * only on the logical entry type, not on random instance identifiers.
+ * All LongMarketEntryOnOpen instances represent the same logical entry rule:
+ * "Enter Long on Market Open". Therefore, they should all hash identically.
+ * 
+ * The hash is computed once on first call and cached for efficiency.
+ * 
+ * @return The 64-bit deterministic hash code based on class name.
  */
 unsigned long long 
 LongMarketEntryOnOpen::hashCode()
 {
- if (mComputedHash == 0) { // Check if hash is already computed
-    // Base on the class name
-    unsigned long long seed = hash_str("LongMarketEntryOnOpen");
-    // Generate a one‑time random 64‑bit number for uniqueness
-    std::random_device rd;
-    unsigned long long rand_val = (static_cast<unsigned long long>(rd()) << 32) | rd();
+  if (mComputedHash == 0)
+    {
+      // Hash based purely on the logical entry type identifier.
+      // No random values - same entry type always produces same hash.
+      mComputedHash = hash_str("LongMarketEntryOnOpen");
+    }
 
-    // Mix it in
-    hash_combine(seed, rand_val);
-    mComputedHash = seed; // Cache the result
-  }
   return mComputedHash;  
 }
 
@@ -2163,25 +2163,27 @@ ShortMarketEntryOnOpen::accept (PalCodeGenVisitor &v)
 }
 
 /**
- * @brief Computes the hash code for this ShortMarketEntryOnOpen node.
- * The hash is computed based on the class name ("ShortMarketEntryOnOpen")
- * and a one-time random 64-bit number. Similar to LongMarketEntryOnOpen,
- * this ensures instance uniqueness rather than logical equality for hashing.
- * @return The 64-bit hash code.
+ * @brief Computes the deterministic hash code for ShortMarketEntryOnOpen.
+ * 
+ * For Common Random Numbers (CRN) reproducibility, the hash must be based
+ * only on the logical entry type, not on random instance identifiers.
+ * All ShortMarketEntryOnOpen instances represent the same logical entry rule:
+ * "Enter Short on Market Open". Therefore, they should all hash identically.
+ * 
+ * The hash is computed once on first call and cached for efficiency.
+ * 
+ * @return The 64-bit deterministic hash code based on class name.
  */
 unsigned long long 
 ShortMarketEntryOnOpen::hashCode()
 {
-  if (mComputedHash == 0) // Check if hash is already computed
+  if (mComputedHash == 0)
     {
-      unsigned long long seed = hash_str("ShortMarketEntryOnOpen"); // Start with class name hash
-      // Generate a one‑time random 64‑bit number for uniqueness
-      std::random_device rd;
-      unsigned long long rand_val = (static_cast<unsigned long long>(rd()) << 32) | rd();
-      hash_combine(seed, rand_val); // Mix it in
-      mComputedHash = seed; // Cache the result
-    }
-
+      // Hash based purely on the logical entry type identifier.
+      // No random values - same entry type always produces same hash.
+      mComputedHash = hash_str("ShortMarketEntryOnOpen");
+  }
+  
   return mComputedHash;
 }
 
@@ -2862,6 +2864,10 @@ PriceActionLabPattern::hashCode()
   // Combine volatility and portfolio attributes.
   hash_combine(seed, static_cast<unsigned long long>(mVolatilityAttribute));
   hash_combine(seed, static_cast<unsigned long long>(mPortfolioAttribute));
+
+  hash_combine(seed, static_cast<unsigned long long>(mMaxBarsBack));
+  hash_combine(seed, getpatternIndex());
+  hash_combine(seed, getIndexDate());      
 
   return seed;
 }

@@ -746,6 +746,11 @@ namespace mkc_timeseries
       return mPalPattern;
     }
 
+    unsigned long long deterministicHashCode() const override
+    {
+        return mPalPattern->hashCode();
+    }
+
     unsigned long long hashCode() const override
     {
       // Get base UUID hash
