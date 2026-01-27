@@ -73,7 +73,7 @@ namespace BootstrapMethods {
  * **masterSeed**: Set at factory construction; controls reproducibility of all analyses
  * created by this factory instance.
  *
- * **strategyId**: Derived from `strategy.hashCode()` or passed explicitly. Ensures each
+ * **strategyId**: Derived from `strategy.deterministicHashCode()` or passed explicitly. Ensures each
  * trading strategy being analyzed uses an independent random stream.
  *
  * **stageTag**: Identifies the metric type. Standard values from `BootstrapStages`:
@@ -117,7 +117,7 @@ namespace BootstrapMethods {
  *     0.95,                              // 95% confidence level
  *     geoMeanStatFn,                     // Statistic function
  *     stationaryResampler,               // Block resampler
- *     myStrategy,                        // Strategy (for hashCode)
+ *     myStrategy,                        // Strategy (for deterministicHashCode)
  *     BootstrapStages::GEO_MEAN,         // stageTag
  *     5,                                 // L = blockLength
  *     BootstrapStages::NO_FOLD           // fold
@@ -222,7 +222,7 @@ namespace BootstrapMethods {
  *
  * @section parameters Common Parameters
  *
- * @param strategy Either a `BacktesterStrategy<Decimal>` object (calls `.hashCode()`) or
+ * @param strategy Either a `BacktesterStrategy<Decimal>` object (calls `.deterministicHashCode()`) or
  * a raw `uint64_t` strategy identifier. Use consistent IDs for the same strategy across
  * analyses to enable CRN synchronization.
  *
@@ -269,7 +269,7 @@ class TradingBootstrapFactory
 public:
   explicit TradingBootstrapFactory(uint64_t masterSeed) : m_masterSeed(masterSeed) {}
 
-  // ========== Overloads accepting BacktesterStrategy (calls hashCode()) ==========
+  // ========== Overloads accepting BacktesterStrategy (calls deterministicHashCode()) ==========
 
   // Full control: custom statFn + BacktesterStrategy object
   template<class Decimal, class Resampler>
@@ -282,7 +282,7 @@ public:
     -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
   {
     return makeBCaImpl(returns, B, CL, std::move(statFn), std::move(sampler),
-                       strategy.hashCode(), stageTag, L, fold);
+                       strategy.deterministicHashCode(), stageTag, L, fold);
   }
 
   // Convenience: default statistic (mean) + BacktesterStrategy object
@@ -297,7 +297,7 @@ public:
     using Stat = mkc_timeseries::StatUtils<Decimal>;
     return makeBCaImpl(returns, B, CL,
                        std::function<Decimal(const std::vector<Decimal>&)>(&Stat::computeMean),
-                       std::move(sampler), strategy.hashCode(), stageTag, L, fold);
+                       std::move(sampler), strategy.deterministicHashCode(), stageTag, L, fold);
   }
 
   // ========== Overloads accepting raw uint64_t strategy ID ==========
@@ -354,7 +354,7 @@ public:
 	Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
     Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n);
@@ -404,7 +404,7 @@ public:
         Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
     // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
@@ -463,7 +463,7 @@ public:
     using PT  = palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::PERCENTILE_T, L, fold) );
 
     PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner);
@@ -537,7 +537,7 @@ public:
         Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::BASIC, L, fold) );
 
     Bootstrap bb(B, CL, resampler);
@@ -582,7 +582,7 @@ public:
         Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::NORMAL, L, fold) );
 
     Bootstrap nb(B, CL, resampler);
@@ -627,7 +627,7 @@ public:
         Decimal, Sampler, Resampler, Engine, Executor>;
     using mkc_timeseries::rng_utils::CRNRng;
 
-    const uint64_t sid = static_cast<uint64_t>(strategy.hashCode());
+    const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::PERCENTILE, L, fold) );
 
     Bootstrap pb(B, CL, resampler);

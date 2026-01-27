@@ -144,6 +144,13 @@ namespace mkc_timeseries
           return mInstanceId;
       }
 
+      virtual unsigned long long deterministicHashCode() const
+      {
+	// Default: just use regular hashCode
+	// Derived classes can override for deterministic behavior
+	return hashCode();
+      }
+
       /**
        * @brief Get unique hash combining instance ID with pattern-specific hash
        * @return Combined hash for unique strategy identification

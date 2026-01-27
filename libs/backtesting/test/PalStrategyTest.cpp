@@ -1862,3 +1862,447 @@ TEST_CASE("PalLongStrategy handles missing data gracefully",
   REQUIRE(broker.getTotalTrades() == 0);
 }
 
+// ============================================================================
+// TEST CASES: DETERMINISTIC HASH CODE VALIDATION
+// ============================================================================
+// 
+// These tests verify that the new deterministicHashCode() method provides
+// reproducible, configuration-based hashing for Common Random Numbers (CRN)
+// while hashCode() retains instance-specific UUID-based hashing.
+//
+// Add these tests to your existing PalStrategyTest.cpp file.
+// ============================================================================
+
+TEST_CASE("PalStrategy::deterministicHashCode is deterministic across instances",
+          "[PalStrategy][Hash][CRN]")
+{
+  // Create identical pattern configurations twice
+  auto pattern1 = createLongPattern1();
+  auto pattern2 = createLongPattern1();
+  
+  auto portfolio1 = std::make_shared<Portfolio<DecimalType>>("Portfolio1");
+  auto portfolio2 = std::make_shared<Portfolio<DecimalType>>("Portfolio2");
+  
+  StrategyOptions options(false, 0, 0);
+  
+  // Create two strategies with identical pattern configurations
+  // but different instances (different UUIDs)
+  auto strategy1 = makePalStrategy<DecimalType>("Test1", pattern1, portfolio1, options);
+  auto strategy2 = makePalStrategy<DecimalType>("Test2", pattern2, portfolio2, options);
+  
+  // deterministicHashCode() should be IDENTICAL (based on pattern)
+  REQUIRE(strategy1->deterministicHashCode() == strategy2->deterministicHashCode());
+  
+  // hashCode() should be DIFFERENT (includes UUID)
+  REQUIRE(strategy1->hashCode() != strategy2->hashCode());
+  
+  std::cout << "Pattern 1 - Deterministic: 0x" << std::hex 
+            << strategy1->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Pattern 1 - With UUID:     0x" << std::hex 
+            << strategy1->hashCode() << std::dec << std::endl;
+  std::cout << "Pattern 2 - Deterministic: 0x" << std::hex 
+            << strategy2->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Pattern 2 - With UUID:     0x" << std::hex 
+            << strategy2->hashCode() << std::dec << std::endl;
+}
+
+TEST_CASE("PalStrategy::deterministicHashCode differs for different patterns",
+          "[PalStrategy][Hash][CRN]")
+{
+  auto longPattern = createLongPattern1();
+  auto shortPattern = createShortPattern1();
+  
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("TestPortfolio");
+  StrategyOptions options(false, 0, 0);
+  
+  auto longStrategy = makePalStrategy<DecimalType>("Long", longPattern, portfolio, options);
+  auto shortStrategy = makePalStrategy<DecimalType>("Short", shortPattern, portfolio, options);
+  
+  // Different patterns should produce different deterministic hashes
+  REQUIRE(longStrategy->deterministicHashCode() != shortStrategy->deterministicHashCode());
+  
+  std::cout << "Long pattern hash:  0x" << std::hex 
+            << longStrategy->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Short pattern hash: 0x" << std::hex 
+            << shortStrategy->deterministicHashCode() << std::dec << std::endl;
+}
+
+TEST_CASE("PalStrategy::deterministicHashCode is stable across copy operations",
+          "[PalStrategy][Hash][CRN]")
+{
+  auto pattern = createLongPattern1();
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Original");
+  StrategyOptions options(false, 0, 5);
+  
+  auto original = std::make_shared<PalLongStrategy<DecimalType>>(
+    "Original", pattern, portfolio, options);
+  
+  uint64_t originalDetHash = original->deterministicHashCode();
+  uint64_t originalUuidHash = original->hashCode();
+  
+  // Test copy constructor
+  PalLongStrategy<DecimalType> copied(*original);
+  
+  // deterministicHashCode() should remain identical
+  REQUIRE(copied.deterministicHashCode() == originalDetHash);
+  
+  // hashCode() should be DIFFERENT (new UUID assigned in copy constructor)
+  REQUIRE(copied.hashCode() != originalUuidHash);
+  
+  std::cout << "Original deterministic: 0x" << std::hex << originalDetHash << std::dec << std::endl;
+  std::cout << "Original with UUID:     0x" << std::hex << originalUuidHash << std::dec << std::endl;
+  std::cout << "Copied deterministic:   0x" << std::hex 
+            << copied.deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Copied with UUID:       0x" << std::hex 
+            << copied.hashCode() << std::dec << std::endl;
+}
+
+TEST_CASE("PalStrategy::deterministicHashCode is stable across clone operations",
+          "[PalStrategy][Hash][CRN]")
+{
+  auto pattern = createLongPattern1();
+  auto portfolio1 = std::make_shared<Portfolio<DecimalType>>("P1");
+  auto portfolio2 = std::make_shared<Portfolio<DecimalType>>("P2");
+  
+  StrategyOptions options(false, 0, 0);
+  
+  PalLongStrategy<DecimalType> original("Original", pattern, portfolio1, options);
+  uint64_t originalDetHash = original.deterministicHashCode();
+  
+  // Test clone() to different portfolio
+  auto cloned = std::dynamic_pointer_cast<PalLongStrategy<DecimalType>>(
+    original.clone(portfolio2));
+  REQUIRE(cloned);
+  
+  // deterministicHashCode() should remain identical (same pattern)
+  REQUIRE(cloned->deterministicHashCode() == originalDetHash);
+  
+  // hashCode() should be DIFFERENT (new instance with new UUID)
+  REQUIRE(cloned->hashCode() != original.hashCode());
+  
+  // Test cloneForBackTesting()
+  auto clonedForBT = std::dynamic_pointer_cast<PalLongStrategy<DecimalType>>(
+    original.cloneForBackTesting());
+  REQUIRE(clonedForBT);
+  
+  // deterministicHashCode() should still be identical
+  REQUIRE(clonedForBT->deterministicHashCode() == originalDetHash);
+  
+  // hashCode() should be DIFFERENT (new UUID)
+  REQUIRE(clonedForBT->hashCode() != original.hashCode());
+  
+  std::cout << "All three instances (original, clone, cloneForBT) have same deterministic hash: 0x"
+            << std::hex << originalDetHash << std::dec << std::endl;
+}
+
+TEST_CASE("PalStrategy::deterministicHashCode matches pattern hash directly",
+          "[PalStrategy][Hash][CRN]")
+{
+  auto pattern = createLongPattern1();
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Test");
+  StrategyOptions options(false, 0, 0);
+  
+  auto strategy = makePalStrategy<DecimalType>("Test", pattern, portfolio, options);
+  
+  // deterministicHashCode() should equal the pattern's hash
+  REQUIRE(strategy->deterministicHashCode() == pattern->hashCode());
+  
+  // Also verify getPatternHash() returns same value
+  REQUIRE(strategy->getPatternHash() == pattern->hashCode());
+  REQUIRE(strategy->deterministicHashCode() == strategy->getPatternHash());
+  
+  std::cout << "Pattern hash:              0x" << std::hex 
+            << pattern->hashCode() << std::dec << std::endl;
+  std::cout << "Strategy deterministic:    0x" << std::hex 
+            << strategy->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Strategy getPatternHash(): 0x" << std::hex 
+            << strategy->getPatternHash() << std::dec << std::endl;
+}
+
+TEST_CASE("PalStrategy::deterministicHashCode differs for patterns with different parameters",
+          "[PalStrategy][Hash][CRN]")
+{
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Test");
+  StrategyOptions options(false, 0, 0);
+  
+  // Create patterns with different profit targets
+  auto percentLong = std::make_shared<DecimalType>(createDecimal("90.00"));
+  auto percentShort = std::make_shared<DecimalType>(createDecimal("10.00"));
+  
+  auto desc1 = std::make_shared<PatternDescription>(
+    "TEST.txt", 1, 20200101, percentLong, percentShort, 1, 1);
+  auto desc2 = std::make_shared<PatternDescription>(
+    "TEST.txt", 2, 20200101, percentLong, percentShort, 1, 1);  // Different index
+  
+  // Same pattern expression
+  auto close1 = std::make_shared<PriceBarClose>(1);
+  auto open1 = std::make_shared<PriceBarOpen>(1);
+  auto patternExpr = std::make_shared<GreaterThanExpr>(close1, open1);
+  auto entry = createLongOnOpen();
+  
+  // Different profit targets
+  auto target1 = createLongProfitTarget("25.00");
+  auto target2 = createLongProfitTarget("50.00");
+  auto stop = createLongStopLoss("25.00");
+  
+  auto pattern1 = std::make_shared<PriceActionLabPattern>(
+    desc1, patternExpr, entry, target1, stop);
+  auto pattern2 = std::make_shared<PriceActionLabPattern>(
+    desc2, patternExpr, entry, target2, stop);
+  
+  auto strategy1 = makePalStrategy<DecimalType>("S1", pattern1, portfolio, options);
+  auto strategy2 = makePalStrategy<DecimalType>("S2", pattern2, portfolio, options);
+  
+  // Should have different deterministic hashes
+  REQUIRE(strategy1->deterministicHashCode() != strategy2->deterministicHashCode());
+  
+  std::cout << "Pattern with target 25%: 0x" << std::hex 
+            << strategy1->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Pattern with target 50%: 0x" << std::hex 
+            << strategy2->deterministicHashCode() << std::dec << std::endl;
+}
+
+TEST_CASE("PalStrategy::deterministicHashCode is consistent for short patterns",
+          "[PalStrategy][Hash][CRN]")
+{
+  auto shortPattern1 = createShortPattern1();
+  auto shortPattern2 = createShortPattern1();
+  
+  auto portfolio1 = std::make_shared<Portfolio<DecimalType>>("P1");
+  auto portfolio2 = std::make_shared<Portfolio<DecimalType>>("P2");
+  
+  StrategyOptions options(false, 0, 0);
+  
+  // Create two short strategies with identical configurations
+  auto strategy1 = std::make_shared<PalShortStrategy<DecimalType>>(
+    "Short1", shortPattern1, portfolio1, options);
+  auto strategy2 = std::make_shared<PalShortStrategy<DecimalType>>(
+    "Short2", shortPattern2, portfolio2, options);
+  
+  // deterministicHashCode() should be identical
+  REQUIRE(strategy1->deterministicHashCode() == strategy2->deterministicHashCode());
+  
+  // hashCode() should be different (different UUIDs)
+  REQUIRE(strategy1->hashCode() != strategy2->hashCode());
+  
+  std::cout << "Short strategy 1 deterministic: 0x" << std::hex 
+            << strategy1->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Short strategy 2 deterministic: 0x" << std::hex 
+            << strategy2->deterministicHashCode() << std::dec << std::endl;
+}
+
+TEST_CASE("PalStrategy::deterministicHashCode enables CRN reproducibility",
+          "[PalStrategy][Hash][CRN][Integration]")
+{
+  // This test simulates the CRN use case in TradingBootstrapFactory
+  // where deterministicHashCode() is used as the strategyId in the CRN hierarchy
+  
+  auto pattern = createLongPattern1();
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Test");
+  StrategyOptions options(false, 0, 0);
+  
+  // Simulate creating strategy in "run 1"
+  auto strategy_run1 = makePalStrategy<DecimalType>("Test", pattern, portfolio, options);
+  uint64_t strategyId_run1 = strategy_run1->deterministicHashCode();
+  
+  // Simulate creating same strategy in "run 2" (different program execution)
+  // In reality this would be a new process, but we simulate with new instances
+  auto pattern_run2 = createLongPattern1();  // Same config
+  auto portfolio_run2 = std::make_shared<Portfolio<DecimalType>>("Test");
+  auto strategy_run2 = makePalStrategy<DecimalType>("Test", pattern_run2, portfolio_run2, options);
+  uint64_t strategyId_run2 = strategy_run2->deterministicHashCode();
+  
+  // CRITICAL: strategyId must be identical across runs for CRN reproducibility
+  REQUIRE(strategyId_run1 == strategyId_run2);
+  
+  std::cout << "Run 1 strategyId (deterministicHashCode): 0x" << std::hex 
+            << strategyId_run1 << std::dec << std::endl;
+  std::cout << "Run 2 strategyId (deterministicHashCode): 0x" << std::hex 
+            << strategyId_run2 << std::dec << std::endl;
+  std::cout << "CRN reproducibility: VERIFIED ✓" << std::endl;
+  
+  // Verify that using hashCode() would break reproducibility
+  uint64_t uuid_run1 = strategy_run1->hashCode();
+  uint64_t uuid_run2 = strategy_run2->hashCode();
+  
+  REQUIRE(uuid_run1 != uuid_run2);  // These MUST differ
+  
+  std::cout << "Run 1 hashCode (with UUID):               0x" << std::hex 
+            << uuid_run1 << std::dec << std::endl;
+  std::cout << "Run 2 hashCode (with UUID):               0x" << std::hex 
+            << uuid_run2 << std::dec << std::endl;
+  std::cout << "If we used hashCode(), CRN would be broken ✗" << std::endl;
+}
+
+TEST_CASE("PalStrategy::deterministicHashCode works with different portfolio configurations",
+          "[PalStrategy][Hash][CRN]")
+{
+  // Verify that portfolio differences don't affect deterministicHashCode
+  // (pattern is what matters, not portfolio)
+  
+  auto pattern = createLongPattern1();
+  StrategyOptions options(false, 0, 0);
+  
+  // Create different portfolios
+  auto portfolio_empty = std::make_shared<Portfolio<DecimalType>>("Empty");
+  
+  auto ts = createFlatPriceSeriesForMaxHoldTest();
+  auto sec = std::make_shared<FuturesSecurity<DecimalType>>(
+    "@C", "Corn", createDecimal("50.0"), createDecimal("0.25"), ts);
+  auto portfolio_withSec = std::make_shared<Portfolio<DecimalType>>("WithSecurity");
+  portfolio_withSec->addSecurity(sec);
+  
+  auto strategy1 = makePalStrategy<DecimalType>("S1", pattern, portfolio_empty, options);
+  auto strategy2 = makePalStrategy<DecimalType>("S2", pattern, portfolio_withSec, options);
+  
+  // Same pattern → same deterministic hash, regardless of portfolio contents
+  REQUIRE(strategy1->deterministicHashCode() == strategy2->deterministicHashCode());
+  
+  std::cout << "Strategy with empty portfolio:     0x" << std::hex 
+            << strategy1->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Strategy with security in portfolio: 0x" << std::hex 
+            << strategy2->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Portfolio contents don't affect deterministic hash ✓" << std::endl;
+}
+
+TEST_CASE("PalStrategy::deterministicHashCode works with different strategy options",
+          "[PalStrategy][Hash][CRN]")
+{
+  // Verify that StrategyOptions differences don't affect deterministicHashCode
+  // (only pattern matters)
+  
+  auto pattern = createLongPattern1();
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Test");
+  
+  StrategyOptions options_noPyramid(false, 0, 0);
+  StrategyOptions options_pyramid(true, 3, 5);
+  
+  auto strategy1 = makePalStrategy<DecimalType>("S1", pattern, portfolio, options_noPyramid);
+  auto strategy2 = makePalStrategy<DecimalType>("S2", pattern, portfolio, options_pyramid);
+  
+  // Same pattern → same deterministic hash, regardless of strategy options
+  REQUIRE(strategy1->deterministicHashCode() == strategy2->deterministicHashCode());
+  
+  std::cout << "Strategy with no pyramid:           0x" << std::hex 
+            << strategy1->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Strategy with pyramid (3 units, 5 hold): 0x" << std::hex 
+            << strategy2->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Strategy options don't affect deterministic hash ✓" << std::endl;
+}
+
+// ============================================================================
+// EDGE CASES AND VALIDATION
+// ============================================================================
+
+TEST_CASE("PalStrategy::deterministicHashCode is non-zero",
+          "[PalStrategy][Hash][CRN]")
+{
+  auto pattern = createLongPattern1();
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Test");
+  StrategyOptions options(false, 0, 0);
+  
+  auto strategy = makePalStrategy<DecimalType>("Test", pattern, portfolio, options);
+  
+  // Hash should never be zero (extremely unlikely collision with FNV offset)
+  REQUIRE(strategy->deterministicHashCode() != 0);
+  REQUIRE(strategy->hashCode() != 0);
+  
+  std::cout << "Deterministic hash: 0x" << std::hex 
+            << strategy->deterministicHashCode() << std::dec 
+            << " (non-zero ✓)" << std::endl;
+}
+
+TEST_CASE("PalStrategy::deterministicHashCode creates distinct hashes for similar patterns",
+          "[PalStrategy][Hash][CRN]")
+{
+  // Create patterns that differ only slightly
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("Test");
+  StrategyOptions options(false, 0, 0);
+  
+  auto percentLong = std::make_shared<DecimalType>(createDecimal("90.00"));
+  auto percentShort = std::make_shared<DecimalType>(createDecimal("10.00"));
+  
+  // Pattern 1: C(1) > O(1)
+  auto close1_1 = std::make_shared<PriceBarClose>(1);
+  auto open1_1 = std::make_shared<PriceBarOpen>(1);
+  auto expr1 = std::make_shared<GreaterThanExpr>(close1_1, open1_1);
+  
+  // Pattern 2: C(2) > O(2) - different bar offset
+  auto close2 = std::make_shared<PriceBarClose>(2);
+  auto open2 = std::make_shared<PriceBarOpen>(2);
+  auto expr2 = std::make_shared<GreaterThanExpr>(close2, open2);
+  
+  auto desc1 = std::make_shared<PatternDescription>(
+    "TEST.txt", 1, 20200101, percentLong, percentShort, 1, 1);
+  auto desc2 = std::make_shared<PatternDescription>(
+    "TEST.txt", 2, 20200101, percentLong, percentShort, 2, 1);
+  
+  auto entry = createLongOnOpen();
+  auto target = createLongProfitTarget("50.00");
+  auto stop = createLongStopLoss("25.00");
+  
+  auto pattern1 = std::make_shared<PriceActionLabPattern>(desc1, expr1, entry, target, stop);
+  auto pattern2 = std::make_shared<PriceActionLabPattern>(desc2, expr2, entry, target, stop);
+  
+  auto strategy1 = makePalStrategy<DecimalType>("S1", pattern1, portfolio, options);
+  auto strategy2 = makePalStrategy<DecimalType>("S2", pattern2, portfolio, options);
+  
+  // Should produce different hashes despite similarity
+  REQUIRE(strategy1->deterministicHashCode() != strategy2->deterministicHashCode());
+  
+  std::cout << "Pattern C(1) > O(1): 0x" << std::hex 
+            << strategy1->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Pattern C(2) > O(2): 0x" << std::hex 
+            << strategy2->deterministicHashCode() << std::dec << std::endl;
+  std::cout << "Similar patterns produce distinct hashes ✓" << std::endl;
+}
+
+// ============================================================================
+// DOCUMENTATION TEST
+// ============================================================================
+
+TEST_CASE("PalStrategy::deterministicHashCode documentation example",
+          "[PalStrategy][Hash][CRN][Documentation]")
+{
+  // This test serves as documentation for how to use deterministicHashCode()
+  // in the context of Common Random Numbers (CRN)
+  
+  std::cout << "\n=== CRN Usage Example ===" << std::endl;
+  
+  // Step 1: Create a strategy
+  auto pattern = createLongPattern1();
+  auto portfolio = std::make_shared<Portfolio<DecimalType>>("MyPortfolio");
+  StrategyOptions options(false, 0, 0);
+  auto strategy = makePalStrategy<DecimalType>("MyStrategy", pattern, portfolio, options);
+  
+  // Step 2: Use deterministicHashCode() as strategyId for CRN
+  uint64_t strategyId = strategy->deterministicHashCode();
+  
+  std::cout << "Strategy ID (for CRN): 0x" << std::hex << strategyId << std::dec << std::endl;
+  
+  // Step 3: This strategyId will be used in TradingBootstrapFactory:
+  // const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
+  // CRNKey key = makeCRNKey(sid, stageTag, methodId, L, fold);
+  
+  // Step 4: Verify reproducibility - create same strategy again
+  auto pattern2 = createLongPattern1();
+  auto portfolio2 = std::make_shared<Portfolio<DecimalType>>("MyPortfolio");
+  auto strategy2 = makePalStrategy<DecimalType>("MyStrategy", pattern2, portfolio2, options);
+  uint64_t strategyId2 = strategy2->deterministicHashCode();
+  
+  REQUIRE(strategyId == strategyId2);
+  std::cout << "Same configuration → Same strategyId: VERIFIED ✓" << std::endl;
+  
+  // Step 5: Different patterns get different IDs
+  auto shortPattern = createShortPattern1();
+  auto shortStrategy = makePalStrategy<DecimalType>("ShortStrategy", shortPattern, portfolio, options);
+  uint64_t shortStrategyId = shortStrategy->deterministicHashCode();
+  
+  REQUIRE(strategyId != shortStrategyId);
+  std::cout << "Different patterns → Different strategyIds: VERIFIED ✓" << std::endl;
+  
+  std::cout << "\nKey takeaway: Use deterministicHashCode() for CRN reproducibility!" << std::endl;
+  std::cout << "             Use hashCode() for runtime instance tracking." << std::endl;
+  std::cout << "=== End Example ===\n" << std::endl;
+}
+
