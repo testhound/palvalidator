@@ -49,4 +49,37 @@ namespace AutoBootstrapConfiguration
   constexpr double kPercentileTInnerPenaltyScale = 200.0;      ///< Penalty scale for inner failures
   constexpr double kPercentileTEffectiveBPenaltyScale = 50.0;  ///< Penalty scale for low effective B
   constexpr double kBcaLengthOverflowScale = 2.0;
+
+  // ============================================================================
+  // NORMALIZATION REFERENCE VALUES
+  // ============================================================================
+  // These define "typical" penalty magnitudes for score normalization.
+  // Raw penalties are divided by these reference values to put all penalty
+  // types on a comparable scale in the tournament scoring.
+  // ============================================================================
+
+  /// Ordering penalty reference: 10% coverage error squared
+  /// Rationale: A 10% deviation from nominal coverage (e.g., 85% actual vs 95%
+  /// nominal) represents a "typical" ordering violation baseline.
+  constexpr double kRefOrderingErrorSq = 0.10 * 0.10;  // = 0.01
+
+  /// Length penalty reference: ideal length error squared
+  /// Rationale: An interval exactly 1× the theoretical ideal width is optimal.
+  /// Deviations from this are measured relative to 1.0.
+  constexpr double kRefLengthErrorSq = 1.0 * 1.0;  // = 1.0
+
+  /// Stability penalty reference for BCa and Percentile-T
+  /// Rationale: A stability penalty of 0.25 represents moderate instability
+  /// that is noticeable but not disqualifying.
+  constexpr double kRefStability = 0.25;
+ 
+  /// Center shift reference: 2 standard errors squared
+  /// Rationale: A shift of 2 SE between bootstrap mean and point estimate
+  /// represents "notable" bias that merits attention.
+  constexpr double kRefCenterShiftSq = 2.0 * 2.0;  // = 4.0
+
+  /// Skewness reference: |skew| = 2.0 squared
+  /// Rationale: |skew| = 2.0 is the threshold where distributions are
+  /// considered "highly skewed" and may violate BCa assumptions.
+  constexpr double kRefSkewSq = 2.0 * 2.0;  // = 4.0
 } // namespace AutoBootstrapConfiguration

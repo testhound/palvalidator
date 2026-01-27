@@ -31,11 +31,13 @@
 #include <algorithm>
 
 #include "AutoBootstrapSelector.h"
+#include "BootstrapPenaltyCalculator.h"
 #include "number.h"
 
 // Alias for convenience
 using Decimal        = double;
 using Selector       = palvalidator::analysis::AutoBootstrapSelector<Decimal>;
+using PenaltyCalc    = palvalidator::analysis::BootstrapPenaltyCalculator<Decimal>;
 using Candidate      = Selector::Candidate;
 using Result         = Selector::Result;
 using ScoringWeights = Selector::ScoringWeights;
@@ -161,7 +163,7 @@ TEST_CASE("computePercentileTStability: Basic functionality",
             0.05      // se_hat
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         REQUIRE(penalty == 0.0);
     }
@@ -179,7 +181,7 @@ TEST_CASE("computePercentileTStability: Basic functionality",
             0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         REQUIRE(penalty == 0.0);
     }
@@ -201,7 +203,7 @@ TEST_CASE("computePercentileTStability: Outer failure rate penalties",
             0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         // Excess = 0.15 - 0.10 = 0.05
         // Penalty = 0.05^2 * scale (should be > 0)
@@ -222,8 +224,8 @@ TEST_CASE("computePercentileTStability: Outer failure rate penalties",
             0, 200000, 0.05
         };
         
-        double penalty_moderate = Selector::computePercentileTStability(res_moderate);
-        double penalty_severe = Selector::computePercentileTStability(res_severe);
+        double penalty_moderate = PenaltyCalc::computePercentileTStability(res_moderate);
+        double penalty_severe = PenaltyCalc::computePercentileTStability(res_severe);
         
         REQUIRE(penalty_severe > penalty_moderate);
     }
@@ -243,7 +245,7 @@ TEST_CASE("computePercentileTStability: Inner failure rate penalties",
             0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         // Inner failure rate = 10000/100000 = 0.10 (10%)
         // Excess = 0.10 - 0.05 = 0.05
@@ -259,7 +261,7 @@ TEST_CASE("computePercentileTStability: Inner failure rate penalties",
             0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         // Should be a very large penalty but still finite
         REQUIRE(std::isfinite(penalty));
@@ -274,7 +276,7 @@ TEST_CASE("computePercentileTStability: Inner failure rate penalties",
             0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         REQUIRE(penalty == std::numeric_limits<double>::infinity());
     }
@@ -294,7 +296,7 @@ TEST_CASE("computePercentileTStability: Effective B penalties",
             0, 200000, 0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         // Deficit = 700 - 600 = 100 out of 1000 = 10%
         REQUIRE(penalty > 0.0);
@@ -310,7 +312,7 @@ TEST_CASE("computePercentileTStability: Effective B penalties",
             250, 0, 200000, 0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         // Only this component should contribute nothing
         // (but outer failure rate 25% would contribute)
@@ -334,7 +336,7 @@ TEST_CASE("computePercentileTStability: Combined penalties",
             0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         // Should have contributions from all three components
         REQUIRE(penalty > 0.1);  // Substantial combined penalty
@@ -352,7 +354,7 @@ TEST_CASE("computePercentileTStability: Edge cases",
             200, 0, 0, 0, 200000, 0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         REQUIRE(penalty == std::numeric_limits<double>::infinity());
     }
@@ -365,7 +367,7 @@ TEST_CASE("computePercentileTStability: Edge cases",
             1000, 0, 0, 200000, 0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         REQUIRE(penalty == std::numeric_limits<double>::infinity());
     }
@@ -379,73 +381,13 @@ TEST_CASE("computePercentileTStability: Edge cases",
             0.05
         };
         
-        double penalty = Selector::computePercentileTStability(res);
+        double penalty = PenaltyCalc::computePercentileTStability(res);
         
         // Should handle 0% inner failure rate gracefully
         REQUIRE(std::isfinite(penalty));
     }
 }
 
-// -----------------------------------------------------------------------------
-// Tests for methodPreference
-// -----------------------------------------------------------------------------
-
-TEST_CASE("methodPreference: Correct preference ordering",
-          "[AutoBootstrapSelector][MethodPreference]")
-{
-    SECTION("BCa has highest preference (lowest value)")
-    {
-        int pref_bca = Selector::methodPreference(MethodId::BCa);
-        REQUIRE(pref_bca == 1);
-    }
-    
-    SECTION("PercentileT is second preference")
-    {
-        int pref_pt = Selector::methodPreference(MethodId::PercentileT);
-        REQUIRE(pref_pt == 2);
-    }
-    
-    SECTION("MOutOfN is third preference")
-    {
-        int pref_moon = Selector::methodPreference(MethodId::MOutOfN);
-        REQUIRE(pref_moon == 3);
-    }
-    
-    SECTION("Percentile is fourth preference")
-    {
-        int pref_perc = Selector::methodPreference(MethodId::Percentile);
-        REQUIRE(pref_perc == 4);
-    }
-    
-    SECTION("Basic is fifth preference")
-    {
-        int pref_basic = Selector::methodPreference(MethodId::Basic);
-        REQUIRE(pref_basic == 5);
-    }
-    
-    SECTION("Normal has lowest preference (highest value)")
-    {
-        int pref_normal = Selector::methodPreference(MethodId::Normal);
-        REQUIRE(pref_normal == 6);
-    }
-    
-    SECTION("Preference ordering is strictly increasing")
-    {
-        std::vector<int> preferences{
-            Selector::methodPreference(MethodId::BCa),
-            Selector::methodPreference(MethodId::PercentileT),
-            Selector::methodPreference(MethodId::MOutOfN),
-            Selector::methodPreference(MethodId::Percentile),
-            Selector::methodPreference(MethodId::Basic),
-            Selector::methodPreference(MethodId::Normal)
-        };
-        
-        // Verify strictly increasing
-        for (size_t i = 1; i < preferences.size(); ++i) {
-            REQUIRE(preferences[i] > preferences[i-1]);
-        }
-    }
-}
 
 
 // -----------------------------------------------------------------------------
@@ -963,7 +905,7 @@ TEST_CASE("BCa UnderCoveragePenalty: Perfect coverage yields zero penalty",
     double hi = 9.75;
     double cl = 0.95;
     
-    double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+    double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
         boot_stats, lo, hi, cl);
     
     // Should be very close to zero (within floating point tolerance)
@@ -982,7 +924,7 @@ TEST_CASE("BCa UnderCoveragePenalty: Over-coverage yields zero penalty",
         double hi = 9.9;
         double cl = 0.95;
         
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, lo, hi, cl);
         
         // Over-coverage should NOT be penalized
@@ -998,7 +940,7 @@ TEST_CASE("BCa UnderCoveragePenalty: Over-coverage yields zero penalty",
         double hi = 11.0;
         double cl = 0.95;
         
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, lo, hi, cl);
         
         REQUIRE(penalty == 0.0);
@@ -1018,7 +960,7 @@ TEST_CASE("BCa UnderCoveragePenalty: Under-coverage produces penalty",
         double hi = 9.5;
         double cl = 0.95;
         
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, lo, hi, cl);
 
 	const std::size_t B_eff = boot_stats.size();
@@ -1047,7 +989,7 @@ TEST_CASE("BCa UnderCoveragePenalty: Under-coverage produces penalty",
         double hi = 9.25;
         double cl = 0.95;
         
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, lo, hi, cl);
         
         // Expected: 10.0 * (0.10)^2 = 10.0 * 0.01 = 0.10
@@ -1063,14 +1005,14 @@ TEST_CASE("BCa UnderCoveragePenalty: Under-coverage produces penalty",
         // For uniform [0,10], 93% coverage is [0.35, 9.65]
         double lo_2pct = 0.35;
         double hi_2pct = 9.65;
-        double penalty_2pct = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty_2pct = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, lo_2pct, hi_2pct, 0.95);
         
         // 4% shortfall: coverage should be 91% instead of 95%
         // For uniform [0,10], 91% coverage is [0.45, 9.55]
         double lo_4pct = 0.45;
         double hi_4pct = 9.55;
-        double penalty_4pct = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty_4pct = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, lo_4pct, hi_4pct, 0.95);
         
         // Quadratic relationship: penalty_4pct should be ~4x penalty_2pct
@@ -1091,7 +1033,7 @@ TEST_CASE("BCa UnderCoveragePenalty: Edge cases",
     SECTION("Empty bootstrap distribution returns zero")
     {
         std::vector<double> empty_stats;
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             empty_stats, 0.9, 1.1, 0.95);
         REQUIRE(penalty == 0.0);
     }
@@ -1099,7 +1041,7 @@ TEST_CASE("BCa UnderCoveragePenalty: Edge cases",
     SECTION("Single element returns zero")
     {
         std::vector<double> single_stat = {1.0};
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             single_stat, 0.9, 1.1, 0.95);
         REQUIRE(penalty == 0.0);
     }
@@ -1109,12 +1051,12 @@ TEST_CASE("BCa UnderCoveragePenalty: Edge cases",
         std::vector<double> boot_stats = createUniformBootstrapDist(0.0, 10.0, 100);
         
         // lo > hi
-        double penalty1 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty1 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, 5.0, 4.0, 0.95);
         REQUIRE(penalty1 == 0.0);
         
         // lo == hi
-        double penalty2 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty2 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, 5.0, 5.0, 0.95);
         REQUIRE(penalty2 == 0.0);
     }
@@ -1123,11 +1065,11 @@ TEST_CASE("BCa UnderCoveragePenalty: Edge cases",
     {
         std::vector<double> boot_stats = createUniformBootstrapDist(0.0, 10.0, 100);
         
-        double penalty1 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty1 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, std::numeric_limits<double>::quiet_NaN(), 1.1, 0.95);
         REQUIRE(penalty1 == 0.0);
         
-        double penalty2 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty2 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, 0.9, std::numeric_limits<double>::infinity(), 0.95);
         REQUIRE(penalty2 == 0.0);
     }
@@ -1137,17 +1079,17 @@ TEST_CASE("BCa UnderCoveragePenalty: Edge cases",
         std::vector<double> boot_stats = createUniformBootstrapDist(0.0, 10.0, 100);
         
         // cl <= 0
-        double penalty1 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty1 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, 0.9, 1.1, 0.0);
         REQUIRE(penalty1 == 0.0);
         
         // cl >= 1
-        double penalty2 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty2 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, 0.9, 1.1, 1.0);
         REQUIRE(penalty2 == 0.0);
         
         // cl negative
-        double penalty3 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty3 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, 0.9, 1.1, -0.5);
         REQUIRE(penalty3 == 0.0);
     }
@@ -1160,7 +1102,7 @@ TEST_CASE("BCa UnderCoveragePenalty: Interval completely outside distribution",
     
     SECTION("Interval above distribution")
     {
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, 15.0, 20.0, 0.95);
         
         // 0% coverage, 95% shortfall
@@ -1171,7 +1113,7 @@ TEST_CASE("BCa UnderCoveragePenalty: Interval completely outside distribution",
     
     SECTION("Interval below distribution")
     {
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, -5.0, -1.0, 0.95);
         
         // 0% coverage, 95% shortfall
@@ -1202,7 +1144,7 @@ TEST_CASE("PercentileT UnderCoveragePenalty: Perfect coverage in t-space yields 
     double hi = 7.85;
     double cl = 0.95;
     
-    double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+    double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
         t_stats, theta_hat, se_hat, lo, hi, cl);
     
     // Should be close to zero (allowing for discretization of 1000 points)
@@ -1230,7 +1172,7 @@ TEST_CASE("PercentileT UnderCoveragePenalty: Correct t-space transformation",
         double hi = 12.0;
         double cl = 0.95; // But actual coverage is only ~33%
         
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty_PercentileT(
             t_stats, theta_hat, se_hat, lo, hi, cl);
         
         // Shortfall = 0.95 - 0.333 = 0.617
@@ -1257,7 +1199,7 @@ TEST_CASE("PercentileT UnderCoveragePenalty: Under-coverage produces penalty",
         double lo = 5.0 - 2.70 * 1.0;  // 2.30
         double hi = 5.0 + 2.70 * 1.0;  // 7.70
         
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, theta_hat, se_hat, lo, hi, 0.95);
         
         // Shortfall = 5%, penalty = 10.0 * (0.05)^2 = 0.025
@@ -1279,7 +1221,7 @@ TEST_CASE("PercentileT UnderCoveragePenalty: Over-coverage yields zero penalty",
     double lo = 5.0 - 3.0 * 1.0;  // 2.0
     double hi = 5.0 + 3.0 * 1.0;  // 8.0
     
-    double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+    double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
         t_stats, theta_hat, se_hat, lo, hi, 0.95);
     
     // Over-coverage should NOT be penalized
@@ -1292,7 +1234,7 @@ TEST_CASE("PercentileT UnderCoveragePenalty: Edge cases",
     SECTION("Empty t-statistics returns zero")
     {
         std::vector<double> empty_stats;
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             empty_stats, 5.0, 0.5, 4.0, 6.0, 0.95);
         REQUIRE(penalty == 0.0);
     }
@@ -1300,7 +1242,7 @@ TEST_CASE("PercentileT UnderCoveragePenalty: Edge cases",
     SECTION("Single t-statistic returns zero")
     {
         std::vector<double> single_stat = {0.0};
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             single_stat, 5.0, 0.5, 4.0, 6.0, 0.95);
         REQUIRE(penalty == 0.0);
     }
@@ -1309,7 +1251,7 @@ TEST_CASE("PercentileT UnderCoveragePenalty: Edge cases",
     {
         std::vector<double> t_stats = createUniformBootstrapDist(-2.0, 2.0, 100);
         
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, std::numeric_limits<double>::quiet_NaN(), 0.5, 4.0, 6.0, 0.95);
         REQUIRE(penalty == 0.0);
     }
@@ -1319,17 +1261,17 @@ TEST_CASE("PercentileT UnderCoveragePenalty: Edge cases",
         std::vector<double> t_stats = createUniformBootstrapDist(-2.0, 2.0, 100);
         
         // se_hat = 0
-        double penalty1 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty1 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, 5.0, 0.0, 4.0, 6.0, 0.95);
         REQUIRE(penalty1 == 0.0);
         
         // se_hat negative
-        double penalty2 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty2 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, 5.0, -0.5, 4.0, 6.0, 0.95);
         REQUIRE(penalty2 == 0.0);
         
         // se_hat NaN
-        double penalty3 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty3 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, 5.0, std::numeric_limits<double>::quiet_NaN(), 4.0, 6.0, 0.95);
         REQUIRE(penalty3 == 0.0);
     }
@@ -1339,12 +1281,12 @@ TEST_CASE("PercentileT UnderCoveragePenalty: Edge cases",
         std::vector<double> t_stats = createUniformBootstrapDist(-2.0, 2.0, 100);
         
         // lo >= hi
-        double penalty1 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty1 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, 5.0, 0.5, 6.0, 4.0, 0.95);
         REQUIRE(penalty1 == 0.0);
         
         // Non-finite bounds
-        double penalty2 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty2 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, 5.0, 0.5, std::numeric_limits<double>::infinity(), 6.0, 0.95);
         REQUIRE(penalty2 == 0.0);
     }
@@ -1353,11 +1295,11 @@ TEST_CASE("PercentileT UnderCoveragePenalty: Edge cases",
     {
         std::vector<double> t_stats = createUniformBootstrapDist(-2.0, 2.0, 100);
         
-        double penalty1 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty1 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, 5.0, 0.5, 4.0, 6.0, 0.0);
         REQUIRE(penalty1 == 0.0);
         
-        double penalty2 = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty2 = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, 5.0, 0.5, 4.0, 6.0, 1.0);
         REQUIRE(penalty2 == 0.0);
     }
@@ -1377,7 +1319,7 @@ TEST_CASE("PercentileT UnderCoveragePenalty: T-space bounds ordering check",
         // t_at_lower = (5 - 6) / 0.5 = -2
         // t_at_upper = (5 - 4) / 0.5 = 2
         // This is valid: -2 < 2
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, theta_hat, se_hat, 4.0, 6.0, 0.95);
         
         // Should compute normally (coverage is 100% here, so penalty = 0)
@@ -1397,7 +1339,7 @@ TEST_CASE("UnderCoveragePenalty: Verify multiplier scaling",
         std::vector<double> boot_stats = createUniformBootstrapDist(0.0, 10.0, 1000);
         
         // Create 10% under-coverage
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, 0.75, 9.25, 0.95);
         
         // Expected: kUnderCoverageMultiplier * (0.10)^2
@@ -1421,7 +1363,7 @@ TEST_CASE("UnderCoveragePenalty: Verify multiplier scaling",
         double lo = 7.0;
         double hi = 13.0;
         
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             t_stats, theta_hat, se_hat, lo, hi, 0.95);
         
         // Shortfall = 0.95 - 0.50 = 0.45
@@ -1447,7 +1389,7 @@ TEST_CASE("UnderCoveragePenalty: Integration with different confidence levels",
         const double lo = 0.75;
         const double hi = 9.25;
         const double cl = 0.90;
-        const double penalty = Selector::computeEmpiricalUnderCoveragePenalty(boot_stats, lo, hi, cl);
+        const double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(boot_stats, lo, hi, cl);
 
         // Expected penalty uses half-step tolerance: under = max(0, (cl - width_cdf) - 0.5/B_eff)
         const std::size_t B_eff = boot_stats.size();
@@ -1470,7 +1412,7 @@ TEST_CASE("UnderCoveragePenalty: Integration with different confidence levels",
         const double lo = 0.25;
         const double hi = 9.75;
         const double cl = 0.99;
-        const double penalty = Selector::computeEmpiricalUnderCoveragePenalty(boot_stats, lo, hi, cl);
+        const double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(boot_stats, lo, hi, cl);
 
         // Expected penalty uses half-step tolerance: under = max(0, (cl - width_cdf) - 0.5/B_eff)
         const std::size_t B_eff = boot_stats.size();
@@ -1521,7 +1463,7 @@ TEST_CASE("UnderCoveragePenalty: Realistic bootstrap scenario",
         double lo = 2.0;
         double hi = 10.0;
         
-        double penalty = Selector::computeEmpiricalUnderCoveragePenalty(
+        double penalty = PenaltyCalc::computeEmpiricalUnderCoveragePenalty(
             boot_stats, lo, hi, 0.95);
         
         // With 30% shortfall: penalty = 10.0 * (0.30)^2 = 0.90
