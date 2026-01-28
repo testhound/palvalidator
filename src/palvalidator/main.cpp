@@ -62,6 +62,7 @@
 #include "filtering/PerformanceFilter.h"
 #include "filtering/MetaStrategyAnalyzer.h"
 #include "filtering/TradingHurdleCalculator.h"
+#include "filtering/BootstrapRobustnessAnalyzer.h"
 
 // Reporting modules
 #include "reporting/PerformanceReporter.h"
@@ -155,7 +156,6 @@ const RiskParameters& getRiskParameters()
     return g_riskParameters;
 }
 
-// Legacy function - now delegated to PerformanceFilter
 template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>>
 filterSurvivingStrategiesByPerformance(
@@ -169,25 +169,59 @@ filterSurvivingStrategiesByPerformance(
     std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats = std::nullopt)
 {
     const Num confidenceLevel = Num("0.95");
-    
-    // The RiskParameters are no longer needed for PerformanceFilter construction
-    // Create collector and inject into PerformanceFilter. Respect the global
-    // flag g_enableBcaStats which is controlled by the --bcastats CLI switch.
-    std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> collector;
-    if (g_enableBcaStats) {
-        // When enabled, write CSV diagnostics to a file
-      collector = std::make_shared<palvalidator::diagnostics::CsvBootstrapCollector>("/home/collison/tournament_runs.csv",
-										     "/home/collison/candidates.csv");
-    } else {
-        // No-op collector to avoid any diagnostic output
-        collector = std::make_shared<palvalidator::diagnostics::NullBootstrapCollector>();
-    }
 
-    PerformanceFilter filter(confidenceLevel, numResamples,
-                             palvalidator::config::kDefaultCrnMasterSeed,
-                             collector);
-    return filter.filterByPerformance(survivingStrategies, baseSecurity, inSampleBacktestingDates,
-                                      oosBacktestingDates, theTimeFrame, os, oosSpreadStats);
+    bool enableRobustnessAnalysis = true;
+    unsigned int numBootstrapRounds = 10;
+    double minPassRate = 0.90;
+
+    if (!enableRobustnessAnalysis)
+      {
+        // Original single-seed path (UNCHANGED)
+
+      std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> collector;
+      if (g_enableBcaStats)
+	{
+        // When enabled, write CSV diagnostics to a file
+	collector = std::make_shared<palvalidator::diagnostics::CsvBootstrapCollector>("/home/collison/tournament_runs.csv",
+										       "/home/collison/candidates.csv");
+      }
+      else
+	{
+	  // No-op collector to avoid any diagnostic output
+	  collector = std::make_shared<palvalidator::diagnostics::NullBootstrapCollector>();
+	}
+      
+        PerformanceFilter filter(confidenceLevel, numResamples,
+                                palvalidator::config::kDefaultCrnMasterSeed,
+                                collector);
+        
+        return filter.filterByPerformance(survivingStrategies, baseSecurity,
+                                          inSampleBacktestingDates,
+                                          oosBacktestingDates, theTimeFrame, 
+                                          os, oosSpreadStats);
+    }
+    
+    // Bootstrap robustness analysis path
+    BootstrapConfig config(numBootstrapRounds, minPassRate, false, false);
+    
+    BootstrapRobustnessAnalyzer analyzer(
+        palvalidator::config::kDefaultCrnMasterSeed, 
+        config
+    );
+    
+    auto results = analyzer.analyze(
+        survivingStrategies,
+        baseSecurity,
+        inSampleBacktestingDates,
+        oosBacktestingDates,
+        theTimeFrame,
+        os,
+        confidenceLevel,
+        numResamples,
+        oosSpreadStats
+    );
+    
+    return results.getAcceptedStrategies();
 }
 
 // Analyze meta-strategy performance using unified PalMetaStrategy approach
