@@ -25,18 +25,6 @@ struct MeanSampler {
     }
 };
 
-static PatternDescription *
-createDescription (const std::string& fileName, unsigned int index, unsigned long indexDate,
-		   const std::string& percLong, const std::string& percShort,
-		   unsigned int numTrades, unsigned int consecutiveLosses)
-{
-  auto percentLong = std::make_shared<DecimalType>(createDecimal(percLong));
-  auto percentShort = std::make_shared<DecimalType>(createDecimal(percShort));
-
-  return new PatternDescription ((char *) fileName.c_str(), index, indexDate, percentLong, percentShort,
-  		 numTrades, consecutiveLosses);
-}
-
 static std::shared_ptr<LongMarketEntryOnOpen>
 createLongOnOpen()
 {
