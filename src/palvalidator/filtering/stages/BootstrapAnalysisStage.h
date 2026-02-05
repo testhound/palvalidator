@@ -238,6 +238,8 @@ namespace palvalidator::filtering::stages
       Num mLowerBoundPeriod;
     };
 
+    double getAdjusteConfidenceInterval(const Num& confidenceInterval, const std::vector<Num>& strategyReturns) const;
+    
     // Core computation methods
     /**
      * Initialize backtester if not already present in context

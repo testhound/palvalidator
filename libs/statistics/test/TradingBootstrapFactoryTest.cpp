@@ -437,10 +437,10 @@ TEST_CASE("TradingBootstrapFactory: makePercentileT deterministic with CRN (defa
     TradingBootstrapFactory<Eng> factory(MASTER);
 
     auto [pt1, crn1] = factory.makePercentileT<D, decltype(meanSampler), Resamp, PTExec>(
-        B_outer, B_inner, CL, Resamp(L), sid, stage, L, fold, rho_outer, rho_inner
+        B_outer, B_inner, CL, Resamp(L), sid, stage, L, fold, palvalidator::analysis::IntervalType::TWO_SIDED, rho_outer, rho_inner
     );
     auto [pt2, crn2] = factory.makePercentileT<D, decltype(meanSampler), Resamp, PTExec>(
-        B_outer, B_inner, CL, Resamp(L), sid, stage, L, fold, rho_outer, rho_inner
+        B_outer, B_inner, CL, Resamp(L), sid, stage, L, fold, palvalidator::analysis::IntervalType::TWO_SIDED, rho_outer, rho_inner
     );
 
     auto rng1 = crn1.make_engine(0);

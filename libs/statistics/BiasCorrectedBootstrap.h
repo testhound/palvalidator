@@ -27,6 +27,7 @@
 #include <cstddef>
 #include <type_traits>
 
+#include "BootstrapTypes.h"
 #include "DecimalConstants.h"
 #include "number.h"
 #include "randutils.hpp"
@@ -38,6 +39,8 @@
 
 namespace mkc_timeseries
 {
+  using palvalidator::analysis::IntervalType;
+  
   /**
    * @brief Calculates the start and end indices to divide a vector
    * into K nearly equal, contiguous slices.
@@ -464,7 +467,8 @@ namespace mkc_timeseries
      */
     BCaBootStrap(const std::vector<Decimal>& returns,
                  unsigned int num_resamples,
-                 double confidence_level = 0.95)
+                 double confidence_level = 0.95,
+		 IntervalType interval_type = IntervalType::TWO_SIDED)
       : m_returns(returns),
         m_num_resamples(num_resamples),
         m_confidence_level(confidence_level),
@@ -472,7 +476,8 @@ namespace mkc_timeseries
         m_sampler(Sampler{}),
         m_is_calculated(false),
         m_z0(0.0),
-        m_accel(DecimalConstants<Decimal>::DecimalZero)
+        m_accel(DecimalConstants<Decimal>::DecimalZero),
+	m_interval_type(interval_type)
     {
       validateConstructorArgs();
     }
@@ -484,7 +489,8 @@ namespace mkc_timeseries
     BCaBootStrap(const std::vector<Decimal>& returns,
                  unsigned int num_resamples,
                  double confidence_level,
-                 StatFn statistic)
+                 StatFn statistic,
+		 IntervalType interval_type = IntervalType::TWO_SIDED)
       : m_returns(returns),
         m_num_resamples(num_resamples),
         m_confidence_level(confidence_level),
@@ -492,7 +498,8 @@ namespace mkc_timeseries
         m_sampler(Sampler{}),
         m_is_calculated(false),
         m_z0(0.0),
-        m_accel(DecimalConstants<Decimal>::DecimalZero)
+        m_accel(DecimalConstants<Decimal>::DecimalZero),
+	m_interval_type(interval_type)
     {
       if (!m_statistic)
         throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
@@ -507,7 +514,8 @@ namespace mkc_timeseries
                  unsigned int num_resamples,
                  double confidence_level,
                  StatFn statistic,
-                 Sampler sampler)
+                 Sampler sampler,
+		 IntervalType interval_type = IntervalType::TWO_SIDED)
       : m_returns(returns),
         m_num_resamples(num_resamples),
         m_confidence_level(confidence_level),
@@ -515,7 +523,8 @@ namespace mkc_timeseries
         m_sampler(std::move(sampler)),
         m_is_calculated(false),
         m_z0(0.0),
-        m_accel(DecimalConstants<Decimal>::DecimalZero)
+        m_accel(DecimalConstants<Decimal>::DecimalZero),
+	m_interval_type(interval_type)
     {
       if (!m_statistic)
         throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
@@ -532,7 +541,8 @@ namespace mkc_timeseries
                  double confidence_level,
                  StatFn statistic,
                  Sampler sampler,
-                 const P& provider)
+                 const P& provider,
+		 IntervalType interval_type = IntervalType::TWO_SIDED)
       : m_returns(returns),
         m_num_resamples(num_resamples),
         m_confidence_level(confidence_level),
@@ -541,7 +551,8 @@ namespace mkc_timeseries
         m_provider(provider),
         m_is_calculated(false),
         m_z0(0.0),
-        m_accel(DecimalConstants<Decimal>::DecimalZero)
+        m_accel(DecimalConstants<Decimal>::DecimalZero),
+	m_interval_type(interval_type)
     {
       if (!m_statistic)
         throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
@@ -628,6 +639,14 @@ namespace mkc_timeseries
       return m_bootstrapStats;
     }
 
+    static double computeExtremeQuantile(double alpha, bool is_upper)
+    {
+      constexpr double EXTREME_TAIL_RATIO = 1000.0;
+      const double extreme_tail_prob = alpha / EXTREME_TAIL_RATIO;
+  
+      return is_upper ? (1.0 - extreme_tail_prob) : extreme_tail_prob;
+    }
+
   protected:
     // Data & config
     const std::vector<Decimal>& m_returns;
@@ -648,12 +667,34 @@ namespace mkc_timeseries
     double                    m_z0;               // bias-correction
     Decimal                   m_accel;            // acceleration
     std::vector<Decimal>      m_bootstrapStats;   // bootstrap θ*'s (unsorted copy)
+    IntervalType m_interval_type;
 
     // Test hooks (kept for mocks)
     void setStatistic(const Decimal& theta) { m_theta_hat = theta; }
     void setMean(const Decimal& theta)      { m_theta_hat = theta; }
     void setLowerBound(const Decimal& lb)   { m_lower_bound = lb; }
     void setUpperBound(const Decimal& ub)   { m_upper_bound = ub; }
+
+    static double computeAlpha(double confidence_level, IntervalType type)
+    {
+      const double tail_prob = 1.0 - confidence_level;
+    
+      switch (type)
+	{
+	case IntervalType::TWO_SIDED:
+	  return tail_prob * 0.5;  // Split between both tails
+        
+	case IntervalType::ONE_SIDED_LOWER:
+	  return tail_prob;         // All in lower tail
+        
+	case IntervalType::ONE_SIDED_UPPER:
+	  return tail_prob;         // All in upper tail (swap bounds at end)
+        
+	default:
+	  return tail_prob * 0.5;   // Defensive: default to two-sided
+	}
+    }
+
 
     void validateConstructorArgs() const
     {
@@ -773,9 +814,38 @@ namespace mkc_timeseries
       m_accel = a;
 
       // (5) Adjusted percentiles → bounds
-      const double alpha      = (1.0 - m_confidence_level) * 0.5;
-      const double z_alpha_lo = NormalDistribution::inverseNormalCdf(alpha);
-      const double z_alpha_hi = NormalDistribution::inverseNormalCdf(1.0 - alpha);
+      const double alpha = computeAlpha(m_confidence_level, m_interval_type);
+
+      // Compute z-quantiles based on interval type
+      double z_alpha_lo, z_alpha_hi;
+
+      switch (m_interval_type)
+	{
+	case IntervalType::TWO_SIDED:
+	  // Traditional: split tail probability between both sides
+	  z_alpha_lo = NormalDistribution::inverseNormalCdf(alpha);           // α/2
+	  z_alpha_hi = NormalDistribution::inverseNormalCdf(1.0 - alpha);     // 1 - α/2
+	  break;
+    
+	case IntervalType::ONE_SIDED_LOWER:
+	  // Lower bound: all tail mass in lower tail
+	  z_alpha_lo = NormalDistribution::inverseNormalCdf(alpha);
+	  z_alpha_hi = NormalDistribution::inverseNormalCdf(computeExtremeQuantile(alpha,
+										   true)); 
+	  break;
+    
+	case IntervalType::ONE_SIDED_UPPER:
+	   z_alpha_lo = NormalDistribution::inverseNormalCdf(computeExtremeQuantile(alpha,
+										    false));
+	  z_alpha_hi = NormalDistribution::inverseNormalCdf(1.0 - alpha);
+	  break;
+	  
+	default:
+	  // Defensive fallback to two-sided
+	  z_alpha_lo = NormalDistribution::inverseNormalCdf(alpha);
+	  z_alpha_hi = NormalDistribution::inverseNormalCdf(1.0 - alpha);
+	  break;
+	}
 
       const double a_d       = num::to_double(a);
       const bool   z0_finite = std::isfinite(z0);
@@ -809,7 +879,7 @@ namespace mkc_timeseries
 
       std::nth_element(work.begin(), work.begin() + ui, work.end());
       m_upper_bound = work[ui];
-
+      
       m_is_calculated = true;
     }
 
