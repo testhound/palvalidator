@@ -39,11 +39,14 @@
 #include "ParallelFor.h"
 #include "RngUtils.h"
 #include "StatUtils.h"
+#include "BootstrapTypes.h"
 
 namespace palvalidator
 {
   namespace analysis
   {
+    using palvalidator::analysis::IntervalType;
+
     // PercentileT Bootstrap Constants
     // These constants are available to client code without requiring template instantiation
     namespace percentile_t_constants
@@ -98,7 +101,8 @@ namespace palvalidator
                            double           confidence_level,
                            const Resampler& resampler,
                            double           m_ratio_outer = 1.0,
-                           double           m_ratio_inner = 1.0)
+                           double           m_ratio_inner = 1.0,
+			   IntervalType     interval_type = IntervalType::TWO_SIDED)
         : m_B_outer(B_outer)
         , m_B_inner(B_inner)
         , m_CL(confidence_level)
@@ -108,7 +112,8 @@ namespace palvalidator
         , m_diagTValues()
         , m_diagThetaStars()
         , m_diagSeHat(0.0)
-        , m_diagValid(false)
+        , m_diagValid(false),
+	  m_interval_type(interval_type)
       {
         if (m_B_outer < 400)  throw std::invalid_argument("PercentileTBootstrap: B_outer must be >= 400");
         if (m_B_inner < 100)  throw std::invalid_argument("PercentileTBootstrap: B_inner must be >= 100");
@@ -129,7 +134,8 @@ namespace palvalidator
         , m_diagTValues()
         , m_diagThetaStars()
         , m_diagSeHat(0.0)
-        , m_diagValid(false)
+        , m_diagValid(false),
+	  m_interval_type(other.m_interval_type)
       {
       }
 
@@ -143,6 +149,7 @@ namespace palvalidator
           const_cast<Resampler&>(m_resampler) = other.m_resampler;
           const_cast<double&>(m_ratio_outer) = other.m_ratio_outer;
           const_cast<double&>(m_ratio_inner) = other.m_ratio_inner;
+	  m_interval_type = other.m_interval_type;
           
           // Clear diagnostic data
           std::lock_guard<std::mutex> lock(m_diagMutex);
@@ -166,6 +173,7 @@ namespace palvalidator
         , m_diagThetaStars(std::move(other.m_diagThetaStars))
         , m_diagSeHat(other.m_diagSeHat)
         , m_diagValid(other.m_diagValid)
+	, m_interval_type(other.m_interval_type)
       {
         // Note: m_diagMutex will be default-constructed in the new object
         // The moved-from object's mutex state is undefined, but that's ok
@@ -192,6 +200,7 @@ namespace palvalidator
           m_diagThetaStars = std::move(other.m_diagThetaStars);
           m_diagSeHat = other.m_diagSeHat;
           m_diagValid = other.m_diagValid;
+	  m_interval_type = other.m_interval_type;
         }
         return *this;
       }
@@ -460,8 +469,30 @@ namespace palvalidator
         const double se_hat = mkc_timeseries::StatUtils<double>::computeStdDev(theta_eff);
 
         const double alpha = 1.0 - m_CL;
-        const double t_lo  = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(t_eff, alpha / 2.0);
-        const double t_hi  = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(t_eff, 1.0 - alpha / 2.0);
+
+	double lower_quantile, upper_quantile;
+
+	switch (m_interval_type)
+	  {
+	  case IntervalType::TWO_SIDED:
+	  default:
+	    lower_quantile = alpha / 2.0;
+	    upper_quantile = 1.0 - alpha / 2.0;
+	    break;
+    
+	  case IntervalType::ONE_SIDED_LOWER:
+	    lower_quantile = 1e-10;
+	    upper_quantile = 1.0 - alpha;
+	    break;
+  
+	  case IntervalType::ONE_SIDED_UPPER:
+	    lower_quantile = alpha;
+	    upper_quantile = 1.0 - 1e-10;
+	    break;
+	  }
+	
+        const double t_lo  = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(t_eff, lower_quantile);
+        const double t_hi  = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(t_eff, upper_quantile);
 
         const double lower_d = theta_hat_d - t_hi * se_hat;
         const double upper_d = theta_hat_d - t_lo * se_hat;
@@ -510,6 +541,7 @@ namespace palvalidator
       mutable std::vector<double> m_diagThetaStars;
       mutable double              m_diagSeHat;
       mutable bool                m_diagValid;
+      IntervalType m_interval_type;
     };
 
 

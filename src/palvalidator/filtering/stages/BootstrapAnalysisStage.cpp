@@ -5,6 +5,7 @@
 #include <optional>
 #include <sstream>
 #include <atomic>
+#include "number.h"
 #include "BackTester.h"
 #include "ClosedPositionHistory.h"
 #include "PalStrategy.h"
@@ -680,7 +681,7 @@ namespace palvalidator::filtering::stages
 			       stageTag,
 			       fold);
 
-    BootstrapAlgorithmsConfiguration algos(
+    BootstrapAlgorithmsConfiguration algoConfig(
 					   /*Normal*/      true,
 					   /*Basic*/       true,
 					   /*Percentile*/  true,
@@ -698,10 +699,12 @@ namespace palvalidator::filtering::stages
     // StrategyAutoBootstrap will default-construct GeoMeanFromLogBarsStat,
     // which uses the same winsorization defaults as GeoMeanStat.
     StrategyAutoBootstrap<Decimal, Sampler, Resampler> autoGeo(
-							       mBootstrapFactory,
-							       *ctx.clonedStrategy,
-							       cfg,
-							       algos);
+    		       mBootstrapFactory,
+    		       *ctx.clonedStrategy,
+    		       cfg,
+    		       algoConfig,
+    		       Sampler(),
+    		       IntervalType::ONE_SIDED_LOWER);
 
     os << "   [Bootstrap] AutoCI (GeoMean): running composite bootstrap engines"
        << " on precomputed log-bars...\n";
@@ -930,7 +933,7 @@ namespace palvalidator::filtering::stages
 			       stageTag,
 			       fold);
 
-    BootstrapAlgorithmsConfiguration algos(
+    BootstrapAlgorithmsConfiguration algoConfig(
 					   /*Normal*/      true,
 					   /*Basic*/       true,
 					   /*Percentile*/  true,
@@ -950,8 +953,9 @@ namespace palvalidator::filtering::stages
 							     mBootstrapFactory,
 							     *ctx.clonedStrategy,
 							     cfg,
-							     algos,
-							     stat);
+							     algoConfig,
+							     stat,
+							     IntervalType::ONE_SIDED_LOWER);
 
     os << "   [Bootstrap] AutoCI (PF): running composite bootstrap engines"
        << " on precomputed log-bars"
@@ -1026,6 +1030,19 @@ namespace palvalidator::filtering::stages
   // execute() – top-level stage orchestration
   // ---------------------------------------------------------------------------
 
+  double
+  BootstrapAnalysisStage::getAdjusteConfidenceInterval(const Num& confidenceInterval, const std::vector<Num>& strategyReturns) const
+  {
+    static Num adjustedLowerInterval = num::fromString<Num>(std::string("0.90"));
+    static Num typicalLowerInterval = num::fromString<Num>(std::string("0.95"));
+    
+    
+    if ((strategyReturns.size() < 30) && (confidenceInterval >= typicalLowerInterval))
+      return num::to_double(adjustedLowerInterval);
+    else
+      return num::to_double(confidenceInterval);
+  }
+  
   BootstrapAnalysisResult
   BootstrapAnalysisStage::execute(StrategyAnalysisContext& ctx,
                                   std::ostream& os) const
@@ -1067,8 +1084,14 @@ namespace palvalidator::filtering::stages
     const std::size_t blockLength = computeBlockLength(ctx, os);
     result.blockLength            = blockLength;
 
-    const double confLevel = num::to_double(mConfidenceLevel);
+    //const double confLevel = num::to_double(mConfidenceLevel);
+    auto returnsSize = ctx.highResReturns.size();
+    os << "BootstrapAnalysisStage::execute given confidence interval = " << mConfidenceLevel << " for size = " << returnsSize << std::endl;
+    
+    const double confLevel = getAdjusteConfidenceInterval(mConfidenceLevel, ctx.highResReturns);
 
+    os << "BootstrapAnalysisStage::execute actual confidence interval = " << confLevel << std::endl;
+    
     // 3) Arithmetic mean via BCa
     const auto bcaMean =
       runBCaMeanBootstrap(ctx, confLevel, annParams.barsPerYear, blockLength, os);

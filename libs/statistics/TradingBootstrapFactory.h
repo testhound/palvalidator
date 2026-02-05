@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include <functional>
+#include "BootstrapTypes.h"
 #include "BasicBootstrap.h"
 #include "NormalBootstrap.h"
 #include "PercentileBootstrap.h"
@@ -18,6 +19,7 @@
 using mkc_timeseries::BCaBootStrap;
 using mkc_timeseries::IIDResampler;
 using mkc_timeseries::StationaryBlockResampler;
+using palvalidator::analysis::IntervalType;
 
 namespace palvalidator::analysis {
     template <class Decimal, class Sampler, class Rng, class Provider>
@@ -278,11 +280,13 @@ public:
                std::function<Decimal(const std::vector<Decimal>&)> statFn,
                Resampler sampler,
                const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
-               uint64_t stageTag, uint64_t L, uint64_t fold)
+               uint64_t stageTag, uint64_t L, uint64_t fold,
+	       IntervalType interval_type = IntervalType::TWO_SIDED)
     -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
   {
     return makeBCaImpl(returns, B, CL, std::move(statFn), std::move(sampler),
-                       strategy.deterministicHashCode(), stageTag, L, fold);
+                       strategy.deterministicHashCode(), stageTag, L, fold,
+		       interval_type);
   }
 
   // Convenience: default statistic (mean) + BacktesterStrategy object
@@ -291,13 +295,15 @@ public:
                unsigned B, double CL,
                Resampler sampler,
                const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
-               uint64_t stageTag, uint64_t L, uint64_t fold)
+               uint64_t stageTag, uint64_t L, uint64_t fold,
+	       IntervalType interval_type = IntervalType::TWO_SIDED)
     -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
   {
     using Stat = mkc_timeseries::StatUtils<Decimal>;
     return makeBCaImpl(returns, B, CL,
                        std::function<Decimal(const std::vector<Decimal>&)>(&Stat::computeMean),
-                       std::move(sampler), strategy.deterministicHashCode(), stageTag, L, fold);
+                       std::move(sampler), strategy.deterministicHashCode(), stageTag, L, fold,
+		       interval_type);
   }
 
   // ========== Overloads accepting raw uint64_t strategy ID ==========
@@ -309,11 +315,12 @@ public:
                std::function<Decimal(const std::vector<Decimal>&)> statFn,
                Resampler sampler,
                uint64_t strategyId,
-               uint64_t stageTag, uint64_t L, uint64_t fold)
+               uint64_t stageTag, uint64_t L, uint64_t fold,
+	       IntervalType interval_type = IntervalType::TWO_SIDED)
     -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
   {
     return makeBCaImpl(returns, B, CL, std::move(statFn), std::move(sampler),
-                       strategyId, stageTag, L, fold);
+                       strategyId, stageTag, L, fold, interval_type);
   }
 
   // Convenience: default statistic (mean) + raw strategy ID
@@ -322,13 +329,14 @@ public:
                unsigned B, double CL,
                Resampler sampler,
                uint64_t strategyId,
-               uint64_t stageTag, uint64_t L, uint64_t fold)
+               uint64_t stageTag, uint64_t L, uint64_t fold,
+	       IntervalType interval_type = IntervalType::TWO_SIDED)
     -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
   {
     using Stat = mkc_timeseries::StatUtils<Decimal>;
     return makeBCaImpl(returns, B, CL,
                        std::function<Decimal(const std::vector<Decimal>&)>(&Stat::computeMean),
-                       std::move(sampler), strategyId, stageTag, L, fold);
+                       std::move(sampler), strategyId, stageTag, L, fold, interval_type);
   }
 
   // ===========================================================================
@@ -452,7 +460,10 @@ public:
                        double CL,
                        const Resampler& resampler,
                        const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
-                       uint64_t stageTag, uint64_t L, uint64_t fold,
+                       uint64_t stageTag,
+		       uint64_t L,
+		       uint64_t fold,
+		       IntervalType interval_type = IntervalType::TWO_SIDED,
                        double m_ratio_outer = 1.0,
                        double m_ratio_inner = 1.0)
     -> std::pair<
@@ -466,7 +477,7 @@ public:
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::PERCENTILE_T, L, fold) );
 
-    PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner);
+    PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner, interval_type);
     return std::make_pair(std::move(pt), std::move(crn));
   }
 
@@ -478,8 +489,10 @@ public:
                        const Resampler& resampler,
                        uint64_t strategyId,
                        uint64_t stageTag, uint64_t L, uint64_t fold,
+		       IntervalType interval_type = IntervalType::TWO_SIDED,
                        double m_ratio_outer = 1.0,
-                       double m_ratio_inner = 1.0)
+                       double m_ratio_inner = 1.0
+		       )
     -> std::pair<
          palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
@@ -489,7 +502,7 @@ public:
     using mkc_timeseries::rng_utils::CRNRng;
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::PERCENTILE_T, L, fold) );
-    PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner);
+    PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner, interval_type);
     return std::make_pair(std::move(pt), std::move(crn));
   }
 
@@ -666,7 +679,9 @@ private:
                    std::function<Decimal(const std::vector<Decimal>&)> statFn,
                    Resampler sampler,
                    uint64_t strategyHash,
-                   uint64_t stageTag, uint64_t L, uint64_t fold)
+                   uint64_t stageTag, uint64_t L,
+		   uint64_t fold,
+		   IntervalType interval_type = IntervalType::TWO_SIDED)
     -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
   {
     using Provider = mkc_timeseries::rng_utils::CRNEngineProvider<Engine>;
@@ -678,9 +693,13 @@ private:
         .with_tags({ stageTag, BootstrapMethods::BCA, L, fold })
     );
 
-    return BCaBootStrap<Decimal, Resampler, Engine, Provider>(
-      returns, B, CL, std::move(statFn), std::move(sampler), prov
-    );
+    return BCaBootStrap<Decimal, Resampler, Engine, Provider>(returns,
+							      B,
+							      CL,
+							      std::move(statFn),
+							      std::move(sampler),
+							      prov,
+							      interval_type);
   }
 
   // Build a CRNKey from domain tags (handy if you compose CRN outside)

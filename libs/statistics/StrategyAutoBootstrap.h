@@ -5,7 +5,7 @@
 #include <ostream>
 #include <stdexcept>
 #include <cmath>
-
+#include "BootstrapTypes.h"
 #include "TradingBootstrapFactory.h"
 #include "AutoBootstrapSelector.h"
 #include "MOutOfNPercentileBootstrap.h"
@@ -25,6 +25,8 @@ namespace palvalidator
   {
     // Forward declarations
     using mkc_timeseries::StatisticSupport;
+    using palvalidator::analysis::IntervalType;
+
     /**
      * @brief Immutable configuration of bootstrap parameters for a single strategy/statistic.
      */
@@ -215,12 +217,14 @@ namespace palvalidator
                             const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
                             const BootstrapConfiguration& bootstrapConfiguration,
                             const BootstrapAlgorithmsConfiguration& algorithmsConfiguration,
-                            Sampler sampler_instance = Sampler())
+                            Sampler sampler_instance = Sampler(),
+			    IntervalType interval_type = IntervalType::TWO_SIDED)
         : m_factory(factory),
           m_strategy(strategy),
           m_bootstrapConfiguration(bootstrapConfiguration),
           m_algorithmsConfiguration(algorithmsConfiguration),
-          m_sampler_instance(sampler_instance)
+          m_sampler_instance(sampler_instance),
+	  m_interval_type(interval_type)
       {}
 
       /**
@@ -419,7 +423,8 @@ namespace palvalidator
 											    m_strategy,
 											    stageTag,
 											    static_cast<uint64_t>(blockSize),
-											    fold);
+											    fold,
+											    m_interval_type);
 
 		// USE CONFIGURED SAMPLER INSTANCE
 		auto res = engine.run(returns, m_sampler_instance, crn);
@@ -456,7 +461,8 @@ namespace palvalidator
 								    m_strategy,
 								    stageTag,
 								    static_cast<uint64_t>(blockSize),
-								    fold);
+								    fold,
+								    m_interval_type);
 
         // BCaBootstrap computes its statistics during construction; no run() needed.
         // Pass through optional logging stream so summarizeBCa may emit debug output
@@ -552,6 +558,7 @@ namespace palvalidator
       BootstrapConfiguration             m_bootstrapConfiguration;
       BootstrapAlgorithmsConfiguration   m_algorithmsConfiguration;
       Sampler                            m_sampler_instance;
+      IntervalType                       m_interval_type; 
     };
   } // namespace analysis
 } // namespace palvalidator
