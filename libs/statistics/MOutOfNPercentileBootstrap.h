@@ -14,11 +14,14 @@
 #include "ParallelFor.h"
 #include "AdaptiveRatioInternal.h"
 #include "AdaptiveRatioPolicies.h"
+#include "BootstrapTypes.h"
 
 namespace palvalidator
 {
   namespace analysis
   {
+    using palvalidator::analysis::IntervalType;
+
     /**
      * @brief m-out-of-n percentile bootstrap (stationary-block resampling aware).
      *
@@ -55,7 +58,7 @@ namespace palvalidator
      * @tparam Rng
      *   Random-number generator type. Defaults to `randutils::mt19937_rng`.
      */
-template <class Decimal,
+    template <class Decimal,
               class Sampler,
               class Resampler,
               class Rng      = std::mt19937_64,
@@ -101,7 +104,8 @@ template <class Decimal,
                                  double      confidence_level,
                                  double      m_ratio,
                                  const Resampler& resampler,
-                                 bool        rescale_to_n = false)
+                                 bool        rescale_to_n = false,
+				 IntervalType interval_type = IntervalType::TWO_SIDED)
         : m_B(B)
         , m_CL(confidence_level)
         , m_ratio(m_ratio)
@@ -117,6 +121,7 @@ template <class Decimal,
         , m_diagSeBoot(0.0)
         , m_diagSkewBoot(0.0)
         , m_diagValid(false)
+	, m_interval_type(interval_type)
       {
         validateParameters();
         if (!(m_ratio > 0.0 && m_ratio < 1.0))
@@ -142,6 +147,7 @@ template <class Decimal,
         , m_diagSeBoot(0.0)
         , m_diagSkewBoot(0.0)
         , m_diagValid(false)
+	, m_interval_type(other.m_interval_type)
       {
       }
 
@@ -162,6 +168,7 @@ template <class Decimal,
         , m_diagSeBoot(other.m_diagSeBoot)
         , m_diagSkewBoot(other.m_diagSkewBoot)
         , m_diagValid(other.m_diagValid)
+	, m_interval_type(other.m_interval_type)
       {
         // Reset moved-from object
         other.m_diagValid = false;
@@ -180,6 +187,7 @@ template <class Decimal,
           m_chunkHint = 0;
           m_ratioPolicy = other.m_ratioPolicy;
           m_diagMutex = std::make_unique<std::mutex>();
+	  m_interval_type = other.m_interval_type;
 
           // Clear diagnostic data
           if (m_diagMutex) {
@@ -208,6 +216,7 @@ template <class Decimal,
           m_chunkHint = other.m_chunkHint;
           m_ratioPolicy = std::move(other.m_ratioPolicy);
           m_diagMutex = std::move(other.m_diagMutex);
+	  m_interval_type = other.m_interval_type;
 
           // Transfer diagnostic data
           m_diagBootstrapStats = std::move(other.m_diagBootstrapStats);
@@ -229,20 +238,22 @@ template <class Decimal,
                        double      confidence_level,
                        double      m_ratio,
                        const Resampler& resampler,
-                       bool        rescale_to_n = false)
+                       bool        rescale_to_n = false,
+		       IntervalType interval_type = IntervalType::TWO_SIDED)
       {
-        return MOutOfNPercentileBootstrap(B, confidence_level, m_ratio, resampler, rescale_to_n);
+        return MOutOfNPercentileBootstrap(B, confidence_level, m_ratio, resampler,
+					  rescale_to_n, interval_type);
       }
 
       /// Adaptive-ratio factory using a caller-supplied policy.
       template<typename BootstrapStatistic>
       static MOutOfNPercentileBootstrap
-      createAdaptiveWithPolicy(
-        std::size_t B,
-        double      confidence_level,
-        const Resampler& resampler,
-        std::shared_ptr<IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>> policy,
-        bool        rescale_to_n = false)
+      createAdaptiveWithPolicy( std::size_t B,
+				double      confidence_level,
+				const Resampler& resampler,
+				std::shared_ptr<IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>> policy,
+				bool        rescale_to_n = false,
+				IntervalType interval_type = IntervalType::TWO_SIDED)
       {
         if (!policy)
         {
@@ -251,12 +262,12 @@ template <class Decimal,
         }
 
         // Start from any valid fixed-ratio instance (ratio is ignored in adaptive mode).
-        MOutOfNPercentileBootstrap instance(
-          B,
-          confidence_level,
-          /*m_ratio=*/0.5,
-          resampler,
-          rescale_to_n);
+        MOutOfNPercentileBootstrap instance(B,
+					    confidence_level,
+					    /*m_ratio=*/0.5,
+					    resampler,
+					    rescale_to_n,
+					    interval_type);
 
         instance.m_ratio      = -1.0;  // switch to adaptive mode
         instance.m_ratioPolicy =
@@ -271,13 +282,14 @@ template <class Decimal,
       createAdaptive(std::size_t B,
                      double      confidence_level,
                      const Resampler& resampler,
-                     bool        rescale_to_n = false)
+                     bool        rescale_to_n = false,
+		     IntervalType interval_type = IntervalType::TWO_SIDED)
       {
         auto defaultPolicy = std::make_shared<
           TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic>>();
 
         return createAdaptiveWithPolicy<BootstrapStatistic>(
-          B, confidence_level, resampler, defaultPolicy, rescale_to_n);
+          B, confidence_level, resampler, defaultPolicy, rescale_to_n, interval_type);
       }
 
       // ====================================================================
@@ -691,8 +703,27 @@ template <class Decimal,
 
         // Percentile CI (type-7) at CL
         const double alpha = 1.0 - m_CL;
-        const double pl    = alpha / 2.0;
-        const double pu    = 1.0 - alpha / 2.0;
+
+	// Compute quantile probabilities based on interval type
+        double pl, pu;
+        switch (m_interval_type)
+	  {
+          case IntervalType::TWO_SIDED:
+	  default:
+            pl = alpha / 2.0;        // 2.5% for CL=0.95
+            pu = 1.0 - alpha / 2.0;  // 97.5% for CL=0.95
+            break;
+          
+          case IntervalType::ONE_SIDED_LOWER:
+            pl = alpha;              // 5% for CL=0.95 - less conservative lower bound
+            pu = 1.0 - 1e-10;        // ~100% - upper bound effectively unbounded
+            break;
+          
+          case IntervalType::ONE_SIDED_UPPER:
+            pl = 1e-10;              // ~0% - lower bound effectively unbounded
+            pu = 1.0 - alpha;        // 95% for CL=0.95 - less conservative upper bound
+            break;
+        }
 
         // Sort once and use efficient sorted quantile function
         std::sort(thetas_d.begin(), thetas_d.end());
@@ -773,6 +804,7 @@ template <class Decimal,
       mutable double              m_diagSeBoot;
       mutable double              m_diagSkewBoot;
       mutable bool                m_diagValid;
+      IntervalType m_interval_type;
     };
   }
 } // namespace palvalidator::analysis

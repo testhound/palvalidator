@@ -350,7 +350,8 @@ public:
 		   const Resampler& resampler,
 		   const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
 		   uint64_t stageTag, uint64_t L, uint64_t fold,
-		   bool rescale_to_n = false)
+		   bool rescale_to_n = false,
+		   IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
     palvalidator::analysis::MOutOfNPercentileBootstrap<
       Decimal, Sampler, Resampler, Engine, Executor>,
@@ -365,7 +366,7 @@ public:
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
-    Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n);
+    Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n, interval_type);
     return std::make_pair(std::move(mn), std::move(crn));
   }
 
@@ -375,8 +376,10 @@ public:
   auto makeMOutOfN(std::size_t B, double CL, double m_ratio,
 		   const Resampler& resampler,
 		   uint64_t strategyId,
-		   uint64_t stageTag, uint64_t L, uint64_t fold,
-		   bool rescale_to_n = false)
+		   uint64_t stageTag, uint64_t L,
+		   uint64_t fold,
+		   bool rescale_to_n = false,
+		   IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
     palvalidator::analysis::MOutOfNPercentileBootstrap<
       Decimal, Sampler, Resampler, Engine, Executor>,
@@ -390,7 +393,7 @@ public:
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
-    Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n);
+    Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n, interval_type);
     return std::make_pair(std::move(mn), std::move(crn));
   }
 
@@ -400,7 +403,8 @@ public:
                            const Resampler& resampler,
                            const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
                            uint64_t stageTag, uint64_t L, uint64_t fold,
-                           bool rescale_to_n = false)
+                           bool rescale_to_n = false,
+			   IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
          palvalidator::analysis::MOutOfNPercentileBootstrap<
            Decimal, Sampler, Resampler, Engine, Executor>,
@@ -417,7 +421,7 @@ public:
 
     // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
     // via MOutOfNPercentileBootstrap::createAdaptive.
-    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler, rescale_to_n);
+    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler, rescale_to_n, interval_type);
 
     return std::make_pair(std::move(mn), std::move(crn));
   }
@@ -429,7 +433,8 @@ public:
                            const Resampler& resampler,
                            uint64_t strategyId,
                            uint64_t stageTag, uint64_t L, uint64_t fold,
-                           bool rescale_to_n = false)
+                           bool rescale_to_n = false,
+			   IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
          palvalidator::analysis::MOutOfNPercentileBootstrap<
            Decimal, Sampler, Resampler, Engine, Executor>,
@@ -444,7 +449,7 @@ public:
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
     // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
-    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler, rescale_to_n);
+    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler, rescale_to_n, interval_type);
 
     return std::make_pair(std::move(mn), std::move(crn));
   }
