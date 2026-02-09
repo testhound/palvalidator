@@ -11,6 +11,7 @@
 
 // Decimal infrastructure (mirrors headers used by BCaBootStrap)
 #include "DecimalConstants.h"
+#include "BootstrapTypes.h"
 #include "BiasCorrectedBootstrap.h" // for mkc_timeseries::BCaBootStrap and StationaryBlockResampler
 
 // Executors & parallel helpers
@@ -199,6 +200,24 @@ namespace mkc_timeseries
      * The statistic evaluated on each resample is `drawdownFractile` using the same
      * (nTrades, nReps, ddConf) parameters.
      *
+     **Interval Type Selection:**
+     * - TWO_SIDED (default): Full range [lower, upper], most conservative upper bound
+     * - ONE_SIDED_UPPER (recommended): "95% confident max DD won't exceed X" - natural for risk
+     * - ONE_SIDED_LOWER (rare): Bounds best-case scenario
+     *
+     * **Example Usage:**
+     * ```cpp
+     * // For risk management (recommended):
+     * auto result = BoundedDrawdowns<Decimal>::bcaBoundsForDrawdownFractile(
+     *     returns, 1000, 0.95, 252, 5000, 0.95, 3, exec, IntervalType::ONE_SIDED_UPPER);
+     * // result.upperBound = "95% confident the 95th percentile max DD won't exceed this"
+     *
+     * // For maximum conservatism:
+     * auto result = BoundedDrawdowns<Decimal>::bcaBoundsForDrawdownFractile(
+     *     returns, 1000, 0.95, 252, 5000, 0.95, 3, exec, IntervalType::TWO_SIDED);
+     * // result.upperBound = more conservative (97.5th percentile instead of 95th)
+     * ```
+     *
      * @param returns           Input returns history
      * @param numResamples      Number of bootstrap replicates (>= 100 recommended)
      * @param confidenceLevel   e.g., 0.95
@@ -214,11 +233,12 @@ namespace mkc_timeseries
                                                int nTrades,
                                                int nReps,
                                                double ddConf,
-                                               size_t meanBlockLength = 3)
+                                               size_t meanBlockLength = 3,
+					       IntervalType intervalType = IntervalType::TWO_SIDED)
     {
       Executor exec{};
       return bcaBoundsForDrawdownFractile(returns, numResamples, confidenceLevel,
-                                          nTrades, nReps, ddConf, meanBlockLength, exec);
+                                          nTrades, nReps, ddConf, meanBlockLength, exec, intervalType);
     }
 
     /**
@@ -236,6 +256,7 @@ namespace mkc_timeseries
      * @param ddConf            Target fractile for the statistic (e.g., 0.95)
      * @param meanBlockLength   Mean block length for the stationary bootstrap (>= 2)
      * @param exec              Executor for parallel processing
+     * @param intervalType      Type of confidence interval (default: TWO_SIDED)
      * @return                  Result { point estimate, lower, upper } (all magnitudes)
      */
     static Result bcaBoundsForDrawdownFractile(const std::vector<Decimal>& returns,
@@ -245,7 +266,8 @@ namespace mkc_timeseries
                                                int nReps,
                                                double ddConf,
                                                size_t meanBlockLength,
-                                               Executor& exec)
+                                               Executor& exec,
+					       IntervalType intervalType = IntervalType::TWO_SIDED)
     {
       using Sampler = StationaryBlockResampler<Decimal>;
 
@@ -260,7 +282,8 @@ namespace mkc_timeseries
         numResamples,
         confidenceLevel,
         statFn,
-        Sampler(meanBlockLength)
+        Sampler(meanBlockLength),
+	intervalType
       );
 
       Result r;

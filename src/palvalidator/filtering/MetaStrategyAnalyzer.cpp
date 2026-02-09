@@ -1425,34 +1425,30 @@ namespace palvalidator
         outputStream << "      RESULT: ✗ Pyramid Level " << pyramidLevel << " FAILS\n";
     }
 
+
     void MetaStrategyAnalyzer::logDrawdownAnalysis(
-        const DrawdownResults& drawdownResults,
-        uint32_t numTrades,
-        std::ostream& outputStream) const
+    const DrawdownResults& drawdownResults,
+    uint32_t numTrades,
+    std::ostream& outputStream) const
     {
       using mkc_timeseries::DecimalConstants;
-
+      
       if (drawdownResults.hasResults())
-      {
-        const Num qPct  = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
-        const Num ciPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
-
-        outputStream << "      Drawdown Analysis (BCa on q=" << qPct
-                    << "% percentile of max drawdown over " << numTrades << " trades):\n";
-        outputStream << "        Point estimate (q=" << qPct << "%ile): "
-                    << (drawdownResults.getPointEstimate() * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-        outputStream << "        Two-sided " << ciPct << "% CI for that percentile: ["
-                    << (drawdownResults.getLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-                    << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred) << "%]\n";
-        outputStream << "        " << ciPct << "% one-sided upper bound: "
-                    << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred)
-                    << "%  (i.e., with " << ciPct << "% confidence, the q=" << qPct
-                    << "%ile drawdown does not exceed this value)\n";
-      }
+	{
+	  const Num confidencePct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
+	  
+	  outputStream << "      Drawdown Analysis (BCa on " << confidencePct
+		       << "% percentile of max drawdown over " << numTrades << " trades):\n";
+	  outputStream << "        " << confidencePct << "% one-sided upper bound: "
+		       << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred)
+		       << "%\n";
+	  outputStream << "        (With " << confidencePct << "% confidence, the "
+		       << confidencePct << "%ile max drawdown will not exceed the upper bound)\n";
+	}
       else
-      {
-        outputStream << "      Drawdown Analysis: " << drawdownResults.getErrorMessage() << "\n";
-      }
+	{
+	  outputStream << "      Drawdown Analysis: " << drawdownResults.getErrorMessage() << "\n";
+	}
     }
 
     /**
@@ -2285,7 +2281,8 @@ namespace palvalidator
 										   5000,
 										   mConfidenceLevel.getAsDouble(),
 										   blockLength,
-										   executor);
+										   executor,
+										   IntervalType::ONE_SIDED_UPPER);
 
               const Num qPct  = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;  // the dd percentile you targeted
               const Num ciPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;  // the CI level
@@ -2391,7 +2388,8 @@ namespace palvalidator
               5000,
               mConfidenceLevel.getAsDouble(),
               blockLength,
-              executor
+              executor,
+	      IntervalType::ONE_SIDED_UPPER
               );
 
           return DrawdownResults(true, drawdownResult.statistic, drawdownResult.lowerBound, drawdownResult.upperBound);
@@ -2465,28 +2463,7 @@ namespace palvalidator
           // Write drawdown analysis for this pyramid level
           performanceFile << std::endl;
           performanceFile << "--- Drawdown Analysis ---" << std::endl;
-          const auto& drawdownResults = result.getDrawdownResults();
-          if (drawdownResults.hasResults())
-            {
-              const Num qPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
-              const Num ciPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;
-              
-              performanceFile << "Drawdown Analysis (BCa on q=" << qPct
-                             << "% percentile of max drawdown over " << result.getNumTrades() << " trades):" << std::endl;
-              performanceFile << "  Point estimate (q=" << qPct << "%ile): "
-                             << (drawdownResults.getPointEstimate() * DecimalConstants<Num>::DecimalOneHundred) << "%" << std::endl;
-              performanceFile << "  Two-sided " << ciPct << "% CI for that percentile: ["
-                             << (drawdownResults.getLowerBound() * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-                             << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred) << "%]" << std::endl;
-              performanceFile << "  " << ciPct << "% one-sided upper bound: "
-                             << (drawdownResults.getUpperBound() * DecimalConstants<Num>::DecimalOneHundred)
-                             << "%  (i.e., with " << ciPct << "% confidence, the q=" << qPct
-                             << "%ile drawdown does not exceed this value)" << std::endl;
-            }
-          else
-            {
-              performanceFile << "Drawdown Analysis: " << drawdownResults.getErrorMessage() << std::endl;
-            }
+	  logDrawdownAnalysis(result.getDrawdownResults(), result.getNumTrades(), performanceFile);
           
           // Perform exit bar tuning ONLY for pyramid level 0
           if (result.getPyramidLevel() == 0)
