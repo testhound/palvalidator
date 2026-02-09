@@ -16,11 +16,14 @@
 #include "ParallelFor.h"
 #include "StatUtils.h"
 #include "NormalDistribution.h"
+#include "BootstrapTypes.h"
 
 namespace palvalidator
 {
   namespace analysis
   {
+    // Using declaration for IntervalType
+    using palvalidator::analysis::IntervalType;
 
     /**
      * @brief Normal (Wald) bootstrap confidence interval using bootstrap SD.
@@ -79,12 +82,30 @@ namespace palvalidator
       };
 
     public:
+      /**
+       * @brief Construct a normal-bootstrap CI engine.
+       *
+       * @param B
+       *   Number of bootstrap replicates (B >= 400 recommended).
+       * @param confidence_level
+       *   Confidence level CL ∈ (0.5, 1), e.g. 0.95.
+       * @param resampler
+       *   Resampler instance used to generate each length-n bootstrap sample.
+       * @param interval_type
+       *   Type of confidence interval (TWO_SIDED, ONE_SIDED_LOWER, or ONE_SIDED_UPPER).
+       *   Defaults to TWO_SIDED for backward compatibility.
+       *
+       * @throws std::invalid_argument
+       *   If B < 400 or confidence_level not in (0.5,1).
+       */
       NormalBootstrap(std::size_t   B,
                       double        confidence_level,
-                      const Resampler& resampler)
+                      const Resampler& resampler,
+                      IntervalType  interval_type = IntervalType::TWO_SIDED)
         : m_B(B),
           m_CL(confidence_level),
           m_resampler(resampler),
+          m_interval_type(interval_type),
           m_exec(std::make_shared<Executor>()),
           m_chunkHint(0),
           m_diagBootstrapStats(),
@@ -108,6 +129,7 @@ namespace palvalidator
         : m_B(other.m_B),
           m_CL(other.m_CL),
           m_resampler(other.m_resampler),
+          m_interval_type(other.m_interval_type),
           m_exec(std::make_shared<Executor>()),
           m_chunkHint(0),
           m_diagBootstrapStats(),
@@ -125,6 +147,7 @@ namespace palvalidator
         : m_B(other.m_B),
           m_CL(other.m_CL),
           m_resampler(std::move(other.m_resampler)),
+          m_interval_type(other.m_interval_type),
           m_exec(std::move(other.m_exec)),
           m_chunkHint(other.m_chunkHint),
           m_diagBootstrapStats(std::move(other.m_diagBootstrapStats)),
@@ -146,6 +169,7 @@ namespace palvalidator
           m_B = other.m_B;
           m_CL = other.m_CL;
           m_resampler = other.m_resampler;
+          m_interval_type = other.m_interval_type;
           m_exec = std::make_shared<Executor>();
           m_chunkHint = 0;
           
@@ -167,6 +191,7 @@ namespace palvalidator
           m_B = other.m_B;
           m_CL = other.m_CL;
           m_resampler = std::move(other.m_resampler);
+          m_interval_type = other.m_interval_type;
           m_exec = std::move(other.m_exec);
           m_chunkHint = other.m_chunkHint;
           
@@ -198,8 +223,19 @@ namespace palvalidator
                  Sampler                      sampler,
                  Rng&                         rng) const
       {
-        auto make_engine = [&rng](std::size_t /*b*/) {
-          const uint64_t seed = mkc_timeseries::rng_utils::get_random_value(rng);
+        // Pre-generate seeds sequentially to ensure determinism and thread-safety.
+        // Accessing 'rng' inside the parallel loop (via reference) causes data races
+        // and non-deterministic seed assignment based on thread scheduling.
+        std::vector<uint64_t> seeds;
+        seeds.reserve(m_B);
+        for (std::size_t i = 0; i < m_B; ++i) {
+             seeds.push_back(mkc_timeseries::rng_utils::get_random_value(rng));
+        }
+
+        // Capture seeds by move so they are available inside the parallel loop
+        auto make_engine = [seeds = std::move(seeds)](std::size_t b) {
+          // Use the specific seed associated with this iteration index
+          const uint64_t seed = seeds[b];
           auto           seq  = mkc_timeseries::rng_utils::make_seed_seq(seed);
           return mkc_timeseries::rng_utils::construct_seeded_engine<Rng>(seq);
         };
@@ -409,12 +445,39 @@ namespace palvalidator
         }
 
         const double se_boot = std::sqrt(var_boot);
-        const double alpha   = 1.0 - m_CL;
-        const double z       = mkc_timeseries::NormalDistribution::inverseNormalCdf(1.0 - alpha / 2.0);
+        
+        // Calculate z-score and bounds based on interval type
+        const double alpha = 1.0 - m_CL;
+        const double center = num::to_double(theta_hat);
 
-        const double center  = num::to_double(theta_hat);
-        const double lb_d    = center - z * se_boot;
-        const double ub_d    = center + z * se_boot;
+	double lb_d = 0.0;  // Initialize to suppress compiler warning
+	double ub_d = 0.0;  // Initialize to suppress compiler warning
+ 
+        switch (m_interval_type) {
+          case IntervalType::TWO_SIDED: {
+            // Two-sided: split alpha into two tails
+            const double z = mkc_timeseries::NormalDistribution::inverseNormalCdf(1.0 - alpha / 2.0);
+            lb_d = center - z * se_boot;
+            ub_d = center + z * se_boot;
+            break;
+          }
+          
+          case IntervalType::ONE_SIDED_LOWER: {
+            // One-sided lower: full alpha in lower tail, upper unbounded
+            const double z = mkc_timeseries::NormalDistribution::inverseNormalCdf(1.0 - alpha);
+            lb_d = center - z * se_boot;
+            ub_d = center + 1e6 * se_boot;  // Effectively unbounded
+            break;
+          }
+          
+          case IntervalType::ONE_SIDED_UPPER: {
+            // One-sided upper: full alpha in upper tail, lower unbounded
+            const double z = mkc_timeseries::NormalDistribution::inverseNormalCdf(1.0 - alpha);
+            lb_d = center - 1e6 * se_boot;  // Effectively unbounded
+            ub_d = center + z * se_boot;
+            break;
+          }
+        }
 
         // Store diagnostics for the most recent run (protected by mutex)
         {
@@ -444,6 +507,7 @@ namespace palvalidator
       std::size_t                       m_B;
       double                            m_CL;
       Resampler                         m_resampler;
+      IntervalType                      m_interval_type;
       mutable std::shared_ptr<Executor> m_exec;
       mutable uint32_t                  m_chunkHint;
 
