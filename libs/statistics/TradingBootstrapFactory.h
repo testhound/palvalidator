@@ -590,7 +590,10 @@ public:
   auto makeNormal(std::size_t B, double CL,
                   const Resampler& resampler,
                   const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
-                  uint64_t stageTag, uint64_t L, uint64_t fold)
+                  uint64_t stageTag,
+		  uint64_t L,
+		  uint64_t fold,
+		  IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
          palvalidator::analysis::NormalBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
@@ -603,7 +606,7 @@ public:
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::NORMAL, L, fold) );
 
-    Bootstrap nb(B, CL, resampler);
+    Bootstrap nb(B, CL, resampler, interval_type);
     return std::make_pair(std::move(nb), std::move(crn));
   }
 
@@ -613,7 +616,10 @@ public:
   auto makeNormal(std::size_t B, double CL,
                   const Resampler& resampler,
                   uint64_t strategyId,
-                  uint64_t stageTag, uint64_t L, uint64_t fold)
+                  uint64_t stageTag,
+		  uint64_t L,
+		  uint64_t fold,
+		  IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
          palvalidator::analysis::NormalBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
@@ -625,7 +631,7 @@ public:
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::NORMAL, L, fold) );
 
-    Bootstrap nb(B, CL, resampler);
+    Bootstrap nb(B, CL, resampler, interval_type);
     return std::make_pair(std::move(nb), std::move(crn));
   }
 
