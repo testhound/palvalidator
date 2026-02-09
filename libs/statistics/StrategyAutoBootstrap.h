@@ -356,7 +356,8 @@ namespace palvalidator
 											   m_strategy,
 											   stageTag,
 											   static_cast<uint64_t>(blockSize),
-											   fold);
+											   fold,
+											   m_interval_type);
 
 		// USE CONFIGURED SAMPLER INSTANCE
 		auto res = engine.run(returns, m_sampler_instance, crn);

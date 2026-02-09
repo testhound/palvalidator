@@ -14,11 +14,14 @@
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
 #include "StatUtils.h"
+#include "BootstrapTypes.h"
 
 namespace palvalidator
 {
   namespace analysis
   {
+    // Using declaration for IntervalType
+    using palvalidator::analysis::IntervalType;
 
     /**
      * @brief Standard n-out-of-n percentile bootstrap confidence interval.
@@ -89,16 +92,21 @@ namespace palvalidator
        *   Confidence level CL ∈ (0.5, 1), e.g. 0.95.
        * @param resampler
        *   Resampler instance used to generate each length-n bootstrap sample.
+       * @param interval_type
+       *   Type of confidence interval (TWO_SIDED, ONE_SIDED_LOWER, or ONE_SIDED_UPPER).
+       *   Defaults to TWO_SIDED for backward compatibility.
        *
        * @throws std::invalid_argument
        *   If B < 400 or confidence_level not in (0.5,1).
        */
       PercentileBootstrap(std::size_t   B,
                           double        confidence_level,
-                          const Resampler& resampler)
+                          const Resampler& resampler,
+                          IntervalType  interval_type = IntervalType::TWO_SIDED)
         : m_B(B),
           m_CL(confidence_level),
           m_resampler(resampler),
+          m_interval_type(interval_type),
           m_exec(std::make_shared<Executor>()),
           m_chunkHint(0),
           m_diagBootstrapStats(),
@@ -120,6 +128,7 @@ namespace palvalidator
         : m_B(other.m_B),
           m_CL(other.m_CL),
           m_resampler(other.m_resampler),
+          m_interval_type(other.m_interval_type),
           m_exec(std::make_shared<Executor>()),
           m_chunkHint(0),
           m_chunkHintMutex(),
@@ -138,6 +147,7 @@ namespace palvalidator
         : m_B(other.m_B),
           m_CL(other.m_CL),
           m_resampler(std::move(other.m_resampler)),
+          m_interval_type(other.m_interval_type),
           m_exec(std::move(other.m_exec)),
           m_chunkHint(other.m_chunkHint),
           m_chunkHintMutex(),
@@ -160,6 +170,7 @@ namespace palvalidator
           m_B = other.m_B;
           m_CL = other.m_CL;
           m_resampler = other.m_resampler;
+          m_interval_type = other.m_interval_type;
           m_exec = std::make_shared<Executor>();
           m_chunkHint = 0;
           
@@ -181,6 +192,7 @@ namespace palvalidator
           m_B = other.m_B;
           m_CL = other.m_CL;
           m_resampler = std::move(other.m_resampler);
+          m_interval_type = other.m_interval_type;
           m_exec = std::move(other.m_exec);
           m_chunkHint = other.m_chunkHint;
           
@@ -522,9 +534,27 @@ namespace palvalidator
         const double se_boot = std::sqrt(var_boot);
 
         // Percentile CI (type-7) at CL
+        // Calculate quantiles based on interval type
         const double alpha = 1.0 - m_CL;
-        const double pl    = alpha / 2.0;
-        const double pu    = 1.0 - alpha / 2.0;
+        double pl = 0.0;
+	double pu = 1.0;
+        
+        switch (m_interval_type) {
+          case IntervalType::TWO_SIDED:
+            pl = alpha / 2.0;
+            pu = 1.0 - alpha / 2.0;
+            break;
+            
+          case IntervalType::ONE_SIDED_LOWER:
+            pl = alpha;
+            pu = 1.0 - 1e-10;  // Effectively unbounded upper
+            break;
+            
+          case IntervalType::ONE_SIDED_UPPER:
+            pl = 1e-10;        // Effectively unbounded lower
+            pu = 1.0 - alpha;
+            break;
+        }
 
 	const double lb_d = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pl);
         const double ub_d = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pu);
@@ -556,6 +586,7 @@ namespace palvalidator
       std::size_t                       m_B;
       double                            m_CL;
       Resampler                         m_resampler;
+      IntervalType                      m_interval_type;
       mutable std::shared_ptr<Executor> m_exec;
       mutable uint32_t                  m_chunkHint;
       mutable std::mutex                m_chunkHintMutex;
