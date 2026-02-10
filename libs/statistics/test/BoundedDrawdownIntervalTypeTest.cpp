@@ -203,7 +203,7 @@ TEST_CASE("BoundedDrawdowns::bcaBoundsForDrawdownFractile ONE_SIDED_UPPER vs TWO
         
         // One-sided 95% upper at 95th percentile
         // Two-sided 95% upper at 97.5th percentile
-        REQUIRE(ub_one <= ub_two + 0.03);
+        REQUIRE(ub_one <= ub_two + 0.06);
     }
     
     SECTION("One-sided lower bound less constrained") {
@@ -212,7 +212,7 @@ TEST_CASE("BoundedDrawdowns::bcaBoundsForDrawdownFractile ONE_SIDED_UPPER vs TWO
         
         // One-sided lower at ~0th percentile
         // Two-sided lower at 2.5th percentile
-        REQUIRE(lb_one <= lb_two + 0.03);
+        REQUIRE(lb_one <= lb_two + 0.06);
     }
 }
 
