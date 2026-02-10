@@ -1680,7 +1680,8 @@ namespace palvalidator
 				  blockLength,            // L
 				  pL, pU,                 // lower/upper quantiles
 				  B,                      // bootstrap resamples
-				  cl);                    // confidence level
+				  cl,
+				  IntervalType::ONE_SIDED_LOWER);                    
 
 	  // 4) Operational lower bound (BCa lower endpoint at pL)
 	  const Num lb = bfr.getLowerBound();
