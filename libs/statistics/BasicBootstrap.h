@@ -16,11 +16,14 @@
 #include "ParallelFor.h"
 #include "number.h"
 #include "StatUtils.h"
+#include "BootstrapTypes.h"
 
 namespace palvalidator
 {
   namespace analysis
   {
+    // Using declaration for IntervalType
+    using palvalidator::analysis::IntervalType;
 
     /**
      * @brief Basic bootstrap confidence interval (reverse percentile).
@@ -81,12 +84,30 @@ namespace palvalidator
       };
 
     public:
+      /**
+       * @brief Construct a basic bootstrap CI engine.
+       *
+       * @param B
+       *   Number of bootstrap replicates (B >= 400 recommended).
+       * @param confidence_level
+       *   Confidence level CL ∈ (0.5, 1), e.g. 0.95.
+       * @param resampler
+       *   Resampler instance used to generate each length-n bootstrap sample.
+       * @param interval_type
+       *   Type of confidence interval (TWO_SIDED, ONE_SIDED_LOWER, or ONE_SIDED_UPPER).
+       *   Defaults to TWO_SIDED for backward compatibility.
+       *
+       * @throws std::invalid_argument
+       *   If B < 400 or confidence_level not in (0.5,1).
+       */
       BasicBootstrap(std::size_t   B,
                      double        confidence_level,
-                     const Resampler& resampler)
+                     const Resampler& resampler,
+                     IntervalType  interval_type = IntervalType::TWO_SIDED)
         : m_B(B),
           m_CL(confidence_level),
           m_resampler(resampler),
+          m_interval_type(interval_type),
           m_exec(std::make_shared<Executor>()),
           m_chunkHint(0),
           m_diagBootstrapStats(),
@@ -108,6 +129,7 @@ namespace palvalidator
         : m_B(other.m_B),
           m_CL(other.m_CL),
           m_resampler(std::move(other.m_resampler)),
+          m_interval_type(other.m_interval_type),
           m_exec(std::move(other.m_exec)),
           m_chunkHint(static_cast<uint32_t>(other.m_chunkHint.load())),
           m_diagBootstrapStats(std::move(other.m_diagBootstrapStats)),
@@ -126,6 +148,7 @@ namespace palvalidator
           m_B = other.m_B;
           m_CL = other.m_CL;
           m_resampler = std::move(other.m_resampler);
+          m_interval_type = other.m_interval_type;
           m_exec = std::move(other.m_exec);
           m_chunkHint.store(static_cast<uint32_t>(other.m_chunkHint.load()));
           m_diagBootstrapStats = std::move(other.m_diagBootstrapStats);
@@ -156,19 +179,22 @@ namespace palvalidator
                  Sampler                      sampler,
                  Rng&                         rng)
       {
-        // Local mutex to protect RNG access across parallel iterations
-        std::mutex rng_mutex;
-        
-        auto make_engine = [&rng, &rng_mutex](std::size_t /*b*/) {
-          uint64_t seed;
-          {
-            std::lock_guard<std::mutex> lock(rng_mutex);
-            seed = mkc_timeseries::rng_utils::get_random_value(rng);
-          }
-          auto seq = mkc_timeseries::rng_utils::make_seed_seq(seed);
+        // Pre-generate seeds sequentially to ensure determinism.
+        // Even with a mutex, grabbing seeds inside the parallel loop 
+        // makes the assignment of seeds to replicates dependent on thread scheduling.
+        std::vector<uint64_t> seeds;
+        seeds.reserve(m_B);
+        for (std::size_t i = 0; i < m_B; ++i)
+	  seeds.push_back(mkc_timeseries::rng_utils::get_random_value(rng));
+
+        // Capture seeds by move
+        auto make_engine = [seeds = std::move(seeds)](std::size_t b) {
+          const uint64_t seed = seeds[b];
+          auto           seq  = mkc_timeseries::rng_utils::make_seed_seq(seed);
           return mkc_timeseries::rng_utils::construct_seeded_engine<Rng>(seq);
         };
 
+        // Note: run_core_ handles the parallel execution using these deterministic seeds
         return run_core_(x, sampler, make_engine);
       }
 
@@ -344,16 +370,40 @@ namespace palvalidator
 
         const double se_boot = std::sqrt(var_boot);
 
+        // Calculate quantiles based on interval type
         const double alpha = 1.0 - m_CL;
-        const double pl    = alpha / 2.0;
-        const double pu    = 1.0 - alpha / 2.0;
+        double pl = 0.0;  // Initialize to suppress compiler warning
+        double pu = 1.0;  // Initialize to suppress compiler warning
 
+	switch (m_interval_type) {
+          case IntervalType::TWO_SIDED:
+            pl = alpha / 2.0;
+            pu = 1.0 - alpha / 2.0;
+            break;
+            
+          case IntervalType::ONE_SIDED_LOWER:
+            // Basic Bootstrap Lower Bound = 2*theta - q_{1-alpha}
+            // Code uses: lower = 2*theta - q_hi (where q_hi is quantile at pu)
+            // Therefore: pu must be 1.0 - alpha.
+            pl = 1e-10;       // Upper bound becomes effectively unbounded (2*theta - min)
+            pu = 1.0 - alpha; // Finite lower bound
+            break;
+            
+          case IntervalType::ONE_SIDED_UPPER:
+            // Basic Bootstrap Upper Bound = 2*theta - q_{alpha}
+            // Code uses: upper = 2*theta - q_lo (where q_lo is quantile at pl)
+            // Therefore: pl must be alpha.
+            pl = alpha;       // Finite upper bound
+            pu = 1.0 - 1e-10; // Lower bound becomes effectively unbounded (2*theta - max)
+            break;
+        }
+	
         const double q_lo = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pl);
         const double q_hi = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(thetas_d, pu);
 
         const double center = num::to_double(theta_hat);
-        const double lb_d   = 2.0 * center - q_hi; // 2θ̂ - q_{1-α/2}
-        const double ub_d   = 2.0 * center - q_lo; // 2θ̂ - q_{α/2}
+        const double lb_d   = 2.0 * center - q_hi; // 2θ̂ - q_{pu} (reverse)
+        const double ub_d   = 2.0 * center - q_lo; // 2θ̂ - q_{pl} (reverse)
 
         // Store diagnostics for last run
         m_diagBootstrapStats = thetas_d;
@@ -379,6 +429,7 @@ namespace palvalidator
       std::size_t                       m_B;
       double                            m_CL;
       Resampler                         m_resampler;
+      IntervalType                      m_interval_type;
       mutable std::shared_ptr<Executor> m_exec;
       mutable std::atomic<uint32_t>     m_chunkHint;
 
