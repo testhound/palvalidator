@@ -87,9 +87,10 @@ namespace mkc_timeseries
                        double   lowerQuantileP  = 0.10,
                        double   upperQuantileP  = 0.90,
                        unsigned numBootstraps   = 5000,
-                       double   confLevel       = 0.95)
+                       double   confLevel       = 0.95,
+		       IntervalType intervalType = IntervalType::TWO_SIDED)
       : BoundFutureReturns(buildMonthlyReturnsFromClosedPositions<Decimal>(closedPositions),
-                           blockLen, lowerQuantileP, upperQuantileP, numBootstraps, confLevel)
+                           blockLen, lowerQuantileP, upperQuantileP, numBootstraps, confLevel, intervalType)
     {
       // Delegating constructor: builds monthly returns and delegates to the main constructor
       // This eliminates code duplication between the two constructors
@@ -112,12 +113,14 @@ namespace mkc_timeseries
                        double   lowerQuantileP  = 0.10,
                        double   upperQuantileP  = 0.90,
                        unsigned numBootstraps   = 5000,
-                       double   confLevel       = 0.95)
+                       double   confLevel       = 0.95,
+		       IntervalType intervalType = IntervalType::TWO_SIDED)
       : m_lowerP(lowerQuantileP),
 	m_upperP(upperQuantileP),
 	m_B(numBootstraps),
 	m_conf(confLevel),
-	m_monthly(monthlyReturns)
+	m_monthly(monthlyReturns),
+	m_intervalType(intervalType)
     {
       validateInputs();
 
@@ -127,6 +130,26 @@ namespace mkc_timeseries
 				      "BoundFutureReturns: need at least ~8 months to estimate quantile bounds robustly.");
         }
 
+      // Determine interval types for each quantile
+      IntervalType lowerIntervalType;
+      IntervalType upperIntervalType;
+      
+      if (m_intervalType == IntervalType::TWO_SIDED)
+	{
+	  // Backward compatible: both use TWO_SIDED
+	  lowerIntervalType = IntervalType::TWO_SIDED;
+	  upperIntervalType = IntervalType::TWO_SIDED;
+      }
+      else
+	{
+	  // One-sided requested: use appropriate one-sided interval for each tail
+	  // Lower quantile cares about lower bound → ONE_SIDED_LOWER
+	  // Upper quantile cares about upper bound → ONE_SIDED_UPPER
+	  lowerIntervalType = IntervalType::ONE_SIDED_LOWER;
+	  upperIntervalType = IntervalType::ONE_SIDED_UPPER;
+	}
+
+      
       // 2) Resampler for BCa (stationary block by default).
       //    Note: IIDResampler ignores blockLen (uses default constructor)
       Resampler sampler = createResampler(blockLen);
@@ -146,7 +169,7 @@ namespace mkc_timeseries
 
       // 4) Run BCa for lower quantile
       {
-	Bca bca(m_monthly, m_B, m_conf, statLower, sampler);
+	Bca bca(m_monthly, m_B, m_conf, statLower, sampler, lowerIntervalType);
 	m_lower.point = statLower(m_monthly);
 	m_lower.lo    = bca.getLowerBound();
 	m_lower.hi    = bca.getUpperBound();
@@ -154,7 +177,7 @@ namespace mkc_timeseries
 
       // 5) Run BCa for upper quantile
       {
-	Bca bca(m_monthly, m_B, m_conf, statUpper, sampler);
+	Bca bca(m_monthly, m_B, m_conf, statUpper, sampler, upperIntervalType);
 	m_upper.point = statUpper(m_monthly);
 	m_upper.lo    = bca.getLowerBound();
 	m_upper.hi    = bca.getUpperBound();
@@ -262,6 +285,7 @@ namespace mkc_timeseries
 
     // Data
     std::vector<Decimal> m_monthly;
+    IntervalType m_intervalType;
 
     // Quantile results
     QuantileCI<Decimal> m_lower;
