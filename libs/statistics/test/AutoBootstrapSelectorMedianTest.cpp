@@ -856,7 +856,7 @@ TEST_CASE("PercentileLike: summarizePercentileLike() computes median correctly",
         );
         
         // For Normal method, median is 0.0 by design - Normal doesn't use bootstrap median
-        REQUIRE(c.getMedianBoot() == Catch::Approx(0.0));
+        REQUIRE(c.getMedianBoot() == Catch::Approx(1.8));
         REQUIRE(c.getMethod() == MethodId::Normal);
     }
     
@@ -916,15 +916,16 @@ TEST_CASE("PercentileLike: Normal method uses SE-based length penalty (special c
     result.B = 5;
     result.effective_B = 5;
     result.skipped = 0;
-    
+
     SECTION("Normal method median calculation doesn't interfere with length penalty")
     {
         Candidate c = Selector::summarizePercentileLike(
             MethodId::Normal, engine, result
         );
         
-        // Normal method has median 0.0 by design - Normal doesn't use bootstrap median
-        REQUIRE(c.getMedianBoot() == Catch::Approx(0.0));
+        // Normal method NOW CALCULATES median from bootstrap statistics (BUG FIX)
+        // Bootstrap stats: {1.4, 1.5, 1.6, 1.7, 1.8} → Median = 1.6
+        REQUIRE(c.getMedianBoot() == Catch::Approx(1.6));
         
         // Length penalty should be finite (uses SE-based calculation for Normal)
         REQUIRE(std::isfinite(c.getLengthPenalty()));
@@ -1012,8 +1013,7 @@ TEST_CASE("PercentileLike: Median consistency across different percentile-like m
         auto basic_c = Selector::summarizePercentileLike(MethodId::Basic, engine, result);
         auto moutofn_c = Selector::summarizePercentileLike(MethodId::MOutOfN, engine, result);
         
-        // Normal method has median 0.0 by design, others should have 1.5 from bootstrap stats
-        REQUIRE(normal_c.getMedianBoot() == Catch::Approx(0.0));      // Normal doesn't use bootstrap median
+        REQUIRE(normal_c.getMedianBoot() == Catch::Approx(1.5));
         REQUIRE(percentile_c.getMedianBoot() == Catch::Approx(1.5));
         REQUIRE(basic_c.getMedianBoot() == Catch::Approx(1.5));
         REQUIRE(moutofn_c.getMedianBoot() == Catch::Approx(1.5));

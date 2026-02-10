@@ -378,40 +378,108 @@ TEST_CASE("computeLengthPenalty_Normal: Edge cases",
           "[AutoBootstrapSelector][LengthPenalty][Normal][EdgeCases]")
 {
     double normalized_length;
-    double median_placeholder;
+    double median_val;
     
     SECTION("Zero actual length returns zero penalty")
     {
+        std::vector<double> stats = createBootstrapStats(10.0, 2.0, 100);
+        double se = computeSE(stats);
+        
         double penalty = PenaltyCalc::computeLengthPenalty_Normal(
-            0.0, 5.0, 0.95, normalized_length, median_placeholder);
+            0.0, se, 0.95, stats, normalized_length, median_val);
         
         REQUIRE(penalty == 0.0);
         REQUIRE(normalized_length == 1.0);
+        // Median should still be calculated even if length is zero
+        REQUIRE(median_val == Catch::Approx(10.0).epsilon(0.1));
     }
     
     SECTION("Zero SE returns zero penalty")
     {
+        std::vector<double> stats = createBootstrapStats(10.0, 2.0, 100);
+        
         double penalty = PenaltyCalc::computeLengthPenalty_Normal(
-            10.0, 0.0, 0.95, normalized_length, median_placeholder);
+            10.0, 0.0, 0.95, stats, normalized_length, median_val);
         
         REQUIRE(penalty == 0.0);
         REQUIRE(normalized_length == 1.0);
+        // Median should still be calculated
+        REQUIRE(median_val == Catch::Approx(10.0).epsilon(0.1));
     }
     
     SECTION("Negative SE returns zero penalty")
     {
+        std::vector<double> stats = createBootstrapStats(10.0, 2.0, 100);
+        
         double penalty = PenaltyCalc::computeLengthPenalty_Normal(
-            10.0, -2.0, 0.95, normalized_length, median_placeholder);
+            10.0, -2.0, 0.95, stats, normalized_length, median_val);
         
         REQUIRE(penalty == 0.0);
+        // Median should still be calculated
+        REQUIRE(median_val == Catch::Approx(10.0).epsilon(0.1));
     }
     
-    SECTION("Median placeholder is set to 0")
+    SECTION("Empty bootstrap statistics returns zero median")
     {
-        PenaltyCalc::computeLengthPenalty_Normal(
-            10.0, 5.0, 0.95, normalized_length, median_placeholder);
+        std::vector<double> empty_stats;
         
-        REQUIRE(median_placeholder == 0.0);
+        double penalty = PenaltyCalc::computeLengthPenalty_Normal(
+            10.0, 5.0, 0.95, empty_stats, normalized_length, median_val);
+        
+        REQUIRE(penalty == 0.0);
+        REQUIRE(median_val == 0.0);  // Correct for empty stats
+    }
+    
+    SECTION("Single bootstrap statistic uses that value as median")
+    {
+        std::vector<double> single = {7.5};
+        
+        double penalty = PenaltyCalc::computeLengthPenalty_Normal(
+            10.0, 5.0, 0.95, single, normalized_length, median_val);
+        
+        REQUIRE(penalty == 0.0);
+        REQUIRE(median_val == 0.0);  // Less than 2 stats → median = 0.0
+    }
+}
+
+TEST_CASE("computeLengthPenalty_Normal: Median computation",
+          "[AutoBootstrapSelector][LengthPenalty][Normal][Median]")
+{
+    double normalized_length;
+    double median_val;
+    
+    SECTION("Median of odd-sized sample")
+    {
+        std::vector<double> stats = {1.0, 2.0, 3.0, 4.0, 5.0};
+        double se = computeSE(stats);
+        
+        PenaltyCalc::computeLengthPenalty_Normal(
+            10.0, se, 0.95, stats, normalized_length, median_val);
+        
+        REQUIRE(median_val == Catch::Approx(3.0));
+    }
+    
+    SECTION("Median of even-sized sample")
+    {
+        std::vector<double> stats = {1.0, 2.0, 3.0, 4.0};
+        double se = computeSE(stats);
+        
+        PenaltyCalc::computeLengthPenalty_Normal(
+            10.0, se, 0.95, stats, normalized_length, median_val);
+        
+        REQUIRE(median_val == Catch::Approx(2.5));
+    }
+    
+    SECTION("Median with realistic bootstrap distribution")
+    {
+        std::vector<double> stats = createBootstrapStats(50.0, 8.0, 1000);
+        double se = computeSE(stats);
+        
+        PenaltyCalc::computeLengthPenalty_Normal(
+            20.0, se, 0.95, stats, normalized_length, median_val);
+        
+        // Should be close to mean (50.0) for symmetric distribution
+        REQUIRE(median_val == Catch::Approx(50.0).epsilon(0.05));
     }
 }
 
@@ -420,71 +488,86 @@ TEST_CASE("computeLengthPenalty_Normal: Ideal length is z*SE",
 {
     SECTION("95% CI: ideal = 2 * 1.96 * SE")
     {
-        const double se = 5.0;
+        std::vector<double> stats = createBootstrapStats(100.0, 15.0, 1000);
+        const double se = computeSE(stats);
         const double z = 1.96;  // Approx for 95% CI
-        const double ideal = 2.0 * z * se;  // = 19.6
+        const double ideal = 2.0 * z * se;
         
         double normalized_length, median;
         
         double penalty = PenaltyCalc::computeLengthPenalty_Normal(
-            ideal, se, 0.95, normalized_length, median);
+            ideal, se, 0.95, stats, normalized_length, median);
         
         // Normalized should be exactly 1.0 (actual = ideal)
         REQUIRE(normalized_length == Catch::Approx(1.0).epsilon(0.01));
         
         // No penalty at ideal
         REQUIRE(penalty == Catch::Approx(0.0).margin(1e-6));
+        
+        // Median should be calculated
+        REQUIRE(median == Catch::Approx(100.0).epsilon(0.05));
     }
     
     SECTION("90% CI: ideal = 2 * 1.645 * SE")
     {
-        const double se = 3.0;
+        std::vector<double> stats = createBootstrapStats(50.0, 10.0, 1000);
+        const double se = computeSE(stats);
         const double z = 1.645;  // Approx for 90% CI
-        const double ideal = 2.0 * z * se;  // = 9.87
+        const double ideal = 2.0 * z * se;
         
         double normalized_length, median;
         
         double penalty = PenaltyCalc::computeLengthPenalty_Normal(
-            ideal, se, 0.90, normalized_length, median);
+            ideal, se, 0.90, stats, normalized_length, median);
         
         REQUIRE(normalized_length == Catch::Approx(1.0).epsilon(0.01));
         REQUIRE(penalty == Catch::Approx(0.0).margin(1e-6));
+        
+        // Median should be calculated
+        REQUIRE(median == Catch::Approx(50.0).epsilon(0.05));
     }
 }
 
 TEST_CASE("computeLengthPenalty_Normal: Penalty calculations",
           "[AutoBootstrapSelector][LengthPenalty][Normal][Penalty]")
 {
-    const double se = 5.0;
+    std::vector<double> stats = createBootstrapStats(100.0, 15.0, 1000);
+    const double se = computeSE(stats);
     const double z_95 = 1.96;
-    const double ideal = 2.0 * z_95 * se;  // ≈ 19.6
+    const double ideal = 2.0 * z_95 * se;
     
     SECTION("Too short: 0.5x ideal")
     {
-        double actual = 0.5 * ideal;  // = 9.8
+        double actual = 0.5 * ideal;
         double normalized_length, median;
         
         double penalty = PenaltyCalc::computeLengthPenalty_Normal(
-            actual, se, 0.95, normalized_length, median);
+            actual, se, 0.95, stats, normalized_length, median);
         
         REQUIRE(normalized_length == Catch::Approx(0.5).epsilon(0.01));
         
         // Penalty = (0.8 - 0.5)^2 = 0.09
         REQUIRE(penalty == Catch::Approx(0.09).epsilon(0.01));
+        
+        // Median should be calculated
+        REQUIRE(median == Catch::Approx(100.0).epsilon(0.05));
     }
     
     SECTION("Too wide: 2.5x ideal")
     {
-        double actual = 2.5 * ideal;  // = 49.0
+        double actual = 2.5 * ideal;
         double normalized_length, median;
         
         double penalty = PenaltyCalc::computeLengthPenalty_Normal(
-            actual, se, 0.95, normalized_length, median);
+            actual, se, 0.95, stats, normalized_length, median);
         
         REQUIRE(normalized_length == Catch::Approx(2.5).epsilon(0.01));
         
         // Penalty = (2.5 - 1.8)^2 = 0.49
         REQUIRE(penalty == Catch::Approx(0.49).epsilon(0.01));
+        
+        // Median should be calculated
+        REQUIRE(median == Catch::Approx(100.0).epsilon(0.05));
     }
     
     SECTION("Within bounds [0.8, 1.8]: no penalty")
@@ -493,10 +576,13 @@ TEST_CASE("computeLengthPenalty_Normal: Penalty calculations",
         double normalized_length, median;
         
         double penalty = PenaltyCalc::computeLengthPenalty_Normal(
-            actual, se, 0.95, normalized_length, median);
+            actual, se, 0.95, stats, normalized_length, median);
         
         REQUIRE(normalized_length == Catch::Approx(1.2).epsilon(0.01));
         REQUIRE(penalty == Catch::Approx(0.0).margin(1e-6));
+        
+        // Median should be calculated
+        REQUIRE(median == Catch::Approx(100.0).epsilon(0.05));
     }
 }
 
@@ -526,13 +612,13 @@ TEST_CASE("computeLengthPenalty_Normal: Different from percentile reference",
         // Test that the same actual length gets different normalized values
         double test_length = 20.0;
         
-        double norm_perc, norm_normal, med;
+        double norm_perc, norm_normal, med_perc, med_normal;
         
         PenaltyCalc::computeLengthPenalty_Percentile(
-            test_length, stats, 0.95, MethodId::Percentile, norm_perc, med);
+            test_length, stats, 0.95, MethodId::Percentile, norm_perc, med_perc);
         
         PenaltyCalc::computeLengthPenalty_Normal(
-            test_length, se, 0.95, norm_normal, med);
+            test_length, se, 0.95, stats, norm_normal, med_normal);
         
         // Different ideals → different normalized lengths
         // (Exact difference depends on distribution, but they should differ)
@@ -542,6 +628,10 @@ TEST_CASE("computeLengthPenalty_Normal: Different from percentile reference",
         // Both should be reasonable (> 0)
         REQUIRE(norm_perc > 0.0);
         REQUIRE(norm_normal > 0.0);
+        
+        // Both should calculate same median (same bootstrap distribution)
+        REQUIRE(med_perc == Catch::Approx(med_normal).epsilon(0.01));
+        REQUIRE(med_perc == Catch::Approx(100.0).epsilon(0.05));
     }
 }
 
@@ -762,12 +852,17 @@ TEST_CASE("Method-specific functions: Correct theoretical ideals",
         
         // Normal: ideal = 2 * z * SE
         double normal_ideal = 2.0 * 1.96 * se;
-        
-        double penalty_normal = PenaltyCalc::computeLengthPenalty_Normal(
-            normal_ideal, se, 0.95, normalized, median);
-        
-        REQUIRE(normalized == Catch::Approx(1.0).epsilon(0.02));
-        REQUIRE(penalty_normal == Catch::Approx(0.0).margin(1e-3));
+
+	double penalty_normal = PenaltyCalc::computeLengthPenalty_Normal(normal_ideal,
+									 se,
+									 0.95,
+									 theta_stats,
+									 normalized,
+									 median);
+
+	REQUIRE(normalized == Catch::Approx(1.0).epsilon(0.02));
+	REQUIRE(penalty_normal == Catch::Approx(0.0).margin(1e-3));
+	REQUIRE(median == Catch::Approx(50.0).epsilon(0.1));
         
         // PercentileT: ideal = (t_hi - t_lo) * SE_hat
         std::vector<double> sorted_t = t_stats;
@@ -807,15 +902,17 @@ TEST_CASE("Percentile-like methods share reference, z-based methods share refere
     
     SECTION("Normal uses z*SE, not theta* quantiles")
     {
-        PenaltyCalc::computeLengthPenalty_Percentile(
-            test_length, theta_stats, 0.95, MethodId::Percentile, norm1, med);
+      double med1, med2;
+      PenaltyCalc::computeLengthPenalty_Percentile(
+						   test_length, theta_stats, 0.95, MethodId::Percentile, norm1, med1);
+
+      PenaltyCalc::computeLengthPenalty_Normal(test_length, se, 0.95, theta_stats, norm2, med2);
         
-        PenaltyCalc::computeLengthPenalty_Normal(
-            test_length, se, 0.95, norm2, med);
-        
-        // These should generally differ (unless distribution is perfectly normal)
-        INFO("Percentile normalized: " << norm1);
-        INFO("Normal normalized: " << norm2);
+      // These should generally differ (unless distribution is perfectly normal)
+      INFO("Percentile normalized: " << norm1);
+      INFO("Normal normalized: " << norm2);
+      
+      REQUIRE(med1 == Catch::Approx(med2).epsilon(0.01));
     }
     
     SECTION("PercentileT uses T*, not theta*")

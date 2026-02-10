@@ -845,7 +845,12 @@ namespace palvalidator
 	if (method == MethodId::Normal)
 	  {
 	    // Use SE-based ideal for Normal
-	    length_penalty = BootstrapPenaltyCalculator<Decimal>::computeLengthPenalty_Normal(len, se_boot, res.cl, normalized_length, median_val);
+	    length_penalty = BootstrapPenaltyCalculator<Decimal>::computeLengthPenalty_Normal(len,
+											      se_boot,
+											      res.cl,
+											      stats,
+											      normalized_length,
+											      median_val);
 	  }
 	else
 	  {

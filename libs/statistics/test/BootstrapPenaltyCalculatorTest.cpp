@@ -300,6 +300,8 @@ TEST_CASE("BootstrapPenaltyCalculator: computeLengthPenalty_Percentile functiona
 
 TEST_CASE("BootstrapPenaltyCalculator: computeLengthPenalty_Normal functionality", "[BootstrapPenaltyCalculator][LengthPenalty]")
 {
+  // Create bootstrap statistics for testing
+  auto boot_stats = createSymmetricBootstrapStats(10.0, 2.0, 1000);
   double se_boot = 2.0;
   double normalized_length, median_val;
 
@@ -307,20 +309,23 @@ TEST_CASE("BootstrapPenaltyCalculator: computeLengthPenalty_Normal functionality
     // Normal theoretical length: 2 * 1.96 * se ≈ 7.84
     double actual_length = 7.84;
     double penalty = BootstrapPenaltyCalculator<Num>::computeLengthPenalty_Normal(
-      actual_length, se_boot, 0.95, normalized_length, median_val);
+      actual_length, se_boot, 0.95, boot_stats, normalized_length, median_val);
     
     REQUIRE(normalized_length == Catch::Approx(1.0).margin(0.01));
     REQUIRE(penalty == 0.0);
-    REQUIRE(median_val == 0.0); // Normal doesn't use median
+    // Median should be calculated from boot_stats (mean ≈ 10.0)
+    REQUIRE(median_val == Catch::Approx(10.0).epsilon(0.1));
   }
 
   SECTION("Penalty for incorrect length") {
     double actual_length = 15.0; // Too long
     double penalty = BootstrapPenaltyCalculator<Num>::computeLengthPenalty_Normal(
-      actual_length, se_boot, 0.95, normalized_length, median_val);
+      actual_length, se_boot, 0.95, boot_stats, normalized_length, median_val);
     
     REQUIRE(normalized_length > 1.8);
     REQUIRE(penalty > 0.0);
+    // Median should still be calculated
+    REQUIRE(median_val == Catch::Approx(10.0).epsilon(0.1));
   }
 }
 

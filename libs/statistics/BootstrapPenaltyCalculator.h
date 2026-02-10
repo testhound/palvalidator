@@ -380,54 +380,94 @@ namespace palvalidator
        *
        * Uses theoretical normal distribution width (2 * z_{α/2} * SE) as ideal reference.
        *
+       * IMPORTANT: Median is calculated from boot_stats regardless of whether the
+       * penalty can be calculated. This ensures the median field is always populated
+       * when bootstrap statistics are available.
+       *
        * @param actual_length Width of the actual interval
        * @param se_boot Bootstrap standard error
        * @param confidence_level Nominal confidence level
+       * @param boot_stats Bootstrap statistics (for median calculation)
        * @param normalized_length [out] Ratio of actual to ideal length
-       * @param median_val_placeholder [out] Not meaningful for Normal; set to 0
+       * @param median_val [out] Median of bootstrap distribution
        * @return Length penalty (0.0 if within bounds, >0.0 if outside)
        */
       static double computeLengthPenalty_Normal(double actual_length,
-                                               double se_boot,
-                                               double confidence_level,
-                                               double& normalized_length,
-                                               double& median_val_placeholder)
+						double se_boot,
+						double confidence_level,
+						const std::vector<double>& boot_stats,
+						double& normalized_length,
+						double& median_val)
       {
-        median_val_placeholder = 0.0; // Normal doesn't use bootstrap median
-        
-        if (actual_length <= 0.0 || se_boot <= 0.0) {
-          normalized_length = 1.0;
-          return 0.0;
-        }
-        
-        // Normal's theoretical ideal: θ̂ ± z_{α/2} * SE
-        const double alpha = 1.0 - confidence_level;
-        const double z_alpha_2 = palvalidator::analysis::detail::compute_normal_quantile(1.0 - 0.5 * alpha);
-        const double ideal_len = 2.0 * z_alpha_2 * se_boot;
-        
-        if (ideal_len <= 0.0) {
-          normalized_length = 1.0;
-          return 0.0;
-        }
-        
-        normalized_length = actual_length / ideal_len;
-        
-        // Standard bounds for Normal
-        const double L_min = AutoBootstrapConfiguration::kLengthMin;
-        const double L_max = AutoBootstrapConfiguration::kLengthMaxStandard;
-        
-        if (normalized_length < L_min) {
-          const double deficit = L_min - normalized_length;
-          return deficit * deficit;
-        }
-        else if (normalized_length > L_max) {
-          const double excess = normalized_length - L_max;
-          return excess * excess;
-        }
-        
-        return 0.0;
+	// Initialize outputs
+	normalized_length = 1.0;
+	median_val = 0.0;
+    
+	// =========================================================================
+	// STEP 1: Calculate median FIRST (before any early returns)
+	// =========================================================================
+	// The median is a property of the bootstrap distribution and should be
+	// calculated whenever boot_stats has sufficient data, regardless of
+	// whether the penalty calculation can proceed.
+	if (boot_stats.size() >= 2) {
+	  std::vector<double> sorted(boot_stats.begin(), boot_stats.end());
+	  std::sort(sorted.begin(), sorted.end());
+	  median_val = mkc_timeseries::StatUtils<double>::computeMedianSorted(sorted);
+	}
+	// If boot_stats.size() < 2, median_val remains 0.0 (no valid median)
+    
+	// =========================================================================
+	// STEP 2: Early return if insufficient bootstrap data
+	// =========================================================================
+	// Cannot compute meaningful penalty without at least 2 bootstrap samples.
+	// The median has already been calculated above if possible.
+	if (boot_stats.size() < 2) {
+	  return 0.0;
+	}
+    
+	// =========================================================================
+	// STEP 3: Early return for invalid length or SE
+	// =========================================================================
+	// Note: median was already calculated in Step 1 if boot_stats.size() >= 2
+	if (actual_length <= 0.0 || se_boot <= 0.0) {
+	  return 0.0;
+	}
+    
+	// =========================================================================
+	// STEP 4: Calculate Normal's theoretical ideal length
+	// =========================================================================
+	// Normal bootstrap uses: θ̂ ± z_{α/2} * SE
+	// So ideal length = 2 * z_{α/2} * SE
+	const double alpha = 1.0 - confidence_level;
+	const double z_alpha_2 = palvalidator::analysis::detail::compute_normal_quantile(1.0 - 0.5 * alpha);
+	const double ideal_len = 2.0 * z_alpha_2 * se_boot;
+    
+	if (ideal_len <= 0.0) {
+	  normalized_length = 1.0;
+	  return 0.0;
+	}
+    
+	normalized_length = actual_length / ideal_len;
+    
+	// =========================================================================
+	// STEP 5: Apply penalty for lengths outside acceptable bounds
+	// =========================================================================
+	// Standard bounds for Normal method: [0.8, 1.8]
+	const double L_min = AutoBootstrapConfiguration::kLengthMin;
+	const double L_max = AutoBootstrapConfiguration::kLengthMaxStandard;
+    
+	if (normalized_length < L_min) {
+	  const double deficit = L_min - normalized_length;
+	  return deficit * deficit;
+	}
+	else if (normalized_length > L_max) {
+	  const double excess = normalized_length - L_max;
+	  return excess * excess;
+	}
+    
+	return 0.0;
       }
-
+      
       /**
        * @brief Computes length penalty for Percentile-T (studentized) bootstrap.
        *
