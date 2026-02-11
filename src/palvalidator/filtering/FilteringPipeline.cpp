@@ -200,20 +200,76 @@ namespace palvalidator::filtering
     // Stage 4: Centralized Validation (Gate: LB Geo > 0 AND Strict PF Validation)
     ValidationPolicy policy(hurdle.finalRequiredReturn);
 
+    // Define skepticism factor k based on sample size
+    const double k = 0.5;
+    const double se = bootstrap.pfAutoCIChosenSeBoot;
+
+    /**
+     * @section PROFIT_FACTOR_VALIDATION Rationale for Dynamic Volatility Hurdle
+     *
+     * The Profit Factor (PF) validation stage uses a dynamic hurdle rather than a 
+     * static 1.10 floor to account for "Estimation Risk" inherent in daily 
+     * mark-to-market (MTM) returns.
+     *
+     * 1. Log-Space Bootstrap Mechanics:
+     * Our bootstrap engine (LogProfitFactorFromLogBarsStat_LogPF) operates in 
+     * logarithmic space: log(PF) = log(GrossWins) - log(GrossLosses)[cite: 6]. 
+     * In this space, a breakeven strategy has a mean of 0.0[cite: 6].
+     *
+     * 2. The Standard Error (SE) as a Risk Metric:
+     * The 'se_boot' captured from the bootstrap tournament is the standard 
+     * deviation of the bootstrap replicates. It represents the 
+     * uncertainty of the Profit Factor estimate given the sample size (n) and 
+     * the volatility of the daily returns.
+     *
+     * 3. Why a Dynamic Hurdle?
+     * A fixed 1.10 hurdle is "blind" to volatility. A strategy with 
+     * high daily MTM noise will have a wide bootstrap distribution (high SE). 
+     * The dynamic hurdle requires the Lower Bound (LB) to be at least 'k' 
+     * standard errors above the breakeven line.
+     *
+     * Hurdle Formula: exp(k * se_boot)
+     *
+     * - If se_boot is low (consistent returns): The hurdle stays near 1.10.
+     * - If se_boot is high (noisy/lumpy returns): The hurdle rises (e.g., to 1.30+), 
+     * forcing a higher margin of safety to compensate for fragility.
+     *
+     * 4. Implementation Details:
+     * - Skepticism Factor (k = 0.5): A balanced multiplier that ensures the 
+     * strategy's edge is statistically significant relative to its noise.
+     * - Hard Floor (1.10): Prevents the filter from accepting "smooth" strategies 
+     * with paper-thin margins that might be eaten by slippage.
+     *
+     * This dual-gate approach (max(1.10, exp(k*se))) ensures that we only discover 
+     * strategies that are both profitable and robust against the specific path of 
+     * daily returns observed in the backtest.
+     */
+
+    // 1. Calculate the dynamic hurdle based on bootstrap volatility
+    const double dynamicHurdleVal = std::exp(k * se);
+
+    // 2. Set a hard minimum floor to ensure we don't accept 'smooth' marginals
+    const Num minRequiredFloor = DecimalConstants<Num>::createDecimal("1.10");
+  
+    // The dynamic hurdle is the linear equivalent of being k sigmas above breakeven (0) in log-space
+    const Num dynamicPFHurdle = Num(std::max(num::to_double(minRequiredFloor), dynamicHurdleVal));
+
     // --- Helper Lambda for Consistent Logging ---
     auto logGateMetrics = [&](const std::string& status) {
-        os << "   [" << status << "] Gate Validation Metrics:\n"
-           << "      1. Annualized Geo LB: " << (bootstrap.annualizedLowerBoundGeo * 100).getAsDouble() << "%\n";
-        
-        if (bootstrap.lbProfitFactor.has_value())
-            os << "      2. Profit Factor LB:  " << *bootstrap.lbProfitFactor << "\n";
-        else
-            os << "      2. Profit Factor LB:  N/A\n";
+      os << "   [" << status << "] Gate Validation Metrics:\n"
+         << "      1. Annualized Geo LB: " << (bootstrap.annualizedLowerBoundGeo * 100).getAsDouble() << "%\n";
+      
+      if (bootstrap.lbProfitFactor.has_value()) {
+          os << "      2. Profit Factor LB:  " << *bootstrap.lbProfitFactor 
+             << " (Hurdle: " << dynamicPFHurdle << ")\n";
+      } else {
+          os << "      2. Profit Factor LB:  N/A\n";
+      }
 
-        if (bootstrap.medianProfitFactor.has_value())
-            os << "      3. Profit Factor Med: " << *bootstrap.medianProfitFactor << "\n";
-        else
-            os << "      3. Profit Factor Med: N/A\n";
+      if (bootstrap.medianProfitFactor.has_value())
+          os << "      3. Profit Factor Med: " << *bootstrap.medianProfitFactor << "\n";
+      else
+          os << "      3. Profit Factor Med: N/A\n";
     };
 
     // --- Hurdle 1: Geometric Mean Lower Bound must be positive ---
@@ -237,7 +293,7 @@ namespace palvalidator::filtering
       }
 
     // --- Hurdle 3: Profit Factor Thresholds ---
-    const Num requiredPFHurdle       = DecimalConstants<Num>::createDecimal("0.995");
+    //const Num requiredPFHurdle       = DecimalConstants<Num>::createDecimal("0.995");
     const Num requiredPFMedianHurdle = DecimalConstants<Num>::createDecimal("1.10");
 
     const Num lbPF = *bootstrap.lbProfitFactor;
@@ -248,27 +304,27 @@ namespace palvalidator::filtering
         os << "   [HurdleAnalysis] Warning: PF Lower Bound (" << lbPF 
            << ") is non-positive.\n";
       }
-    const bool isProfitFactorStrong = (lbPF >= requiredPFHurdle);
 
+    //const bool isProfitFactorStrong = (lbPF >= requiredPFHurdle);
+    const bool isProfitFactorStrong = (lbPF >= dynamicPFHurdle);
+    
     // Check B: Median
     bool isMedianPFStrong = false;
     if (bootstrap.medianProfitFactor.has_value())
-      {
-        isMedianPFStrong = (*bootstrap.medianProfitFactor >= requiredPFMedianHurdle);
-      }
+      isMedianPFStrong = (*bootstrap.medianProfitFactor >= requiredPFMedianHurdle);
 
     // Apply PF Veto
     if (!isProfitFactorStrong || !isMedianPFStrong)
       {
 	os << "✗ Strategy filtered out: Profit Factor validation failed.\n";
-    
-        if (!isProfitFactorStrong)
-            os << "   ↳ Failure: PF Lower Bound " << lbPF << " < " << requiredPFHurdle << "\n";
-        
-        if (!isMedianPFStrong && bootstrap.medianProfitFactor.has_value())
-            os << "   ↳ Failure: PF Median " << *bootstrap.medianProfitFactor << " < " << requiredPFMedianHurdle << "\n";
+  
+	if (!isProfitFactorStrong)
+          os << "   ↳ Failure: PF Lower Bound " << lbPF << " < Volatility Hurdle " << dynamicPFHurdle << "\n";
+      
+	if (!isMedianPFStrong && bootstrap.medianProfitFactor.has_value())
+          os << "   ↳ Failure: PF Median " << *bootstrap.medianProfitFactor << " < " << requiredPFMedianHurdle << "\n";
 
-        logGateMetrics("FAIL");
+	logGateMetrics("FAIL");
 	return FilterDecision::Fail(FilterDecisionType::FailHurdle,
 				    "Robust Profit Factor validation failed (LB or Median)");
       }

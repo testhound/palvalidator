@@ -345,24 +345,57 @@ namespace palvalidator::filtering::stages
     // 1) Median holding period (economic horizon)
     unsigned int medianHoldBars = 2;
     if (ctx.backtester)
-      medianHoldBars = ctx.backtester->getClosedPositionHistory().getMedianHoldingPeriod();
+      {
+	medianHoldBars = ctx.backtester->getClosedPositionHistory().getMedianHoldingPeriod();
+      }
 
     // 2) n^(1/3) heuristic (statistical horizon), prefer already-prepared returns
-    size_t n = ctx.highResReturns.size();
-    size_t lCube = (n > 0) ? static_cast<size_t>(std::lround(std::pow(static_cast<double>(n), 1.0/3.0))) : 0;
+    const size_t n = ctx.highResReturns.size();
+
+    size_t lCube = 0;
+    if (n > 0)
+      {
+	// Using cbrt is a bit more numerically direct than pow(n, 1/3).
+	lCube = static_cast<size_t>(std::lround(std::cbrt(static_cast<double>(n))));
+      }
 
     // 3) Hybrid: max of the two, with a minimum of 2
     size_t L = std::max<size_t>(2, std::max(static_cast<size_t>(medianHoldBars), lCube));
 
-    const size_t L_cap = 12;
+    // 4) Cap L relative to n so we don't end up with too few effective blocks.
+    //    Rule: enforce at least ~3 expected blocks on average => L <= n/3 (with floor/guards).
+    size_t L_cap = 12;
+
+    if (n >= 3)
+      {
+	const size_t nRelativeCap = std::max<size_t>(2, n / 3);
+	L_cap = std::min<size_t>(L_cap, nRelativeCap);
+      }
+    else
+      {
+	// For n < 3, the bootstrap is already very limited; keep a minimal valid block length.
+	L_cap = 2;
+      }
+
+    const size_t L_beforeCap = L;
     L = std::min(L, L_cap);
 
     os << "   [Bootstrap] Stationary block length L=" << L
-       << " (n=" << n << ")\n";
+       << " (n=" << n
+       << ", medianHoldBars=" << medianHoldBars
+       << ", n^(1/3)=" << lCube
+       << ", cap=" << L_cap << ")";
+
+    if (L != L_beforeCap)
+      {
+	os << " [capped]";
+      }
+
+    os << "\n";
 
     return L;
   }
-
+  
   double
   BootstrapAnalysisStage::computeAnnualizationFactor(const StrategyAnalysisContext& ctx) const
   {
@@ -976,6 +1009,7 @@ namespace palvalidator::filtering::stages
     out.pfAutoCIChosenScore       = chosen.getScore();
     out.pfAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
     out.pfAutoCILengthPenalty     = chosen.getLengthPenalty();
+    out.pfAutoCIChosenSeBoot    = chosen.getSeBoot();
 
     const auto& candidates = result.getCandidates();
     bool hasBCa = false;

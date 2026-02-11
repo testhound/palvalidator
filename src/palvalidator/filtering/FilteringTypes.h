@@ -335,6 +335,7 @@ namespace palvalidator
       bool        pfAutoCIBCaRejectedForInstability{false};
       bool        pfAutoCIBCaRejectedForLength{false};
       std::size_t pfAutoCINumCandidates{0};
+      double      pfAutoCIChosenSeBoot{0.0};
 
       // -------------------------------------------------------------------------
       // Gate metadata – already present in your codebase
