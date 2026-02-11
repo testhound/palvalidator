@@ -14,6 +14,9 @@
 #include "BootstrapTypes.h"
 #include "BiasCorrectedBootstrap.h" // for mkc_timeseries::BCaBootStrap and StationaryBlockResampler
 
+// Stationary (block) resampling for path simulation inside drawdownFractile
+#include "StationaryMaskResamplers.h" // palvalidator::resampling::StationaryMaskValueResampler
+
 // Executors & parallel helpers
 #include "ParallelExecutors.h"   // SingleThreadExecutor, ThreadPoolExecutor, etc.
 #include "ParallelFor.h"         // concurrency::parallel_for
@@ -194,6 +197,82 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Monte-Carlo estimate of the drawdown-magnitude fractile using stationary (block) resampling.
+     *
+     * This variant generates each synthetic trade path via the Politis–Romano stationary bootstrap
+     * (aka "stationary block bootstrap") to preserve short-range dependence / volatility clustering.
+     *
+     * - When your input is daily mark-to-market returns (or any return series with clustering),
+     *   IID sampling can understate tail drawdowns.
+     * - Stationary resampling stitches together random blocks whose lengths are geometric with
+     *   mean `meanBlockLength`.
+     *
+     * @param returns           Available per-trade percent changes (history), size >= 1
+     * @param nTrades           Number of trades per synthetic sample (>= 1)
+     * @param nReps             Number of Monte-Carlo repetitions (>= 1)
+     * @param ddConf            Desired fractile in [0, 1]
+     * @param meanBlockLength   Mean block length L for the stationary bootstrap (>= 1)
+     * @return                  The ddConf fractile of max drawdown magnitudes (>= 0)
+     */
+    static Decimal drawdownFractileStationary(const std::vector<Decimal>& returns,
+                                             int nTrades,
+                                             int nReps,
+                                             double ddConf,
+                                             std::size_t meanBlockLength)
+    {
+      Executor exec{};
+      return drawdownFractileStationary(returns, nTrades, nReps, ddConf, meanBlockLength, exec);
+    }
+
+    /**
+     * @brief Stationary-resampled Monte-Carlo fractile using a provided executor (enables parallelism).
+     *
+     * See drawdownFractileStationary(…, meanBlockLength) for details.
+     */
+    static Decimal drawdownFractileStationary(const std::vector<Decimal>& returns,
+                                             int nTrades,
+                                             int nReps,
+                                             double ddConf,
+                                             std::size_t meanBlockLength,
+                                             Executor& exec)
+    {
+      if (returns.empty()) {
+        throw std::invalid_argument("drawdownFractileStationary: returns must be non-empty.");
+      }
+      if (nTrades <= 0 || nReps <= 0) {
+        throw std::invalid_argument("drawdownFractileStationary: nTrades and nReps must be positive.");
+      }
+      if (!(ddConf >= 0.0 && ddConf <= 1.0)) {
+        throw std::invalid_argument("drawdownFractileStationary: ddConf must be in [0,1].");
+      }
+      if (meanBlockLength < 1) {
+        throw std::invalid_argument("drawdownFractileStationary: meanBlockLength must be >= 1.");
+      }
+
+      // If we cannot meaningfully do stationary resampling (too-short series or path),
+      // fall back to IID sampling (exactly matches drawdownFractile behaviour).
+      if (returns.size() < 2 || nTrades < 2) {
+        return drawdownFractile(returns, nTrades, nReps, ddConf, exec);
+      }
+
+      std::vector<Decimal> ddSamples(static_cast<size_t>(nReps));
+      const palvalidator::resampling::StationaryMaskValueResampler<Decimal> resampler(meanBlockLength);
+
+      concurrency::parallel_for(static_cast<uint32_t>(nReps), exec, [&](uint32_t rep) {
+        thread_local std::vector<Decimal> tradeWork;
+        thread_local randutils::mt19937_rng rng;
+
+        // Stationary bootstrap generates a length-nTrades path with dependence preserved.
+        resampler(returns, tradeWork, static_cast<std::size_t>(nTrades), rng);
+        ddSamples[rep] = maxDrawdown(tradeWork);
+      });
+
+      const int idx = unbiasedIndex(ddConf, static_cast<unsigned int>(nReps));
+      std::nth_element(ddSamples.begin(), ddSamples.begin() + idx, ddSamples.end());
+      return ddSamples[static_cast<size_t>(idx)];
+    }
+
+    /**
      * @brief BCa bootstrap confidence bounds for the drawdown‑magnitude fractile.
      *
      * Uses BCaBootStrap with StationaryBlockResampler to respect time‑series dependence.
@@ -274,17 +353,18 @@ namespace mkc_timeseries
       // Statistic computed with (possibly parallel) Monte‑Carlo
       typename mkc_timeseries::BCaBootStrap<Decimal, Sampler>::StatFn statFn =
         [=, &exec](const std::vector<Decimal>& sample) -> Decimal {
-          return drawdownFractile(sample, nTrades, nReps, ddConf, exec);
+          // IMPORTANT: Use stationary (block) path generation *inside* the statistic,
+          // otherwise the dependence preserved by the outer bootstrap can be destroyed
+          // when simulating max drawdowns.
+          return drawdownFractileStationary(sample, nTrades, nReps, ddConf, meanBlockLength, exec);
         };
 
-      mkc_timeseries::BCaBootStrap<Decimal, Sampler> bca(
-        returns,
-        numResamples,
-        confidenceLevel,
-        statFn,
-        Sampler(meanBlockLength),
-	intervalType
-      );
+      mkc_timeseries::BCaBootStrap<Decimal, Sampler> bca(returns,
+							 numResamples,
+							 confidenceLevel,
+							 statFn,
+							 Sampler(meanBlockLength),
+							 intervalType);
 
       Result r;
       r.statistic  = bca.getStatistic();
