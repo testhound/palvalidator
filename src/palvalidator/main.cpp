@@ -172,7 +172,7 @@ filterSurvivingStrategiesByPerformance(
 
     bool enableRobustnessAnalysis = true;
     unsigned int numBootstrapRounds = 10;
-    double minPassRate = 0.90;
+    double minPassRate = 1.0;
 
     if (!enableRobustnessAnalysis)
       {

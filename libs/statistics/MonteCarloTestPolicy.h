@@ -132,74 +132,61 @@ namespace mkc_timeseries
   class BootStrappedLogProfitFactorPolicy
   {
   public:
-
-static Decimal
+    static Decimal
     getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
     {
       // Enforce single-strategy invariant
       if (bt->getNumStrategies() != 1) {
-	throw BackTesterException(
+        throw BackTesterException(
 				  "BootStrappedLogProfitFactorPolicy::getPermutationTestStatistic - expected one strategy");
       }
 
-      // Basic activity thresholds (keep consistent with your pipeline)
-      const unsigned int minTradesRequired = getMinStrategyTrades();  // e.g., 5
-      const unsigned int minBarsRequired   = getMinBarSeriesSize();   // e.g., 20
-
+      const unsigned int minTradesRequired = getMinStrategyTrades();
+      const unsigned int minBarsRequired   = getMinBarSeriesSize();
       const uint32_t numTrades = bt->getNumTrades();
       auto strat = *(bt->beginStrategies());
 
-      // Pull the high-resolution (bar-by-bar) return stream for this strategy
       std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
 
-      // If too thin, return a neutral/benign statistic (coherent with your other policies)
       if (numTrades < minTradesRequired || barSeries.size() < minBarsRequired) {
-	    return getMinTradeFailureTestStatistic();
+        return getMinTradeFailureTestStatistic();
       }
 
       // -----------------------------------------------------------------------
-      // Retrieve Strategy Stop Loss for Robust "Zero-Loss" Handling
+      // Retrieve Strategy Stop Loss and Profit Target (return space)
       // -----------------------------------------------------------------------
-      double defaultLossMagnitude = 0.0;
+      double stopLossPct = 0.0;
+      double profitTargetPct = 0.0;
 
-      // Try to cast to PalStrategy to access the single pattern.
       auto palStrategy = std::dynamic_pointer_cast<PalStrategy<Decimal>>(strat);
       if (palStrategy)
-      {
-        auto pattern = palStrategy->getPalPattern();
-        if (pattern)
-        {
-            // 1. Get Stop Loss from pattern (e.g., 2.55 for 2.55%)
-            Decimal stopDec = pattern->getStopLossAsDecimal();
+	{
+	  auto pattern = palStrategy->getPalPattern();
+	  if (pattern)
+	    {
+	      // Stop Loss
+	      Decimal stopDec = pattern->getStopLossAsDecimal();
+	      auto stopPn = mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(stopDec);
+	      stopLossPct = num::to_double(stopPn.getAsPercent());
 
-            // 2. Use PercentNumber factory to convert to decimal fraction (0.0255).
-            //    This handles the division by 100 internally.
-            auto stopPn = mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(stopDec);
-            
-            // 3. Extract as double
-            double stopLossPct = num::to_double(stopPn.getAsPercent());
+	      // Profit Target
+	      Decimal profitTargetDec = pattern->getProfitTargetAsDecimal();
+	      auto profitTargetPn = 
+                mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(profitTargetDec);
+	      profitTargetPct = num::to_double(profitTargetPn.getAsPercent());
+	    }
+	}
 
-            // 4. Calculate default loss magnitude (absolute log return)
-            if (stopLossPct > 0.0)
-            {
-                defaultLossMagnitude = std::abs(std::log(1.0 - stopLossPct));
-            }
-        }
-      }
-
-      // Fast, robust statistic for permutation testing:
-      // - log(1+r) domain (variance-stabilizing)
-      // - ruin-aware clamp (1+r <= 0 => epsilon)
-      // - conservative prior on losses (prevents explosion at tiny loss counts)
-      // - optional final compression (log(1 + pf)) for symmetry
-      //
-
-      return StatUtils<Decimal>::computeLogProfitFactorRobust(barSeries,
-							      StatUtils<Decimal>::DefaultCompress,
-							      StatUtils<Decimal>::DefaultRuinEps,
-							      StatUtils<Decimal>::DefaultDenomFloor,
-							      StatUtils<Decimal>::DefaultPriorStrength,
-							      defaultLossMagnitude);
+      // -----------------------------------------------------------------------
+      // Use newer _LogPF interface with automatic return→log conversion
+      // -----------------------------------------------------------------------
+      return StatUtils<Decimal>::computeLogProfitFactorRobust_LogPF(
+								    barSeries,
+								    StatUtils<Decimal>::DefaultRuinEps,
+								    StatUtils<Decimal>::DefaultDenomFloor,
+								    StatUtils<Decimal>::DefaultPriorStrength,
+								    stopLossPct,
+								    profitTargetPct);
     }
 
     /// Minimum number of trades required to attempt this test
