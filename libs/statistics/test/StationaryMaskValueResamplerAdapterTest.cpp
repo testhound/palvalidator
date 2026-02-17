@@ -49,18 +49,20 @@ TEST_CASE("StationaryMaskValueResamplerAdapter::operator() matches value-resampl
     REQUIRE(y_adp == y_val);
 }
 
-TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife on constant series", "[Resampler][Adapter][Jackknife]")
+TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife on constant series",
+          "[Resampler][Adapter][Jackknife]")
 {
     using D = num::DefaultNumber;
 
-    // Constant series → any delete-block jackknife mean equals the constant
+    // Constant series → any delete-block jackknife mean equals the constant,
+    // regardless of which block is deleted or how many pseudo-values are produced.
     const std::size_t n = 64;
     const D c = D(3.14159);
     std::vector<D> x(n, c);
 
     MaskValueResamplerAdapter<D> adp(/*L=*/4);
-    auto meanFn = [](const std::vector<D>& v) -> D
-    {
+
+    auto meanFn = [](const std::vector<D>& v) -> D {
         double s = 0.0;
         for (const auto& z : v) s += num::to_double(z);
         return D(s / static_cast<double>(v.size()));
@@ -68,28 +70,40 @@ TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife on constant series", "
 
     const std::vector<D> jk = adp.jackknife(x, meanFn);
 
-    REQUIRE(jk.size() == n);
+    // Non-overlapping Künsch jackknife: numBlocks = floor(n / L_eff)
+    // n=64, L=4 → L_eff = min(4, 64-2) = 4 → numBlocks = floor(64/4) = 16
+    const std::size_t minKeep   = 2;
+    const std::size_t L_eff     = std::min<std::size_t>(adp.getL(), n - minKeep); // 4
+    const std::size_t numBlocks = n / L_eff;                                        // 16
+    REQUIRE(jk.size() == numBlocks);
+
+    // Every pseudo-value must equal the constant regardless of which block
+    // was deleted — the mean of any subset of a constant series is that constant.
     for (const auto& v : jk)
-    {
-        REQUIRE(num::to_double(v) == Catch::Approx(num::to_double(c)).epsilon(1e-12));
-    }
+        REQUIRE(num::to_double(v) ==
+                Catch::Approx(num::to_double(c)).epsilon(1e-12));
 }
 
-TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife with L_eff = n-1 keeps exactly one element", "[Resampler][Adapter][Jackknife][Edge]")
+TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife with large L clamps to n-minKeep",
+          "[Resampler][Adapter][Jackknife][Edge]")
 {
     using D = num::DefaultNumber;
 
-    // When L >= n-1, adapter uses L_eff = n-1; keep = 1 element at index (start + L_eff) % n
+    // n=8, L=1000 → L_eff = min(1000, n - minKeep) = min(1000, 6) = 6
+    // keep=2, numBlocks = floor(8/6) = 1
+    //
+    // Old behaviour clamped to n-1=7, giving keep=1 — degenerate: statistics
+    // such as Sharpe or variance are undefined on a single observation, and
+    // the test was explicitly verifying that broken single-element regime.
+    // The new minKeep=2 clamp guarantees keep >= 2 for all valid inputs.
     const std::size_t n = 8;
     std::vector<D> x; x.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) x.emplace_back(D(static_cast<int>(i))); // x[i] = i
+    for (std::size_t i = 0; i < n; ++i)
+        x.emplace_back(D(static_cast<int>(i))); // x = [0,1,2,3,4,5,6,7]
 
-    // Choose huge L to force L_eff = n-1
     MaskValueResamplerAdapter<D> adp(/*L=*/1000);
 
-    auto meanFn = [](const std::vector<D>& v) -> D
-    {
-        // keep == 1 in this regime, but write generically
+    auto meanFn = [](const std::vector<D>& v) -> D {
         double s = 0.0;
         for (const auto& z : v) s += num::to_double(z);
         return D(s / static_cast<double>(v.size()));
@@ -97,29 +111,34 @@ TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife with L_eff = n-1 keeps
 
     const std::vector<D> jk = adp.jackknife(x, meanFn);
 
-    REQUIRE(jk.size() == n);
-    const std::size_t L_eff = n - 1;
-    for (std::size_t start = 0; start < n; ++start)
-    {
-        const std::size_t kept = (start + L_eff) % n;
-        // With keep=1, mean == that single kept element
-        REQUIRE(num::to_double(jk[start]) == Catch::Approx(num::to_double(x[kept])).epsilon(1e-12));
-    }
+    // numBlocks = floor(n / L_eff) = floor(8/6) = 1
+    const std::size_t minKeep   = 2;
+    const std::size_t L_eff     = std::min<std::size_t>(adp.getL(), n - minKeep); // 6
+    const std::size_t numBlocks = n / L_eff;                                        // 1
+    REQUIRE(jk.size() == numBlocks);
+
+    // b=0: start=0, delete [0,1,2,3,4,5], start_keep=6
+    //      tail = min(2, 8-6) = 2, head = 0 → y = [6, 7], mean = 6.5
+    const double expected = 6.5;
+    REQUIRE(num::to_double(jk[0]) == Catch::Approx(expected).epsilon(1e-12));
 }
 
-TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife returns n finite stats and shows variation on monotone series", "[Resampler][Adapter][Jackknife][Sanity]")
+TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife returns floor(n/L) finite stats and shows variation on monotone series",
+          "[Resampler][Adapter][Jackknife][Sanity]")
 {
     using D = num::DefaultNumber;
 
-    // Monotone values → delete-block jackknife means should vary with start
-    const std::size_t n = 101; // odd length for asymmetry
+    // n=101, L=6 → L_eff = min(6, 101-2) = 6, numBlocks = floor(101/6) = 16
+    // Odd length chosen for asymmetry; numBlocks=16 with 5 observations unused
+    // (101 mod 6 = 5) — this is expected and correct for non-overlapping blocks.
+    const std::size_t n = 101;
     std::vector<D> x; x.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) x.emplace_back(D(static_cast<int>(i)));
+    for (std::size_t i = 0; i < n; ++i)
+        x.emplace_back(D(static_cast<int>(i)));
 
     MaskValueResamplerAdapter<D> adp(/*L=*/6);
 
-    auto meanFn = [](const std::vector<D>& v) -> D
-    {
+    auto meanFn = [](const std::vector<D>& v) -> D {
         double s = 0.0;
         for (const auto& z : v) s += num::to_double(z);
         return D(s / static_cast<double>(v.size()));
@@ -127,21 +146,28 @@ TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife returns n finite stats
 
     const std::vector<D> jk = adp.jackknife(x, meanFn);
 
-    REQUIRE(jk.size() == n);
+    // Non-overlapping Künsch jackknife: floor(n / L_eff) = floor(101/6) = 16
+    const std::size_t minKeep   = 2;
+    const std::size_t L_eff     = std::min<std::size_t>(adp.getL(), n - minKeep); // 6
+    const std::size_t numBlocks = n / L_eff;                                        // 16
+    REQUIRE(jk.size() == numBlocks);
 
-    // All finite and within the data range
+    // All pseudo-values must be finite and within the data range [0, 100]
     double minv = +std::numeric_limits<double>::infinity();
     double maxv = -std::numeric_limits<double>::infinity();
-
     for (const auto& z : jk)
     {
         const double d = num::to_double(z);
         REQUIRE(std::isfinite(d));
+        REQUIRE(d >= 0.0);
+        REQUIRE(d <= 100.0);
         minv = std::min(minv, d);
         maxv = std::max(maxv, d);
     }
 
-    // Variation: for a monotone x and delete-block L>=2, jk means should not be all identical
+    // Variation: deleting different non-overlapping blocks from a monotone series
+    // produces different means — earlier blocks have lower values, later blocks
+    // have higher values, so pseudo-values must not all be identical.
     REQUIRE(maxv > minv);
 }
 
