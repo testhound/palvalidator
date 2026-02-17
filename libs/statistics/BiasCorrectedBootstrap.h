@@ -357,41 +357,91 @@ namespace mkc_timeseries
     std::vector<Decimal>
     jackknife(const std::vector<Decimal>& x, const StatFn& stat) const
     {
-      const size_t n = x.size();
-      if (n < 2)
-	throw std::invalid_argument("StationaryBlockResampler::jackknife requires n>=2.");
+      const std::size_t n = x.size();
 
-      const size_t L_eff = std::min(m_L, n - 1); // ensure at least 1 kept
-      const size_t keep  = n - L_eff;
+      // --- Guard 1: Absolute minimum for any jackknife ---
+      // Need at least L_eff observations to delete AND enough remaining
+      // observations for the statistic to be defined (minKeep >= 2).
+      const std::size_t minKeep = 2;
+      if (n < minKeep + 1)
+	{
+	  throw std::invalid_argument(
+				      "StationaryBlockResampler::jackknife requires n >= 3.");
+	}
 
-      std::vector<Decimal> jk(n);
+      // --- Guard 2: Clamp L_eff so we always retain at least minKeep observations ---
+      // Without this, near n==L cases produce keep==1 and degenerate stat calls.
+      // Note: m_L is already guaranteed >= 2 by the constructor (std::max<size_t>(2, L)),
+      // but L_eff must also respect the upper bound imposed by minKeep.
+      const std::size_t L_eff = std::min<std::size_t>(m_L, n - minKeep);
+
+      // --- Guard 3: Ensure the sample is large enough for this block length ---
+      // We need at least 2 non-overlapping blocks: one to delete, one to keep.
+      if (n < L_eff + minKeep)
+	{
+	  throw std::invalid_argument(
+				      "StationaryBlockResampler::jackknife: sample too small for "
+				      "delete-block jackknife with this block length. "
+				      "Reduce block length or increase sample size.");
+	}
+
+      const std::size_t keep = n - L_eff;
+
+      // --- Fix 1: Non-overlapping blocks only (Künsch 1989) ---
+      // The previous implementation looped n times (start = 0, 1, ..., n-1),
+      // producing n pseudo-values each differing from its neighbour by only
+      // one observation (sliding-window delete). Adjacent pseudo-values share
+      // (keep - 1) of their keep elements, making them nearly identical and
+      // causing systematic underestimation of |a|, the BCa acceleration
+      // constant that corrects for skewness.
+      //
+      // The correct approach steps by L_eff each iteration, yielding
+      // numBlocks = floor(n / L_eff) genuinely distinct pseudo-values.
+      // Each pseudo-value reflects the influence of a non-overlapping segment
+      // of the time series, consistent with the block bootstrap's view of
+      // the data's dependence structure.
+      //
+      // Reference: Künsch, H. R. (1989). The Jackknife and the Bootstrap for
+      // General Stationary Observations. Annals of Statistics, 17(3), 1217–1241.
+      //
+      // BCaBootStrap::calculateBCaBounds() is confirmed safe for variable-length
+      // output: it derives n_jk from jk_stats.size() independently of n, and
+      // all downstream accumulation loops are range-based. No changes to
+      // BCaBootStrap are required.
+      const std::size_t numBlocks = n / L_eff;
+      std::vector<Decimal> jk(numBlocks);
       std::vector<Decimal> y(keep);
 
-      for (size_t start = 0; start < n; ++start)
+      for (std::size_t b = 0; b < numBlocks; ++b)
 	{
-	  // Circular index where the kept region begins (immediately after deleted block)
-	  const size_t start_keep = (start + L_eff) % n;
+	  // Non-overlapping delete block: starts at b * L_eff
+	  const std::size_t start = b * L_eff;
 
-	  // Copy keep entries from x[start_keep … start_keep+keep) with wrap if needed
-	  const size_t tail = std::min(keep, n - start_keep);   // bytes available to end
-	  // First span: [start_keep, start_keep + tail)
+	  // Circular index immediately after the deleted block
+	  const std::size_t start_keep = (start + L_eff) % n;
+
+	  // Copy 'keep' entries from x[start_keep ...) with circular wrap.
+	  // At most two contiguous spans are needed: tail then optional head.
+	  const std::size_t tail = std::min<std::size_t>(keep, n - start_keep);
+
 	  std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(start_keep),
 		      static_cast<std::ptrdiff_t>(tail),
 		      y.begin());
 
-	  // Second span (wrap): [0, keep - tail)
-	  const size_t head = keep - tail;
-	  if (head != 0) {
-	    std::copy_n(x.begin(),
-			static_cast<std::ptrdiff_t>(head),
-			y.begin() + static_cast<std::ptrdiff_t>(tail));
-	  }
+	  const std::size_t head = keep - tail;
+	  if (head != 0)
+	    {
+	      std::copy_n(x.begin(),
+			  static_cast<std::ptrdiff_t>(head),
+			  y.begin() + static_cast<std::ptrdiff_t>(tail));
+	    }
 
-	  jk[start] = stat(y);
+	  jk[b] = stat(y);
 	}
-      return jk;
-    }
 
+      return jk;   // size == numBlocks == floor(n / L_eff), NOT n
+    }
+    
     /**
      * @brief Gets the mean block length configured for the resampler.
      * @return The mean block length.

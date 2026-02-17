@@ -502,24 +502,49 @@ TEST_CASE("IIDResampler::jackknife: Error on insufficient data", "[IIDResampler]
 
 // ============= StationaryBlockResampler Jackknife Tests =============
 
-TEST_CASE("StationaryBlockResampler::jackknife: Produces n statistics", "[StationaryBlockResampler][Jackknife]")
+TEST_CASE("StationaryBlockResampler::jackknife: Produces floor(n/L) non-overlapping statistics",
+          "[StationaryBlockResampler][Jackknife]")
 {
     using D = DecimalType;
     using Policy = StationaryBlockResampler<D>;
-    
-    std::vector<D> data(20, DecimalType("1.0"));
-    for (size_t i = 0; i < data.size(); ++i) {
+
+    // data = [0, 1, 2, ..., 19], n=20
+    std::vector<D> data(20);
+    for (size_t i = 0; i < data.size(); ++i)
         data[i] = DecimalType(std::to_string(i).c_str());
-    }
-    
+
+    // L=4 → L_eff=4, keep=16, numBlocks = floor(20/4) = 5
+    // The old sliding-window implementation returned n=20 pseudo-values.
+    // The corrected Künsch non-overlapping jackknife returns floor(n/L_eff)=5,
+    // each reflecting the influence of a genuinely distinct segment.
     Policy resampler(4);
     auto mean_fn = [](const std::vector<D>& x) -> D {
         return std::accumulate(x.begin(), x.end(), D(0)) / D(x.size());
     };
-    
+
     auto jk_stats = resampler.jackknife(data, mean_fn);
-    
-    REQUIRE(jk_stats.size() == data.size());
+
+    // --- Size: floor(n / L_eff) non-overlapping blocks ---
+    const size_t L_eff       = 4;            // min(4, 20-2) = 4
+    const size_t numBlocks   = data.size() / L_eff;   // 5
+    REQUIRE(jk_stats.size() == numBlocks);
+
+    // --- Exact expected means (sum_all=190, each deletes a non-overlapping block of 4) ---
+    // b=0: delete [0,1,2,3]    → y=[4..19]          → mean=(190-6)/16  = 11.5
+    // b=1: delete [4,5,6,7]    → y=[8..19,0..3]     → mean=(190-22)/16 = 10.5
+    // b=2: delete [8,9,10,11]  → y=[12..19,0..7]    → mean=(190-38)/16 = 9.5
+    // b=3: delete [12,13,14,15]→ y=[16..19,0..11]   → mean=(190-54)/16 = 8.5
+    // b=4: delete [16,17,18,19]→ y=[0..15]           → mean=(190-70)/16 = 7.5
+    const std::vector<double> expected = { 11.5, 10.5, 9.5, 8.5, 7.5 };
+    for (size_t b = 0; b < numBlocks; ++b)
+    {
+        REQUIRE(num::to_double(jk_stats[b]) ==
+                Catch::Approx(expected[b]).epsilon(1e-12));
+    }
+
+    // --- Pseudo-values are strictly decreasing (each successive block has higher values deleted) ---
+    for (size_t b = 1; b < numBlocks; ++b)
+        REQUIRE(jk_stats[b] < jk_stats[b - 1]);
 }
 
 TEST_CASE("StationaryBlockResampler::jackknife: Block deletion is circular", "[StationaryBlockResampler][Jackknife]")
@@ -553,32 +578,51 @@ TEST_CASE("StationaryBlockResampler::jackknife: Block deletion is circular", "[S
     }
 }
 
-TEST_CASE("StationaryBlockResampler::jackknife: L larger than n-1 uses effective L", "[StationaryBlockResampler][Jackknife]")
+TEST_CASE("StationaryBlockResampler::jackknife: L larger than n-minKeep uses effective L",
+          "[StationaryBlockResampler][Jackknife]")
 {
     using D = DecimalType;
     using Policy = StationaryBlockResampler<D>;
-    
+
+    // data = [1, 2, 3, 4, 5], n=5
     std::vector<D> data = {
         DecimalType("1.0"), DecimalType("2.0"), DecimalType("3.0"),
         DecimalType("4.0"), DecimalType("5.0")
     };
-    
-    // L=10 is larger than n-1=4, so effective L should be 4
+
+    // L=10, n=5 → L_eff = min(10, n - minKeep) = min(10, 3) = 3
+    //
+    // Old behaviour clamped to n-1=4, leaving keep=1 — degenerate: statistics
+    // computed on a single observation are undefined for Sharpe/variance.
+    // New behaviour clamps to n-minKeep=3, guaranteeing keep >= minKeep=2.
+    //
+    // keep=2, numBlocks = floor(5/3) = 1
     Policy resampler(10);
     auto mean_fn = [](const std::vector<D>& x) -> D {
         return std::accumulate(x.begin(), x.end(), D(0)) / D(x.size());
     };
-    
+
     auto jk_stats = resampler.jackknife(data, mean_fn);
-    
-    // Should still produce n=5 statistics
-    REQUIRE(jk_stats.size() == 5);
-    
-    // Each jackknife replicate should have size 1 (since we're deleting 4 out of 5)
-    // So each stat should just be one of the original values
-    for (const auto& stat : jk_stats) {
-        REQUIRE(std::isfinite(num::to_double(stat)));
+
+    // --- Size: floor(n / L_eff) = floor(5/3) = 1 ---
+    const size_t minKeep   = 2;
+    const size_t L_eff     = std::min<size_t>(10, data.size() - minKeep); // 3
+    const size_t numBlocks = data.size() / L_eff;                          // 1
+    REQUIRE(jk_stats.size() == numBlocks);
+
+    // --- Each replicate has keep=2 observations, so the statistic is well-defined ---
+    // b=0: delete [1,2,3] (start=0), start_keep=3
+    //      tail = min(2, 5-3) = 2, head = 0 → y = [4, 5], mean = 4.5
+    {
+        std::vector<D> kept = { data[3], data[4] };
+        D expected = mean_fn(kept);
+        REQUIRE(num::to_double(jk_stats[0]) ==
+                Catch::Approx(num::to_double(expected)).epsilon(1e-12));
     }
+
+    // --- All results must be finite ---
+    for (const auto& stat : jk_stats)
+        REQUIRE(std::isfinite(num::to_double(stat)));
 }
 
 TEST_CASE("StationaryBlockResampler::jackknife: Error on insufficient data", "[StationaryBlockResampler][Jackknife][Error]")

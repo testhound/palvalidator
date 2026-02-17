@@ -437,40 +437,79 @@ namespace palvalidator
       std::vector<Decimal>
       jackknife(const std::vector<Decimal>& x, const StatFn& stat) const
       {
-        const std::size_t n = x.size();
-        if (n < 2)
+	const std::size_t n = x.size();
+
+	// --- Guard 1: Absolute minimum for any jackknife ---
+	// Need at least L_eff observations to delete AND enough remaining
+	// observations for the statistic to be defined (minKeep >= 2).
+	const std::size_t minKeep = 2;
+	if (n < minKeep + 1)
 	  {
-            throw std::invalid_argument("StationaryMaskValueResamplerAdapter::jackknife requires n>=2.");
+	    throw std::invalid_argument(
+					"StationaryMaskValueResamplerAdapter::jackknife requires n >= 3.");
 	  }
 
-        const std::size_t L_eff = std::min<std::size_t>(m_L, n - 1); // keep at least 1
-        const std::size_t keep  = n - L_eff;
+	// --- Guard 2: Clamp L_eff so we always retain at least minKeep observations ---
+	// Without this, near n==L cases produce keep==1 and degenerate stat calls.
+	const std::size_t L_eff = std::min<std::size_t>(m_L, n - minKeep);
 
-        std::vector<Decimal> jk(n);
-        std::vector<Decimal> y(keep);
-
-        for (std::size_t start = 0; start < n; ++start)
+	// --- Guard 3: Ensure the sample is large enough for this block length ---
+	// We need at least 2 non-overlapping blocks: one to delete, one to keep.
+	if (n < L_eff + minKeep)
 	  {
-            // start_keep = immediately after the deleted block
-            const std::size_t start_keep = (start + L_eff) % n;
+	    throw std::invalid_argument(
+					"StationaryMaskValueResamplerAdapter::jackknife: sample too small "
+					"for delete-block jackknife with this block length. "
+					"Reduce block length or increase sample size.");
+	  }
 
-            // Copy keep entries circularly: first tail then (optional) head
-            const std::size_t tail = std::min<std::size_t>(keep, n - start_keep);
-            std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(start_keep),
-                        static_cast<std::ptrdiff_t>(tail),
-                        y.begin());
+	const std::size_t keep      = n - L_eff;
+	// --- Fix 1: Non-overlapping blocks only ---
+	// Previously the loop ran n times (start = 0, 1, 2, ..., n-1), producing
+	// n highly-correlated pseudo-values differing by only one observation.
+	// This is a sliding-window delete, which overcounts and causes systematic
+	// underestimation of |a| (the BCa acceleration constant).
+	//
+	// The correct Künsch (1989) delete-block jackknife uses only floor(n/L_eff)
+	// non-overlapping blocks, stepping by L_eff each iteration.
+	// Each pseudo-value then reflects the influence of a genuinely distinct
+	// segment of the time series on the statistic.
+	//
+	// BCaBootStrap::calculateBCaBounds() is confirmed safe for variable-length
+	// jackknife output: it captures jk_stats.size() into n_jk independently
+	// of n, and all downstream loops are range-based.
+	const std::size_t numBlocks = n / L_eff;   // number of pseudo-values returned
+	std::vector<Decimal> jk(numBlocks);
+	std::vector<Decimal> y(keep);
 
-            const std::size_t head = keep - tail;
-            if (head != 0)
+	for (std::size_t b = 0; b < numBlocks; ++b)
+	  {
+	    // Non-overlapping start: advance by L_eff each iteration
+	    const std::size_t start = b * L_eff;
+
+	    // Circular index immediately after the deleted block
+	    const std::size_t start_keep = (start + L_eff) % n;
+
+	    // Copy 'keep' entries from x[start_keep ... ) with circular wrap.
+	    // At most two spans are needed (tail then optional head).
+	    const std::size_t tail = std::min<std::size_t>(keep, n - start_keep);
+
+	    std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(start_keep),
+			static_cast<std::ptrdiff_t>(tail),
+			y.begin());
+
+	    const std::size_t head = keep - tail;
+	    if (head != 0)
 	      {
-                std::copy_n(x.begin(),
-                            static_cast<std::ptrdiff_t>(head),
-                            y.begin() + static_cast<std::ptrdiff_t>(tail));
+		std::copy_n(x.begin(),
+			    static_cast<std::ptrdiff_t>(head),
+			    y.begin() + static_cast<std::ptrdiff_t>(tail));
 	      }
 
-            jk[start] = stat(y);
+	    jk[b] = stat(y);
 	  }
-        return jk;
+
+	return jk;   // size == numBlocks == n/L_eff, NOT n
       }
 
       std::size_t meanBlockLen() const

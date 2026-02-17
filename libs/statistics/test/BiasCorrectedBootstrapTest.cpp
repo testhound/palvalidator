@@ -398,7 +398,9 @@ TEST_CASE("Policy jackknife: IID delete-one", "[Resampler][Jackknife][IID]") {
     }
 }
 
-TEST_CASE("Policy jackknife: Stationary delete-one-block (L=2)", "[Resampler][Jackknife][Stationary]") {
+TEST_CASE("Policy jackknife: Stationary delete-one-block (L=2)",
+          "[Resampler][Jackknife][Stationary]")
+{
     using D = DecimalType;
     using Policy = StationaryBlockResampler<D>;
 
@@ -406,32 +408,45 @@ TEST_CASE("Policy jackknife: Stationary delete-one-block (L=2)", "[Resampler][Ja
     std::vector<D> x;
     for (int i = 0; i < 5; ++i) x.push_back(D(i));
 
-    Policy pol(2); // L = 2, L_eff = 2
+    Policy pol(2); // L=2, L_eff=2, keep=3, numBlocks = floor(5/2) = 2
     typename Policy::StatFn stat = &StatUtils<D>::computeMean;
 
     auto jk = pol.jackknife(x, stat);
 
-    // We should get n replicates (overlapping, circular delete-2 blocks)
-    REQUIRE(jk.size() == x.size());
+    // Non-overlapping Künsch jackknife: floor(n/L_eff) = floor(5/2) = 2 blocks
+    const size_t expectedBlocks = 2;
+    REQUIRE(jk.size() == expectedBlocks);
 
-    // Build expected means using the same Decimal statistic to match rounding:
-    // start=0: keep [2,3,4]
-    // start=1: keep [0,3,4]
-    // start=2: keep [0,1,4]
-    // start=3: keep [0,1,2]
-    // start=4: keep [1,2,3]
-    const int idx[][3] = {{2,3,4},{0,3,4},{0,1,4},{0,1,2},{1,2,3}};
-    for (size_t i = 0; i < jk.size(); ++i) {
-        std::vector<D> kept; kept.reserve(3);
-        kept.push_back(x[idx[i][0]]);
-        kept.push_back(x[idx[i][1]]);
-        kept.push_back(x[idx[i][2]]);
+    // Non-overlapping circular delete, stepping by L_eff=2:
+    //
+    // b=0: start=0, delete [0,1]
+    //      start_keep=2, tail=min(3, 5-2)=3, head=0
+    //      y = [2, 3, 4],    mean = 9/3 = 3.0
+    //
+    // b=1: start=2, delete [2,3]
+    //      start_keep=4, tail=min(3, 5-4)=1 → [4], head=2 → [0,1]
+    //      y = [4, 0, 1],    mean = 5/3 ≈ 1.6667
+    //
+    // Note: the old idx[][] array encoded sliding-window blocks (start advancing
+    // by 1 each step). Row 1 was {0,3,4} (delete-[1,2]), which is wrong here.
+    // The correct non-overlapping kept sets are {2,3,4} and {4,0,1}.
+    const int idx[][3] = { {2, 3, 4},   // b=0
+                           {4, 0, 1} }; // b=1
+
+    for (size_t b = 0; b < expectedBlocks; ++b)
+    {
+        std::vector<D> kept;
+        kept.reserve(3);
+        for (int i : idx[b]) kept.push_back(x[i]);
         D expected = StatUtils<D>::computeMean(kept);
-        REQUIRE(num::to_double(jk[i]) == Catch::Approx(num::to_double(expected)).epsilon(1e-12));
+        REQUIRE(num::to_double(jk[b]) ==
+                Catch::Approx(num::to_double(expected)).epsilon(1e-12));
     }
 }
 
-TEST_CASE("Policy jackknife: Stationary clamps L to n-1", "[Resampler][Jackknife][Stationary]") {
+TEST_CASE("Policy jackknife: Stationary clamps L to n-minKeep",
+          "[Resampler][Jackknife][Stationary]")
+{
     using D = DecimalType;
     using Policy = StationaryBlockResampler<D>;
 
@@ -439,35 +454,46 @@ TEST_CASE("Policy jackknife: Stationary clamps L to n-1", "[Resampler][Jackknife
     std::vector<D> x;
     for (int i = 0; i < 5; ++i) x.push_back(D(i));
 
-    Policy pol(10); // L = 10 -> L_eff = min(10, n-1) = 4
+    // L=10 → L_eff = min(10, n - minKeep) = min(10, 3) = 3
+    // keep=2, numBlocks = floor(5/3) = 1
+    //
+    // The old clamp was min(L, n-1) = 4, leaving keep=1 — degenerate for
+    // any stat requiring >= 2 observations (Sharpe, variance, etc.).
+    // The new clamp is min(L, n-minKeep) = 3, guaranteeing keep >= 2.
+    //
+    // Old expected[] array encoded the n-1 clamp giving keep=1 single-element
+    // replicates (mean == the one surviving value). That was wrong on two counts:
+    //   1. It tested degenerate keep=1 behaviour we explicitly guard against.
+    //   2. Index 0 held 4.0 (old keep=[4]), not 3.5 (new keep=[3,4]).
+    Policy pol(10);
     typename Policy::StatFn stat = &StatUtils<D>::computeMean;
 
     auto jk = pol.jackknife(x, stat);
 
-    // n replicates; each replicate removes 4 elements, leaving 1 element -> mean equals the remaining element
-    REQUIRE(jk.size() == x.size());
+    REQUIRE(jk.size() == 1u);
 
-    // Expected remaining (circular delete-4):
-    // start=0: delete [0,4) -> keep [4] -> mean 4
-    // start=1: delete [1,0) -> keep [0] -> mean 0
-    // start=2: keep [1] -> 1
-    // start=3: keep [2] -> 2
-    // start=4: keep [3] -> 3
-    const double expected[] = {4.0, 0.0, 1.0, 2.0, 3.0};
-    for (size_t i = 0; i < jk.size(); ++i) {
-        REQUIRE(num::to_double(jk[i]) == Catch::Approx(expected[i]).epsilon(1e-12));
+    // b=0: start=0, delete [0,1,2], start_keep=3
+    //      tail = min(2, 5-3) = 2, head = 0 → y = [3, 4], mean = 3.5
+    {
+        std::vector<D> kept = { x[3], x[4] };
+        D expected = StatUtils<D>::computeMean(kept);
+        REQUIRE(num::to_double(jk[0]) ==
+                Catch::Approx(num::to_double(expected)).epsilon(1e-12));
     }
+
+    // Sanity: result must be finite
+    REQUIRE(std::isfinite(num::to_double(jk[0])));
 }
 
-TEST_CASE("StationaryBlockResampler jackknife with nonlinear statistic (variance)", 
-          "[Resampler][Jackknife][Stationary][Nonlinear]") {
+TEST_CASE("StationaryBlockResampler jackknife with nonlinear statistic (variance)",
+          "[Resampler][Jackknife][Stationary][Nonlinear]")
+{
     using D = DecimalType;
     using Policy = StationaryBlockResampler<D>;
 
-    // Small sequence for deterministic variance
     std::vector<D> x = { D(1), D(2), D(3), D(4), D(5) };
 
-    // Statistic: population variance (nonlinear)
+    // Population variance
     typename Policy::StatFn stat = [](const std::vector<D>& v) -> D {
         const size_t n = v.size();
         D mean = StatUtils<D>::computeMean(v);
@@ -479,23 +505,41 @@ TEST_CASE("StationaryBlockResampler jackknife with nonlinear statistic (variance
         return sumsq / D(n);
     };
 
+    // L=2, L_eff=2, keep=3, numBlocks = floor(5/2) = 2
     Policy pol(2);
     auto jk = pol.jackknife(x, stat);
 
-    // Expect n replicates
-    REQUIRE(jk.size() == x.size());
+    // --- Fix: non-overlapping → 2 pseudo-values, not 5
+    REQUIRE(jk.size() == 2u);
 
-    // Ensure results are finite and vary (i.e., not all identical)
-    bool all_equal = true;
-    for (size_t i = 1; i < jk.size(); ++i) {
-        if (jk[i] != jk[0]) { all_equal = false; break; }
+    // b=0: delete [1,2], y=[3,4,5], mean=4.0
+    //      var = ((3-4)^2 + (4-4)^2 + (5-4)^2) / 3 = 2/3
+    {
+        std::vector<D> kept = { D(3), D(4), D(5) };
+        D expected = stat(kept);
+        REQUIRE(num::to_double(jk[0]) ==
+                Catch::Approx(num::to_double(expected)).epsilon(1e-12));
     }
-    REQUIRE_FALSE(all_equal);
 
-    // Sanity: mean of jackknife variances roughly near variance of full sample
+    // b=1: delete [3,4], start_keep=4
+    //      tail=min(3, 5-4)=1 → [5], head=2 → [1,2]
+    //      y=[5,1,2], mean=8/3
+    //      var = ((5-8/3)^2 + (1-8/3)^2 + (2-8/3)^2) / 3 = 78/27
+    {
+        std::vector<D> kept = { D(5), D(1), D(2) };
+        D expected = stat(kept);
+        REQUIRE(num::to_double(jk[1]) ==
+                Catch::Approx(num::to_double(expected)).epsilon(1e-12));
+    }
+
+    // Pseudo-values must differ (non-degenerate)
+    REQUIRE(jk[0] != jk[1]);
+
+    // avgJk ≈ 1.778; fullVar = 2.0; within margin 0.5
     D fullVar = stat(x);
-    D avgJk = StatUtils<D>::computeMean(jk);
-    REQUIRE(num::to_double(avgJk) == Catch::Approx(num::to_double(fullVar)).margin(0.5));
+    D avgJk   = StatUtils<D>::computeMean(jk);
+    REQUIRE(num::to_double(avgJk) ==
+            Catch::Approx(num::to_double(fullVar)).margin(0.5));
 }
 
 // --------------------------- Annualizer tests ---------------------------
