@@ -20,6 +20,7 @@
 #include "StatUtils.h"
 #include "TimeSeriesIndicators.h"
 #include "PatternPositionRegistry.h"
+#include "TradeResampling.h"
 
 namespace mkc_timeseries
 {
@@ -451,6 +452,84 @@ namespace mkc_timeseries
         return allReturns;
     }
 
+    /**
+     * @brief Extracts returns as a vector of Trade objects.
+     * 
+     * Each Trade contains the contiguous mark-to-market daily returns for one 
+     * closed position. Open positions are excluded.
+     *
+     * ENTRY CONVENTION: This implementation assumes entry occurs at the open 
+     * of the bar following the signal. The first bar return is computed as:
+     *   (first_bar_close - entry_open) / entry_open
+     * This correctly captures the full intrabar price movement from entry to 
+     * first close, with no inflation of duration.
+     *
+     * EXIT CONVENTION: The last bar return is computed using the actual exit 
+     * price (limit fill, stop fill, or next-open market exit) rather than 
+     * the bar close, ensuring the trade's terminal return is accurate.
+     *
+     * @return Vector of Trade objects, one per closed position, in chronological order.
+     */
+    std::vector<Trade<Decimal>> 
+    getTradeLevelReturns() const 
+    {
+      std::vector<Trade<Decimal>> tradeReturns;
+      tradeReturns.reserve(mPositions.size());
+
+      for (auto const& [ptime, pos] : mPositions) 
+	{
+	  std::vector<Decimal> dailySequence;
+        
+	  // Check if entry and exit happened at the exact same timestamp
+	  // (not just same day - important for intraday strategies)
+	  bool sameBarPosition = (pos->getEntryDateTime() == pos->getExitDateTime());
+        
+	  if (sameBarPosition) 
+	    {
+	      // Same-day position: single return from entry to exit
+	      Decimal exitReturn = (pos->getExitPrice() - pos->getEntryPrice()) 
+		/ pos->getEntryPrice();
+	      if (pos->isShortPosition()) exitReturn *= -1;
+	      dailySequence.push_back(exitReturn);
+	    }
+	  else 
+	    {
+	      // Multi-day position: compute mark-to-market returns
+	      Decimal prevRef = pos->getEntryPrice();
+
+	      for (auto bar_it = pos->beginPositionBarHistory(); 
+		   bar_it != pos->endPositionBarHistory(); 
+		   ++bar_it) 
+		{
+		  Decimal returnForBar;
+                
+		  // Last bar: use actual exit price (limit/stop/open), NOT bar close
+		  if (std::next(bar_it) == pos->endPositionBarHistory()) 
+		    {
+		      returnForBar = (pos->getExitPrice() - prevRef) / prevRef;
+		    } 
+		  else 
+		    {
+		      // Intermediate bar: MTM return using bar close
+		      returnForBar = (bar_it->second.getCloseValue() - prevRef) / prevRef;
+		      prevRef = bar_it->second.getCloseValue();
+		    }
+
+		  if (pos->isShortPosition()) returnForBar *= -1;
+		  dailySequence.push_back(returnForBar);
+		}
+	    }
+
+	  // Only add trades with at least one return
+	  if (!dailySequence.empty()) 
+	    {
+	      tradeReturns.emplace_back(std::move(dailySequence));
+	    }
+	}
+
+      return tradeReturns;
+    }
+    
     std::vector<std::pair<boost::posix_time::ptime, Decimal>>
     getHighResBarReturnsWithDates() const
     {

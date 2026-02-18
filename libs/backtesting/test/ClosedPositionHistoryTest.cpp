@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp> // For Catch::Approx
 #include <catch2/matchers/catch_matchers_string.hpp>  // For string matching in exceptions
+#include "TradingVolume.h"
 #include "TimeSeriesCsvReader.h"
 #include "ClosedPositionHistory.h"
 #include "TimeSeriesIndicators.h"
@@ -12,7 +14,10 @@ using boost::posix_time::ptime;
 using boost::posix_time::time_from_string;
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
+using boost::posix_time::hours;
+using boost::posix_time::minutes;
 
+using D = DecimalType;
 const static std::string myCornSymbol("C2");
 
 
@@ -153,6 +158,145 @@ DecimalType getLnReturn(const DecimalType& entryPrice, const DecimalType exitPri
   double lnOfReturn = std::log(lnArg.getAsDouble());
   return DecimalType(lnOfReturn);
 }
+
+// Helper to create a mock long position with bar history for testing
+namespace
+{
+  std::shared_ptr<TradingPosition<D>> 
+  createMockLongPosition(const std::string& symbol,
+			 const ptime& entryTime,
+			 D entryPrice,
+			 D exitPrice,
+			 const std::vector<D>& barCloses)
+  {
+    // Entry happens at open. The entry bar's close is the first MTM point.
+    D entryBarClose = barCloses.empty() ? entryPrice : barCloses[0];
+    
+    // Create entry bar - ensure OHLC constraints are met
+    D high = entryPrice > entryBarClose ? entryPrice : entryBarClose;
+    D low = entryPrice < entryBarClose ? entryPrice : entryBarClose;
+    
+    OHLCTimeSeriesEntry<D> entryBar(
+        entryTime.date(),
+        entryPrice,              // open
+        high,                    // high (must be >= open and close)
+        low,                     // low (must be <= open and close)
+        entryBarClose,          // close
+        D(100.0),                // volume as Decimal
+        TimeFrame::DAILY
+        );
+    
+    auto pos = std::make_shared<TradingPositionLong<D>>(
+    			symbol,
+    			entryPrice,
+    			entryBar,
+    			TradingVolume(1, TradingVolume::SHARES)
+    			);
+    
+    // Add bar history - each subsequent bar except the last one
+    ptime currentTime = entryTime;
+    for (size_t i = 1; i < barCloses.size(); ++i) {  // Start from 1, not 0
+      currentTime += boost::posix_time::hours(24);
+      OHLCTimeSeriesEntry<D> bar(currentTime.date(),
+     barCloses[i],    // open (not used in return calc)
+     barCloses[i],    // high
+     barCloses[i],    // low
+     barCloses[i],    // close
+     D(100.0),        // volume as Decimal
+     TimeFrame::DAILY);
+      
+      pos->addBar(bar);
+    }
+    
+    // Close the position on the last bar's date
+    currentTime += boost::posix_time::hours(24);
+    pos->ClosePosition(currentTime.date(), exitPrice);
+    
+    return pos;
+  }
+
+  std::shared_ptr<TradingPosition<D>>
+  createMockShortPosition(const std::string& symbol,
+			  const ptime& entryTime,
+			  D entryPrice,
+			  D exitPrice,
+			  const std::vector<D>& barCloses)
+  {
+    D entryBarClose = barCloses.empty() ? entryPrice : barCloses[0];
+    
+    // Ensure OHLC constraints are met
+    D high = entryPrice > entryBarClose ? entryPrice : entryBarClose;
+    D low = entryPrice < entryBarClose ? entryPrice : entryBarClose;
+    
+    OHLCTimeSeriesEntry<D> entryBar(entryTime.date(),
+        entryPrice,              // open
+        high,                    // high
+        low,                     // low
+        entryBarClose,          // close
+        D(100.0),                // volume as Decimal
+        TimeFrame::DAILY);
+    
+    auto pos = std::make_shared<TradingPositionShort<D>>(
+    			 symbol,
+    			 entryPrice,
+    			 entryBar,
+    			 TradingVolume(1, TradingVolume::SHARES)
+    			 );
+    
+    ptime currentTime = entryTime;
+    for (size_t i = 1; i < barCloses.size(); ++i) {  // Start from 1, not 0
+      currentTime += boost::posix_time::hours(24);
+      OHLCTimeSeriesEntry<D> bar(currentTime,
+     barCloses[i],
+     barCloses[i],
+     barCloses[i],
+     barCloses[i],
+     D(100.0),        // volume as Decimal
+     TimeFrame::DAILY);
+      
+      pos->addBar(bar);
+    }
+    
+    currentTime += boost::posix_time::hours(24);
+    pos->ClosePosition(currentTime.date(), exitPrice);
+    
+    return pos;
+  }
+
+  std::shared_ptr<TradingPosition<D>>
+  createSameBarPosition(const std::string& symbol,
+			const ptime& entryTime,
+			D entryPrice,
+			D exitPrice)
+  {
+    // Ensure OHLC constraints for same-bar position
+    D high = entryPrice > exitPrice ? entryPrice : exitPrice;
+    D low = entryPrice < exitPrice ? entryPrice : exitPrice;
+    
+    OHLCTimeSeriesEntry<D> entryBar(
+        entryTime,  // Use full timestamp instead of just date
+        entryPrice,
+        high,
+        low,
+        entryPrice,  // Close at entry price initially
+        D(static_cast<double>(TradingVolume(100, TradingVolume::SHARES).getTradingVolume())),
+        TimeFrame::INTRADAY
+        );
+    
+    auto pos = std::make_shared<TradingPositionLong<D>>(
+  					symbol,
+  					entryPrice,
+  					entryBar,
+  					TradingVolume(1, TradingVolume::SHARES)
+  					);
+    
+    // Close same-bar: use same date but later time
+    ptime exitTime = ptime(entryTime.date(), entryTime.time_of_day() + hours(1));
+    pos->ClosePosition(exitTime, exitPrice);
+    
+    return pos;
+  }
+} // anonymous namespace
 
 TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 {
@@ -2465,4 +2609,365 @@ TEST_CASE("ClosedPositionHistory - Move Semantics in Containers", "[ClosedPositi
         
         REQUIRE(histories[0].getNumPositions() == 1);
     }
+}
+
+//
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - empty history",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.empty());
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - single long position",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    // Create a 2-bar position:
+    // Entry at 100.0 (open), entry bar closes at 102.0
+    // Bar 1 closes at 104.0 (but we use exit price, not this close)
+    // Exit at 106.0 (limit/stop/open - happens before bar 1's close)
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    auto pos = createMockLongPosition(
+        "@C",
+        entryTime,
+        D("100.0"),      // entry
+        D("106.0"),      // exit (happens before last bar's close)
+        {D("102.0"), D("104.0")}  // bar closes (104 is NOT used, exit happens first)
+    );
+    
+    history.addClosedPosition(pos);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 1);
+    
+    const auto& trade = trades[0];
+    REQUIRE(trade.getDuration() == 2);  // 2 bars in history
+    
+    const auto& returns = trade.getDailyReturns();
+    REQUIRE(returns.size() == 2);  // 2 returns (one per bar)
+    
+    // Bar 0 (entry bar): (entry bar close - entry price) / entry price
+    // Entry bar close = 102.0
+    // Return = (102-100)/100 = 0.02
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.02).epsilon(1e-9));
+    
+    // Bar 1 (last bar): Exit happens at 106.0, skipping bar's close of 104.0
+    // Return = (106 - 102) / 102 ≈ 0.03921569
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.03921569).epsilon(1e-6));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - single short position",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    // Short entry at 100.0, entry bar closes at 98.0
+    // Bar 1 closes at 96.0 (but exit happens at 94.0, before this close)
+    // Exit at 94.0 (profit for short - price fell)
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    auto pos = createMockShortPosition(
+        "@C",
+        entryTime,
+        D("100.0"),      // entry
+        D("94.0"),       // exit (profit for short)
+        {D("98.0"), D("96.0")}
+    );
+    
+    history.addClosedPosition(pos);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 1);
+    
+    const auto& returns = trades[0].getDailyReturns();
+    REQUIRE(returns.size() == 2);
+    
+    // Short: returns are inverted
+    // Bar 0 (entry): -((98 - 100) / 100) = -(-0.02) = +0.02
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.02).epsilon(1e-9));
+    
+    // Bar 1 (exit at 94, skipping bar close of 96): -((94 - 98) / 98) = +0.04081632
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.04081633).epsilon(1e-6));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - multiple positions",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    ptime time1(date(2024, 1, 10), hours(9) + minutes(30));
+    ptime time2(date(2024, 1, 15), hours(9) + minutes(30));
+    ptime time3(date(2024, 1, 20), hours(9) + minutes(30));
+    
+    // Trade 1: 1-bar winner (entry bar only, exit next day)
+    auto pos1 = createMockLongPosition(
+        "@C", time1, D("100.0"), D("105.0"), {D("103.0")}
+    );
+    
+    // Trade 2: 2-bar loser
+    auto pos2 = createMockLongPosition(
+        "@C", time2, D("100.0"), D("95.0"), {D("98.0"), D("97.0")}
+    );
+    
+    // Trade 3: same-day trade
+    auto pos3 = createSameBarPosition("@C", time3, D("50.0"), D("51.0"));
+    
+    history.addClosedPosition(pos1);
+    history.addClosedPosition(pos2);
+    history.addClosedPosition(pos3);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 3);
+    
+    // Verify trade 1: 1 bar, 1 return
+    REQUIRE(trades[0].getDuration() == 1);
+    // Bar 0: (105-100)/100 = 0.05 (exit, skipping bar close of 103)
+    REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == 
+            Catch::Approx(0.05).epsilon(1e-9));
+    
+    // Verify trade 2: 2 bars, 2 returns
+    REQUIRE(trades[1].getDuration() == 2);
+    // Bar 0: (98-100)/100 = -0.02
+    REQUIRE(num::to_double(trades[1].getDailyReturns()[0]) == 
+            Catch::Approx(-0.02).epsilon(1e-9));
+    // Bar 1: (95-98)/98 = -0.03061224
+    REQUIRE(num::to_double(trades[1].getDailyReturns()[1]) == 
+            Catch::Approx(-0.03061224).epsilon(1e-6));
+    
+    // Verify trade 3: same-day, 1 return
+    REQUIRE(trades[2].getDuration() == 1);
+    REQUIRE(num::to_double(trades[2].getDailyReturns()[0]) == 
+            Catch::Approx(0.02).epsilon(1e-9));  // (51-50)/50
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - same bar entry/exit",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    SECTION("Same-bar winner") {
+        auto pos = createSameBarPosition("@C", entryTime, D("100.0"), D("102.0"));
+        history.addClosedPosition(pos);
+        
+        auto trades = history.getTradeLevelReturns();
+        
+        REQUIRE(trades.size() == 1);
+        REQUIRE(trades[0].getDuration() == 1);
+        
+        // Single return: (102 - 100) / 100 = 0.02
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == 
+                Catch::Approx(0.02).epsilon(1e-9));
+    }
+    
+    SECTION("Same-bar loser") {
+        auto pos = createSameBarPosition("@C", entryTime, D("100.0"), D("98.0"));
+        history.addClosedPosition(pos);
+        
+        auto trades = history.getTradeLevelReturns();
+        
+        REQUIRE(trades.size() == 1);
+        REQUIRE(trades[0].getDuration() == 1);
+        
+        // Single return: (98 - 100) / 100 = -0.02
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == 
+                Catch::Approx(-0.02).epsilon(1e-9));
+    }
+    
+    SECTION("Same-bar breakeven (zero return)") {
+        auto pos = createSameBarPosition("@C", entryTime, D("100.0"), D("100.0"));
+        history.addClosedPosition(pos);
+        
+        auto trades = history.getTradeLevelReturns();
+        
+        // Zero-return trades should be included (legitimate outcome)
+        REQUIRE(trades.size() == 1);
+        REQUIRE(trades[0].getDuration() == 1);
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == 
+                Catch::Approx(0.0).epsilon(1e-12));
+    }
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - zero intermediate return",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    // Position where one bar has zero MTM return (close equals previous)
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    auto pos = createMockLongPosition(
+        "@C",
+        entryTime,
+        D("100.0"),      // entry
+        D("102.0"),      // exit
+        {D("101.0"), D("101.0")}  // bar 1 closes same as bar 0
+    );
+    
+    history.addClosedPosition(pos);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 1);
+    REQUIRE(trades[0].getDuration() == 2);
+    
+    const auto& returns = trades[0].getDailyReturns();
+    REQUIRE(returns.size() == 2);
+    
+    // Bar 0: (101 - 100) / 100 = 0.01
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.01).epsilon(1e-9));
+    
+    // Bar 1 (last): (102 - 101) / 101 ≈ 0.00990099 (exit, skipping bar close of 101)
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.00990099).epsilon(1e-6));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - chronological ordering",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    // Add positions in non-chronological order
+    ptime time3(date(2024, 1, 20), hours(9) + minutes(30));
+    ptime time1(date(2024, 1, 10), hours(9) + minutes(30));
+    ptime time2(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    auto pos3 = createMockLongPosition("@C", time3, D("50.0"), D("52.0"), {D("51.0")});
+    auto pos1 = createMockLongPosition("@C", time1, D("100.0"), D("105.0"), {D("103.0")});
+    auto pos2 = createMockLongPosition("@C", time2, D("100.0"), D("98.0"), {D("99.0")});
+    
+    history.addClosedPosition(pos3);  // Latest first
+    history.addClosedPosition(pos1);  // Earliest
+    history.addClosedPosition(pos2);  // Middle
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 3);
+    
+    // getTradeLevelReturns iterates mPositions, which is a multimap keyed by ptime
+    // multimap orders by key, so trades should be chronological
+    // Trade 1 (earliest): entered at time1, 1 bar
+    REQUIRE(trades[0].getDuration() == 1);
+    // Exit at 105, skipping bar close of 103: (105-100)/100 = 0.05
+    REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == 
+            Catch::Approx(0.05).epsilon(1e-9));
+    
+    // Trade 2 (middle): entered at time2, 1 bar
+    REQUIRE(trades[1].getDuration() == 1);
+    // Exit at 98, skipping bar close of 99: (98-100)/100 = -0.02
+    REQUIRE(num::to_double(trades[1].getDailyReturns()[0]) == 
+            Catch::Approx(-0.02).epsilon(1e-9));
+    
+    // Trade 3 (latest): entered at time3, 1 bar
+    REQUIRE(trades[2].getDuration() == 1);
+    // Exit at 52, skipping bar close of 51: (52-50)/50 = 0.04
+    REQUIRE(num::to_double(trades[2].getDailyReturns()[0]) == 
+            Catch::Approx(0.04).epsilon(1e-9));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - Trade equality operator",
+          "[ClosedPositionHistory][getTradeLevelReturns][Trade]")
+{
+    ClosedPositionHistory<D> history;
+    
+    ptime time1(date(2024, 1, 10), hours(9) + minutes(30));
+    ptime time2(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    // Two identical positions (same entry, exit, bar closes)
+    auto pos1 = createMockLongPosition("@C", time1, D("100.0"), D("105.0"), {D("103.0")});
+    auto pos2 = createMockLongPosition("@C", time2, D("100.0"), D("105.0"), {D("103.0")});
+    
+    history.addClosedPosition(pos1);
+    history.addClosedPosition(pos2);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 2);
+    
+    // Trades with identical return sequences should be equal (for BCa degenerate check)
+    REQUIRE(trades[0] == trades[1]);
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - maximum duration",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    // Create a trade at the maximum duration of 8 bars
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    std::vector<D> barCloses = {
+        D("101.0"), D("102.0"), D("103.0"), D("104.0"),
+        D("105.0"), D("106.0"), D("107.0")
+    };
+    
+    auto pos = createMockLongPosition(
+        "@C",
+        entryTime,
+        D("100.0"),
+        D("108.0"),
+        barCloses
+    );
+    
+    history.addClosedPosition(pos);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 1);
+    REQUIRE(trades[0].getDuration() == 7);  // 7 bars in history
+    
+    // Verify all 7 returns are present and positive (monotone rising)
+    const auto& returns = trades[0].getDailyReturns();
+    REQUIRE(returns.size() == 7);
+    
+    // Note: Last return uses exit price 108, not bar close 107
+    for (size_t i = 0; i < 7; ++i) {
+        REQUIRE(num::to_double(returns[i]) > 0.0);
+    }
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - flattened compatibility",
+          "[ClosedPositionHistory][getTradeLevelReturns][Integration]")
+{
+    // Integration test: verify flattened returns match what would be computed
+    // from the original flat vector approach
+    
+    ClosedPositionHistory<D> history;
+    
+    ptime time1(date(2024, 1, 10), hours(9) + minutes(30));
+    ptime time2(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    auto pos1 = createMockLongPosition("@C", time1, D("100.0"), D("104.0"), {D("102.0")});
+    auto pos2 = createMockLongPosition("@C", time2, D("50.0"), D("48.0"), {D("49.0")});
+    
+    history.addClosedPosition(pos1);
+    history.addClosedPosition(pos2);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    // Flatten trades manually
+    std::vector<D> flatReturns;
+    for (const auto& trade : trades) {
+        const auto& returns = trade.getDailyReturns();
+        flatReturns.insert(flatReturns.end(), returns.begin(), returns.end());
+    }
+    
+    // Should have 2 total returns (1 per trade)
+    REQUIRE(flatReturns.size() == 2);
+    
+    // Verify flattened sequence matches expected concatenation
+    // pos1: exit at 104, skipping bar close 102: (104-100)/100 = 0.04
+    REQUIRE(num::to_double(flatReturns[0]) == Catch::Approx(0.04).epsilon(1e-9));
+    // pos2: exit at 48, skipping bar close 49: (48-50)/50 = -0.04
+    REQUIRE(num::to_double(flatReturns[1]) == Catch::Approx(-0.04).epsilon(1e-9));
 }
