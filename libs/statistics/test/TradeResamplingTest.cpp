@@ -512,3 +512,407 @@ TEST_CASE("TradeFlatteningAdapter::integration with realistic trade data",
     // Mean: 0.05 / 8 = 0.00625
     REQUIRE(num::to_double(result) == Catch::Approx(0.00625).epsilon(1e-9));
 }
+
+// ============================================================================
+// NEW Trade Class Method Tests
+// Tests for the improved design: default constructor, addReturn, reserve, empty
+// ============================================================================
+
+TEST_CASE("Trade::default constructor creates empty trade", "[Trade][Construction][DefaultConstructor]")
+{
+    Trade<D> trade;
+    
+    REQUIRE(trade.getDuration() == 0);
+    REQUIRE(trade.getDailyReturns().empty());
+    REQUIRE(trade.empty());
+}
+
+TEST_CASE("Trade::empty() method", "[Trade][Empty]")
+{
+    SECTION("Default constructed trade is empty") {
+        Trade<D> trade;
+        REQUIRE(trade.empty());
+    }
+    
+    SECTION("Trade with returns is not empty") {
+        Trade<D> trade({D("0.01")});
+        REQUIRE_FALSE(trade.empty());
+    }
+    
+    SECTION("Empty vector construction creates empty trade") {
+        Trade<D> trade(std::vector<D>{});
+        REQUIRE(trade.empty());
+    }
+}
+
+TEST_CASE("Trade::addReturn single return", "[Trade][AddReturn]")
+{
+    Trade<D> trade;
+    
+    REQUIRE(trade.empty());
+    REQUIRE(trade.getDuration() == 0);
+    
+    // Add one return
+    trade.addReturn(D("0.05"));
+    
+    REQUIRE_FALSE(trade.empty());
+    REQUIRE(trade.getDuration() == 1);
+    REQUIRE(trade.getDailyReturns().size() == 1);
+    REQUIRE(num::to_double(trade.getDailyReturns()[0]) == Catch::Approx(0.05).epsilon(1e-9));
+}
+
+TEST_CASE("Trade::addReturn multiple returns incrementally", "[Trade][AddReturn]")
+{
+    Trade<D> trade;
+    
+    // Add returns one at a time
+    trade.addReturn(D("0.01"));
+    REQUIRE(trade.getDuration() == 1);
+    REQUIRE(num::to_double(trade.getDailyReturns()[0]) == Catch::Approx(0.01).epsilon(1e-9));
+    
+    trade.addReturn(D("0.02"));
+    REQUIRE(trade.getDuration() == 2);
+    REQUIRE(num::to_double(trade.getDailyReturns()[1]) == Catch::Approx(0.02).epsilon(1e-9));
+    
+    trade.addReturn(D("0.03"));
+    REQUIRE(trade.getDuration() == 3);
+    REQUIRE(num::to_double(trade.getDailyReturns()[2]) == Catch::Approx(0.03).epsilon(1e-9));
+    
+    // Verify all returns are present
+    const auto& returns = trade.getDailyReturns();
+    REQUIRE(returns.size() == 3);
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.01).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.02).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[2]) == Catch::Approx(0.03).epsilon(1e-9));
+}
+
+TEST_CASE("Trade::addReturn in a loop", "[Trade][AddReturn][Loop]")
+{
+    Trade<D> trade;
+    
+    // Simulate building a trade bar-by-bar
+    const std::size_t numBars = 8;  // Maximum trade duration per spec
+    for (std::size_t i = 0; i < numBars; ++i) {
+        double returnValue = 0.01 * static_cast<double>(i + 1);
+        trade.addReturn(D(returnValue));
+    }
+    
+    REQUIRE(trade.getDuration() == numBars);
+    REQUIRE_FALSE(trade.empty());
+    
+    // Verify all returns were added in order
+    const auto& returns = trade.getDailyReturns();
+    for (std::size_t i = 0; i < numBars; ++i) {
+        double expected = 0.01 * static_cast<double>(i + 1);
+        REQUIRE(num::to_double(returns[i]) == Catch::Approx(expected).epsilon(1e-9));
+    }
+}
+
+TEST_CASE("Trade::addReturn with negative returns", "[Trade][AddReturn][Negative]")
+{
+    Trade<D> trade;
+    
+    trade.addReturn(D("0.05"));
+    trade.addReturn(D("-0.02"));
+    trade.addReturn(D("-0.01"));
+    trade.addReturn(D("0.03"));
+    
+    REQUIRE(trade.getDuration() == 4);
+    
+    const auto& returns = trade.getDailyReturns();
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.05).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(-0.02).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[2]) == Catch::Approx(-0.01).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[3]) == Catch::Approx(0.03).epsilon(1e-9));
+}
+
+TEST_CASE("Trade::addReturn with zero returns", "[Trade][AddReturn][Zero]")
+{
+    Trade<D> trade;
+    
+    trade.addReturn(D("0.02"));
+    trade.addReturn(D("0.0"));   // Zero return (flat bar)
+    trade.addReturn(D("0.03"));
+    
+    REQUIRE(trade.getDuration() == 3);
+    
+    const auto& returns = trade.getDailyReturns();
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.02).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.0).epsilon(1e-12));
+    REQUIRE(num::to_double(returns[2]) == Catch::Approx(0.03).epsilon(1e-9));
+}
+
+TEST_CASE("Trade::reserve capacity hint", "[Trade][Reserve]")
+{
+    Trade<D> trade;
+    
+    // Reserve capacity (optimization hint)
+    trade.reserve(8);
+    
+    // Trade should still be empty
+    REQUIRE(trade.empty());
+    REQUIRE(trade.getDuration() == 0);
+    
+    // Add returns - should not trigger reallocation
+    for (int i = 0; i < 8; ++i) {
+        trade.addReturn(D(0.01 * i));
+    }
+    
+    REQUIRE(trade.getDuration() == 8);
+}
+
+TEST_CASE("Trade::reserve then addReturn", "[Trade][Reserve][AddReturn]")
+{
+    Trade<D> trade;
+    trade.reserve(5);
+    
+    // Add fewer returns than reserved
+    trade.addReturn(D("0.01"));
+    trade.addReturn(D("0.02"));
+    trade.addReturn(D("0.03"));
+    
+    REQUIRE(trade.getDuration() == 3);
+    
+    const auto& returns = trade.getDailyReturns();
+    REQUIRE(returns.size() == 3);
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.01).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.02).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[2]) == Catch::Approx(0.03).epsilon(1e-9));
+}
+
+TEST_CASE("Trade::reserve does not affect content", "[Trade][Reserve][Edge]")
+{
+    Trade<D> trade;
+    
+    // Reserve on empty trade
+    trade.reserve(10);
+    REQUIRE(trade.empty());
+    REQUIRE(trade.getDuration() == 0);
+    
+    // Add one return
+    trade.addReturn(D("0.05"));
+    REQUIRE(trade.getDuration() == 1);
+    
+    // Reserve again (should be no-op if capacity already sufficient)
+    trade.reserve(5);
+    REQUIRE(trade.getDuration() == 1);
+    REQUIRE(num::to_double(trade.getDailyReturns()[0]) == Catch::Approx(0.05).epsilon(1e-9));
+}
+
+TEST_CASE("Trade::assignment after addReturn", "[Trade][AddReturn][Assignment]")
+{
+    Trade<D> trade1;
+    trade1.addReturn(D("0.01"));
+    trade1.addReturn(D("0.02"));
+    trade1.addReturn(D("0.03"));
+    
+    Trade<D> trade2;
+    trade2.addReturn(D("0.04"));
+    
+    // Assign trade1 to trade2
+    trade2 = trade1;
+    
+    REQUIRE(trade2.getDuration() == 3);
+    REQUIRE(trade2 == trade1);
+    
+    const auto& returns = trade2.getDailyReturns();
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.01).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.02).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[2]) == Catch::Approx(0.03).epsilon(1e-9));
+}
+
+TEST_CASE("Trade::copy constructor after addReturn", "[Trade][AddReturn][CopyConstructor]")
+{
+    Trade<D> original;
+    original.addReturn(D("0.01"));
+    original.addReturn(D("0.02"));
+    original.addReturn(D("0.03"));
+    
+    // Copy construct
+    Trade<D> copy(original);
+    
+    REQUIRE(copy == original);
+    REQUIRE(copy.getDuration() == original.getDuration());
+    
+    // Verify independent storage
+    REQUIRE(&copy.getDailyReturns() != &original.getDailyReturns());
+}
+
+TEST_CASE("Trade::equality comparison with incrementally built trades", "[Trade][AddReturn][Equality]")
+{
+    Trade<D> trade1;
+    trade1.addReturn(D("0.02"));
+    trade1.addReturn(D("0.03"));
+    trade1.addReturn(D("0.01"));
+    
+    Trade<D> trade2({D("0.02"), D("0.03"), D("0.01")});
+    
+    // Incrementally built trade should equal vector-constructed trade
+    REQUIRE(trade1 == trade2);
+    REQUIRE(trade2 == trade1);
+}
+
+TEST_CASE("Trade::comparison operators with addReturn", "[Trade][AddReturn][Comparison]")
+{
+    Trade<D> trade1;
+    trade1.addReturn(D("0.01"));
+    trade1.addReturn(D("0.02"));  // sum = 0.03
+    
+    Trade<D> trade2;
+    trade2.addReturn(D("0.02"));
+    trade2.addReturn(D("0.03"));  // sum = 0.05
+    
+    REQUIRE(trade1 < trade2);
+    REQUIRE_FALSE(trade2 < trade1);
+}
+
+TEST_CASE("Trade::realistic construction pattern", "[Trade][AddReturn][Realistic]")
+{
+    // Simulate realistic trade construction during backtesting
+    Trade<D> trade;
+    trade.reserve(8);  // Hint: max 8 bars per spec
+    
+    // Entry bar
+    trade.addReturn(D("0.02"));  // First MTM
+    
+    // Intermediate bars
+    trade.addReturn(D("0.03"));
+    trade.addReturn(D("-0.01"));
+    
+    // Exit bar
+    trade.addReturn(D("0.01"));
+    
+    REQUIRE(trade.getDuration() == 4);
+    REQUIRE_FALSE(trade.empty());
+    
+    // Verify construction is valid for bootstrap
+    REQUIRE(trade.getDailyReturns().size() == 4);
+}
+
+TEST_CASE("Trade::empty trade behavior after default construction", "[Trade][Empty][DefaultConstructor]")
+{
+    Trade<D> trade;
+    
+    // Verify empty state
+    REQUIRE(trade.empty());
+    REQUIRE(trade.getDuration() == 0);
+    REQUIRE(trade.getDailyReturns().empty());
+    
+    // Empty trade should equal another empty trade
+    Trade<D> anotherEmpty;
+    REQUIRE(trade == anotherEmpty);
+}
+
+TEST_CASE("Trade::transition from empty to non-empty", "[Trade][Empty][AddReturn]")
+{
+    Trade<D> trade;
+    
+    // Start empty
+    REQUIRE(trade.empty());
+    
+    // Add one return
+    trade.addReturn(D("0.05"));
+    
+    // No longer empty
+    REQUIRE_FALSE(trade.empty());
+    REQUIRE(trade.getDuration() == 1);
+}
+
+TEST_CASE("Trade::move construction preserves addReturn results", "[Trade][AddReturn][Move]")
+{
+    Trade<D> original;
+    original.addReturn(D("0.01"));
+    original.addReturn(D("0.02"));
+    original.addReturn(D("0.03"));
+    
+    // Move construct
+    Trade<D> moved(std::move(original));
+    
+    REQUIRE(moved.getDuration() == 3);
+    REQUIRE_FALSE(moved.empty());
+    
+    const auto& returns = moved.getDailyReturns();
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.01).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.02).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[2]) == Catch::Approx(0.03).epsilon(1e-9));
+}
+
+TEST_CASE("Trade::assignment replaces incrementally built trade", "[Trade][AddReturn][Assignment]")
+{
+    Trade<D> target;
+    target.addReturn(D("0.99"));
+    
+    Trade<D> source;
+    source.addReturn(D("0.01"));
+    source.addReturn(D("0.02"));
+    source.addReturn(D("0.03"));
+    
+    // Assignment should completely replace target
+    target = source;
+    
+    REQUIRE(target.getDuration() == 3);
+    REQUIRE(target == source);
+    
+    const auto& returns = target.getDailyReturns();
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.01).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.02).epsilon(1e-9));
+    REQUIRE(num::to_double(returns[2]) == Catch::Approx(0.03).epsilon(1e-9));
+}
+
+TEST_CASE("Trade::backward compatibility with vector constructor", "[Trade][BackwardCompatibility]")
+{
+    // All existing vector construction patterns should still work
+    
+    SECTION("Lvalue vector (copy)") {
+        std::vector<D> returns = {D("0.01"), D("0.02"), D("0.03")};
+        Trade<D> trade(returns);
+        
+        REQUIRE(trade.getDuration() == 3);
+        REQUIRE(returns.size() == 3);  // Original preserved
+    }
+    
+    SECTION("Rvalue vector (move)") {
+        std::vector<D> returns = {D("0.01"), D("0.02"), D("0.03")};
+        Trade<D> trade(std::move(returns));
+        
+        REQUIRE(trade.getDuration() == 3);
+        // returns is moved-from (typically empty)
+    }
+    
+    SECTION("Initializer list") {
+        Trade<D> trade({D("0.01"), D("0.02"), D("0.03")});
+        
+        REQUIRE(trade.getDuration() == 3);
+    }
+    
+    SECTION("Empty vector") {
+        std::vector<D> returns;
+        Trade<D> trade(returns);
+        
+        REQUIRE(trade.empty());
+        REQUIRE(trade.getDuration() == 0);
+    }
+}
+
+TEST_CASE("Trade::mixed construction patterns produce equivalent trades", "[Trade][Equivalence]")
+{
+    // Build same trade three different ways
+    
+    // Method 1: Vector construction
+    Trade<D> trade1({D("0.01"), D("0.02"), D("0.03")});
+    
+    // Method 2: Incremental with addReturn
+    Trade<D> trade2;
+    trade2.addReturn(D("0.01"));
+    trade2.addReturn(D("0.02"));
+    trade2.addReturn(D("0.03"));
+    
+    // Method 3: Vector then move
+    std::vector<D> returns = {D("0.01"), D("0.02"), D("0.03")};
+    Trade<D> trade3(std::move(returns));
+    
+    // All should be equal
+    REQUIRE(trade1 == trade2);
+    REQUIRE(trade2 == trade3);
+    REQUIRE(trade1 == trade3);
+}

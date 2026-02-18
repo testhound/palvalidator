@@ -18,12 +18,82 @@ namespace mkc_timeseries
   class Trade
   {
   public:
-    explicit Trade(std::vector<Decimal> returns) 
+    /**
+     * @brief Default constructor: creates an empty trade.
+     * 
+     * Use addReturn() to populate incrementally, or assign from another Trade.
+     * Required by std::vector::resize() for resampling operations.
+     */
+    Trade() = default;
+    
+    /**
+     * @brief Move constructor from complete return sequence (efficient).
+     * 
+     * Use when you have a pre-built return sequence and want to avoid copying.
+     * 
+     * @param returns Complete sequence of daily returns (moved, not copied)
+     * 
+     * Example:
+     *   std::vector<Decimal> rets = {0.01, 0.02, 0.03};
+     *   Trade<Decimal> trade(std::move(rets));
+     */
+    explicit Trade(std::vector<Decimal>&& returns) 
       : m_daily_returns(std::move(returns)) 
     {}
+    
+    /**
+     * @brief Copy constructor from complete return sequence.
+     * 
+     * Use when you need to keep the original vector.
+     * 
+     * @param returns Complete sequence of daily returns (copied)
+     * 
+     * Example:
+     *   std::vector<Decimal> rets = {0.01, 0.02, 0.03};
+     *   Trade<Decimal> trade(rets);  // rets still valid after
+     */
+    explicit Trade(const std::vector<Decimal>& returns) 
+      : m_daily_returns(returns) 
+    {}
+    
+    /**
+     * @brief Add a single return to the trade (incremental construction).
+     * 
+     * Allows building trades bar-by-bar without pre-allocating a vector.
+     * 
+     * @param dailyReturn The return for one bar
+     * 
+     * Example:
+     *   Trade<Decimal> trade;
+     *   trade.addReturn(0.01);  // Bar 1
+     *   trade.addReturn(0.02);  // Bar 2
+     *   trade.addReturn(0.03);  // Bar 3
+     */
+    void addReturn(const Decimal& dailyReturn)
+    {
+      m_daily_returns.push_back(dailyReturn);
+    }
+    
+    /**
+     * @brief Reserve capacity for expected number of returns (optimization).
+     * 
+     * Call before addReturn() loop if you know the trade duration.
+     * 
+     * @param capacity Expected number of bars
+     * 
+     * Example:
+     *   Trade<Decimal> trade;
+     *   trade.reserve(8);  // Max 8 bars per your spec
+     *   for (...) trade.addReturn(r);
+     */
+    void reserve(std::size_t capacity)
+    {
+      m_daily_returns.reserve(capacity);
+    }
 
     /**
      * @brief Access the underlying daily mark-to-market returns.
+     * @return Const reference to internal return sequence
      */
     const std::vector<Decimal>& getDailyReturns() const 
     { 
@@ -32,10 +102,20 @@ namespace mkc_timeseries
     
     /**
      * @brief Returns the duration of the trade in bars.
+     * @return Number of bars in the trade
      */
     std::size_t getDuration() const 
     { 
       return m_daily_returns.size(); 
+    }
+    
+    /**
+     * @brief Check if trade is empty (no returns).
+     * @return true if duration is zero
+     */
+    bool empty() const
+    {
+      return m_daily_returns.empty();
     }
 
     /**
@@ -46,11 +126,13 @@ namespace mkc_timeseries
       return m_daily_returns == other.m_daily_returns;
     }
 
+    /**
+     * @brief Less-than operator for sorting trades by total return.
+     */
     bool operator<(const Trade& other) const
     {
-       // Required for certain sorting or diagnostic operations
-       return std::accumulate(m_daily_returns.begin(), m_daily_returns.end(), Decimal{}) <
-              std::accumulate(other.m_daily_returns.begin(), other.m_daily_returns.end(), Decimal{});
+      return std::accumulate(m_daily_returns.begin(), m_daily_returns.end(), Decimal{}) <
+             std::accumulate(other.m_daily_returns.begin(), other.m_daily_returns.end(), Decimal{});
     }
 
   private:
