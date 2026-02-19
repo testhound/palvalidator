@@ -57,9 +57,15 @@ namespace palvalidator::filtering::stages
   {
   public:
     BootstrapAnalysisStage(const Num& confidenceLevel,
-	   unsigned int numResamples,
-	   BootstrapFactory& bootstrapFactory);
+			   unsigned int numResamples,
+			   BootstrapFactory& bootstrapFactory,
+			   bool performTradeLevelBootstrapping = false);
 
+    bool isTradeLevelBootStrapping() const
+    {
+      return mTradeLevelBootstrapping;
+    }
+    
     void reportDiagnostics(const StrategyAnalysisContext& ctx,
                            palvalidator::diagnostics::MetricType metricType,
                            const palvalidator::analysis::AutoCIResult<Num>& result) const;
@@ -356,6 +362,51 @@ namespace palvalidator::filtering::stages
                                                   BootstrapAnalysisResult& result,
                                                   std::ostream& os) const;
 
+    // -----------------------------------------------------------------------
+    // Bar-level and trade-level split implementations.
+    //
+    // runAutoGeoBootstrap() and runAutoProfitFactorBootstrap() are thin
+    // dispatchers that delegate here based on mTradeLevelBootstrapping.
+    // execute() is unchanged; the split is invisible above this level.
+    //
+    // Bar-level: StationaryMaskValueResamplerAdapter, log-bars pre-computed
+    //   externally, all six algorithms enabled.
+    //
+    // Trade-level: IIDResampler<Trade<Num>>, TradeFlatteningAdapter wraps the
+    //   underlying stat, Normal/Basic/Percentile disabled (they assume serial
+    //   bar-level correlation), MOutOfN uses fixed-ratio path.
+    // -----------------------------------------------------------------------
+
+    /// Bar-level geo-mean: called by runAutoGeoBootstrap when !mTradeLevelBootstrapping
+    Num runBarLevelAutoGeoBootstrap(const StrategyAnalysisContext& ctx,
+                                    double confidenceLevel,
+                                    std::size_t blockLength,
+                                    BootstrapAnalysisResult& result,
+                                    std::ostream& os) const;
+
+    /// Trade-level geo-mean: called by runAutoGeoBootstrap when mTradeLevelBootstrapping
+    Num runTradeLevelAutoGeoBootstrap(const StrategyAnalysisContext& ctx,
+                                      double confidenceLevel,
+                                      std::size_t blockLength,
+                                      BootstrapAnalysisResult& result,
+                                      std::ostream& os) const;
+
+    /// Bar-level PF: called by runAutoProfitFactorBootstrap when !mTradeLevelBootstrapping
+    std::optional<Num> runBarLevelAutoProfitFactorBootstrap(
+                                          const StrategyAnalysisContext& ctx,
+                                          double confidenceLevel,
+                                          std::size_t blockLength,
+                                          BootstrapAnalysisResult& result,
+                                          std::ostream& os) const;
+
+    /// Trade-level PF: called by runAutoProfitFactorBootstrap when mTradeLevelBootstrapping
+    std::optional<Num> runTradeLevelAutoProfitFactorBootstrap(
+                                           const StrategyAnalysisContext& ctx,
+                                           double confidenceLevel,
+                                           std::size_t blockLength,
+                                           BootstrapAnalysisResult& result,
+                                           std::ostream& os) const;
+
     /**
      * Combine geometric lower bounds from multiple bootstrap methods
      */
@@ -380,6 +431,7 @@ namespace palvalidator::filtering::stages
     Num mConfidenceLevel;
     unsigned int mNumResamples;
     BootstrapFactory& mBootstrapFactory;
+    bool mTradeLevelBootstrapping;
     std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> mObserver;
   };
 

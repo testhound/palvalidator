@@ -31,6 +31,7 @@ namespace palvalidator::filtering::stages
     ctx.clonedStrategy = ctx.strategy->clone2(ctx.portfolio);
     ctx.backtester = mkc_timeseries::BackTesterFactory<Num>::backTestStrategy(ctx.clonedStrategy, ctx.timeFrame, ctx.oosDates);
     ctx.highResReturns = ctx.backtester->getAllHighResReturns(ctx.clonedStrategy.get());
+    ctx.tradeLevelReturns = ctx.backtester->getClosedTradeLevelReturns(ctx.clonedStrategy.get());
   }
 
   bool BacktestingStage::validateReturnCount(const StrategyAnalysisContext& ctx, std::ostream& os) const

@@ -16,6 +16,7 @@
 #include "diagnostics/IBootstrapObserver.h"
 
 #include "StationaryMaskResamplers.h"
+#include "TradeResampling.h"
 #include "StrategyAutoBootstrap.h"
 #include "CandidateReject.h"
 #include "AutoBootstrapSelector.h"
@@ -37,6 +38,8 @@ namespace palvalidator::filtering::stages
   using mkc_timeseries::StatUtils;
   using mkc_timeseries::Annualizer;
   using mkc_timeseries::GeoMeanStat;
+  using mkc_timeseries::IIDResampler;
+  using mkc_timeseries::Trade;
 
   namespace
   {
@@ -61,6 +64,42 @@ namespace palvalidator::filtering::stages
           default:                    return "Unknown";
         }
     }
+
+    // -----------------------------------------------------------------------
+    // makeLogGrowthSeriesForTrades
+    //
+    // Converts a vector<Trade<Decimal>> whose getDailyReturns() holds raw
+    // mark-to-market returns into a new vector<Trade<Decimal>> whose
+    // getDailyReturns() holds pre-computed log-growth values of the form
+    //   log( max(1 + r_i, ruin_eps) )
+    //
+    // This is the trade-level analogue of StatUtils::makeLogGrowthSeries and
+    // satisfies the contract required by GeoMeanFromLogBarsStat::operator()
+    // and LogProfitFactorFromLogBarsStat_LogPF::operator() when called with
+    // a vector<Trade<Decimal>>: both assume getDailyReturns() contains
+    // pre-computed log-bars, not raw returns.
+    //
+    // By pre-computing once here, bootstrap iterations only flatten and sum;
+    // no further log() calls occur inside the stat functors.
+    // -----------------------------------------------------------------------
+    template <class Decimal>
+    std::vector<mkc_timeseries::Trade<Decimal>>
+    makeLogGrowthSeriesForTrades(
+        const std::vector<mkc_timeseries::Trade<Decimal>>& rawTrades,
+        double ruin_eps = mkc_timeseries::StatUtils<Decimal>::DefaultRuinEps)
+    {
+      std::vector<mkc_timeseries::Trade<Decimal>> logTrades;
+      logTrades.reserve(rawTrades.size());
+      for (const auto& trade : rawTrades)
+        {
+          // Reuse the scalar makeLogGrowthSeries on each trade's raw returns.
+          std::vector<Decimal> logBars =
+            mkc_timeseries::StatUtils<Decimal>::makeLogGrowthSeries(
+                trade.getDailyReturns(), ruin_eps);
+          logTrades.emplace_back(std::move(logBars));
+        }
+      return logTrades;
+    }
   } // anonymous namespace
 
   // ---------------------------------------------------------------------------
@@ -69,10 +108,12 @@ namespace palvalidator::filtering::stages
 
   BootstrapAnalysisStage::BootstrapAnalysisStage(const Num& confidenceLevel,
                                                  unsigned int numResamples,
-                                                 BootstrapFactory& bootstrapFactory)
-    : mConfidenceLevel(confidenceLevel)
-    , mNumResamples(numResamples)
-    , mBootstrapFactory(bootstrapFactory)
+                                                 BootstrapFactory& bootstrapFactory,
+						 bool performTradeLevelBootstrapping)
+    : mConfidenceLevel(confidenceLevel),
+      mNumResamples(numResamples),
+      mBootstrapFactory(bootstrapFactory),
+      mTradeLevelBootstrapping(performTradeLevelBootstrapping)
   {
   }
 
@@ -678,12 +719,33 @@ namespace palvalidator::filtering::stages
    * @see GeoMeanFromLogBarsStat for the geometric mean statistic implementation
    * @see StatUtils<Decimal>::makeLogGrowthSeries() for log-transformation details
    */
+  // ---------------------------------------------------------------------------
+  // runAutoGeoBootstrap: dispatcher
+  // ---------------------------------------------------------------------------
+
   Num
   BootstrapAnalysisStage::runAutoGeoBootstrap(const StrategyAnalysisContext& ctx,
 					      double                        confidenceLevel,
 					      std::size_t                   blockLength,
 					      BootstrapAnalysisResult&      out,
 					      std::ostream&                 os) const
+  {
+    if (mTradeLevelBootstrapping)
+      return runTradeLevelAutoGeoBootstrap(ctx, confidenceLevel, blockLength, out, os);
+    else
+      return runBarLevelAutoGeoBootstrap(ctx, confidenceLevel, blockLength, out, os);
+  }
+
+  // ---------------------------------------------------------------------------
+  // runBarLevelAutoGeoBootstrap: original bar-level implementation (unchanged logic)
+  // ---------------------------------------------------------------------------
+
+  Num
+  BootstrapAnalysisStage::runBarLevelAutoGeoBootstrap(const StrategyAnalysisContext& ctx,
+                                                       double                         confidenceLevel,
+                                                       std::size_t                    blockLength,
+                                                       BootstrapAnalysisResult&       out,
+                                                       std::ostream&                  os) const
   {
     using Decimal   = Num;
     using Stat      = mkc_timeseries::StatUtils<Decimal>;
@@ -694,9 +756,7 @@ namespace palvalidator::filtering::stages
     using MethodId  = typename AutoCI::MethodId;
 
     if (!ctx.clonedStrategy)
-      {
-	throw std::runtime_error("runAutoGeoBootstrap: clonedStrategy is null.");
-      }
+      throw std::runtime_error("runBarLevelAutoGeoBootstrap: clonedStrategy is null.");
 
     if (ctx.highResReturns.empty())
       {
@@ -723,14 +783,10 @@ namespace palvalidator::filtering::stages
 					   /*BCa*/         true);
 
     // Precompute log(1 + r) once, with ruin-aware clipping.
-    const double ruin_eps = Stat::DefaultRuinEps;   // or 1e-8 to match GeoMeanStat defaults
-    const auto&  rawReturns = ctx.highResReturns;
-
+    const double ruin_eps  = Stat::DefaultRuinEps;
     std::vector<Decimal> logBars =
-      Stat::makeLogGrowthSeries(rawReturns, ruin_eps);
+      Stat::makeLogGrowthSeries(ctx.highResReturns, ruin_eps);
 
-    // StrategyAutoBootstrap will default-construct GeoMeanFromLogBarsStat,
-    // which uses the same winsorization defaults as GeoMeanStat.
     StrategyAutoBootstrap<Decimal, Sampler, Resampler> autoGeo(
     		       mBootstrapFactory,
     		       *ctx.clonedStrategy,
@@ -747,7 +803,6 @@ namespace palvalidator::filtering::stages
     const Candidate& chosen = result.getChosenCandidate();
     const Decimal    lbPer  = chosen.getLower();
 
-    // Diagnostics into BootstrapAnalysisResult (unchanged)
     out.geoAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
     out.geoAutoCIChosenScore       = chosen.getScore();
     out.geoAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
@@ -756,21 +811,13 @@ namespace palvalidator::filtering::stages
     const auto& candidates = result.getCandidates();
     bool hasBCa = false;
     for (const auto& c : candidates)
-      {
-	if (c.getMethod() == MethodId::BCa)
-	  {
-	    hasBCa = true;
-	    break;
-	  }
-      }
+      if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
     out.geoAutoCIHasBCaCandidate = hasBCa;
     out.geoAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
     out.geoAutoCINumCandidates   = candidates.size();
 
-    // Store bootstrap median (as Num) for downstream validation
     try {
-      const double median_boot = result.getBootstrapMedian();
-      out.medianGeo = Num(median_boot);
+      out.medianGeo = Num(result.getBootstrapMedian());
     } catch (...) {
       out.medianGeo = std::nullopt;
     }
@@ -788,17 +835,147 @@ namespace palvalidator::filtering::stages
        << "  BCaChosen=" << (out.geoAutoCIBCaChosen ? "true" : "false")
        << "\n";
 
-    // Report diagnostics for GeoMean AutoCI if observer available
     try {
-      if (mObserver) {
+      if (mObserver)
         reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::GeoMean, result);
-      }
-    } catch (...) {
-      // swallow diagnostics errors
-    }
+    } catch (...) {}
 
     return lbPer;
   }
+
+  // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // runTradeLevelAutoGeoBootstrap: trade-level IID bootstrap for geometric mean
+  //
+  // Pre-computes log-growth bars for each Trade object via
+  // makeLogGrowthSeriesForTrades(), then bootstraps using
+  // GeoMeanFromLogBarsStat<Decimal> — the same stat as the bar-level path.
+  // Its operator()(vector<Trade<Decimal>>) flattens and sums the log-bars
+  // from the resampled trades directly; no extra wrapper is needed.
+  //
+  // Uses IIDResampler<Trade<Decimal>> so whole Trade objects are resampled,
+  // preserving multi-bar trade structure.
+  //
+  // Normal / Basic / Percentile are disabled: all three assume serially-
+  // correlated bar-level observations.  MOutOfN uses the fixed-ratio path
+  // (isTradeLevelBootstrappingEnabled()==true).  PercentileT and BCa are
+  // distribution-free and appropriate for IID trade samples.
+  //
+  // blockLength is accepted to match the dispatcher's call signature but is
+  // unused (IID has no block structure).
+  // ---------------------------------------------------------------------------
+
+  Num
+  BootstrapAnalysisStage::runTradeLevelAutoGeoBootstrap(const StrategyAnalysisContext& ctx,
+                                                         double                         confidenceLevel,
+                                                         std::size_t                    /*blockLength*/,
+                                                         BootstrapAnalysisResult&       out,
+                                                         std::ostream&                  os) const
+  {
+    using Decimal   = Num;
+    using Stat      = mkc_timeseries::StatUtils<Decimal>;
+    using TradeType = Trade<Decimal>;
+    using Sampler   = mkc_timeseries::GeoMeanFromLogBarsStat<Decimal>;
+    using Resampler = IIDResampler<TradeType>;
+    using AutoCI    = AutoCIResult<Decimal>;
+    using Candidate = typename AutoCI::Candidate;
+    using MethodId  = typename AutoCI::MethodId;
+
+    if (!ctx.clonedStrategy)
+      throw std::runtime_error("runTradeLevelAutoGeoBootstrap: clonedStrategy is null.");
+
+    if (ctx.tradeLevelReturns.empty())
+      {
+	os << "   [Bootstrap] AutoCI trade-level (GeoMean): skipped (no trades).\n";
+	return mkc_timeseries::DecimalConstants<Decimal>::DecimalZero;
+      }
+
+    // Pre-compute log(max(1+r, ruin_eps)) for every bar in every trade.
+    // This satisfies GeoMeanFromLogBarsStat's contract: its Trade overload
+    // assumes getDailyReturns() contains pre-computed log-bars, not raw returns.
+    const std::vector<TradeType> logTrades =
+      makeLogGrowthSeriesForTrades<Decimal>(ctx.tradeLevelReturns, Stat::DefaultRuinEps);
+
+    const std::uint64_t stageTag = BootstrapStages::GEO_MEAN;
+    const std::uint64_t fold     = BootstrapStages::NO_FOLD;
+
+    // blockSize=1: IIDResampler ignores it; documents no block structure.
+    // enableTradeLevelBootstrapping=true routes MOutOfN to the fixed-ratio path.
+    BootstrapConfiguration cfg(
+			       mNumResamples,
+			       1,
+			       confidenceLevel,
+			       stageTag,
+			       fold,
+			       /*rescaleMOutOfN*/            true,
+			       /*enableTradeLevelBootstrap*/ true);
+
+    BootstrapAlgorithmsConfiguration algoConfig(
+					   /*Normal*/      false,   // assumes serial bar-level correlation
+					   /*Basic*/       false,   // same
+					   /*Percentile*/  false,   // same
+					   /*MOutOfN*/     true,    // fixed-ratio path for trade-level
+					   /*PercentileT*/ true,    // distribution-free, appropriate for IID
+					   /*BCa*/         true);   // distribution-free, appropriate for IID
+
+    StrategyAutoBootstrap<Decimal, Sampler, Resampler, TradeType> autoGeo(
+				       mBootstrapFactory,
+				       *ctx.clonedStrategy,
+				       cfg,
+				       algoConfig,
+				       Sampler{},
+				       IntervalType::ONE_SIDED_LOWER);
+
+    os << "   [Bootstrap] AutoCI trade-level (GeoMean): running bootstrap engines"
+       << " on " << ctx.tradeLevelReturns.size() << " trades (log-bars pre-computed)...\n";
+
+    // run() receives logTrades; GeoMeanFromLogBarsStat::operator()(vector<Trade>)
+    // flattens them into a single log-bar vector and computes the geometric mean.
+    AutoCI result = autoGeo.run(logTrades, &os);
+
+    const Candidate& chosen = result.getChosenCandidate();
+    const Decimal    lbPer  = chosen.getLower();
+
+    out.geoAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
+    out.geoAutoCIChosenScore       = chosen.getScore();
+    out.geoAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
+    out.geoAutoCILengthPenalty     = chosen.getLengthPenalty();
+
+    const auto& candidates = result.getCandidates();
+    bool hasBCa = false;
+    for (const auto& c : candidates)
+      if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
+    out.geoAutoCIHasBCaCandidate = hasBCa;
+    out.geoAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
+    out.geoAutoCINumCandidates   = candidates.size();
+
+    try {
+      out.medianGeo = Num(result.getBootstrapMedian());
+    } catch (...) {
+      out.medianGeo = std::nullopt;
+    }
+
+    os << "   [Bootstrap] AutoCI trade-level (GeoMean):"
+       << " method=" << out.geoAutoCIChosenMethod
+       << "  LB(per)=" << lbPer
+       << "  CL=" << chosen.getCl()
+       << "  n=" << chosen.getN()
+       << "  B_eff=" << chosen.getEffectiveB()
+       << "  score=" << out.geoAutoCIChosenScore
+       << "  stab_penalty=" << out.geoAutoCIStabilityPenalty
+       << "  len_penalty=" << out.geoAutoCILengthPenalty
+       << "  hasBCa=" << (out.geoAutoCIHasBCaCandidate ? "true" : "false")
+       << "  BCaChosen=" << (out.geoAutoCIBCaChosen ? "true" : "false")
+       << "\n";
+
+    try {
+      if (mObserver)
+        reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::GeoMean, result);
+    } catch (...) {}
+
+    return lbPer;
+  }
+
 
   /**
    * @brief Run automatic bootstrap confidence interval selection for profit factor.
@@ -880,16 +1057,38 @@ namespace palvalidator::filtering::stages
    *     bootstrap is skipped (for example, ctx.highResReturns.size() < 2),
    *     returns std::nullopt.
    */
+  // ---------------------------------------------------------------------------
+  // runAutoProfitFactorBootstrap: dispatcher
+  // ---------------------------------------------------------------------------
+
   std::optional<Num>
   BootstrapAnalysisStage::runAutoProfitFactorBootstrap(
-						       const StrategyAnalysisContext& ctx,
-						       double                        confidenceLevel,
-						       std::size_t                   blockLength,
-						       BootstrapAnalysisResult&      out,
-						       std::ostream&                 os) const
+      const StrategyAnalysisContext& ctx,
+      double                         confidenceLevel,
+      std::size_t                    blockLength,
+      BootstrapAnalysisResult&       out,
+      std::ostream&                  os) const
+  {
+    if (mTradeLevelBootstrapping)
+      return runTradeLevelAutoProfitFactorBootstrap(ctx, confidenceLevel, blockLength, out, os);
+    else
+      return runBarLevelAutoProfitFactorBootstrap(ctx, confidenceLevel, blockLength, out, os);
+  }
+
+  // ---------------------------------------------------------------------------
+  // runBarLevelAutoProfitFactorBootstrap: original bar-level implementation
+  // ---------------------------------------------------------------------------
+
+  std::optional<Num>
+  BootstrapAnalysisStage::runBarLevelAutoProfitFactorBootstrap(
+      const StrategyAnalysisContext& ctx,
+      double                         confidenceLevel,
+      std::size_t                    blockLength,
+      BootstrapAnalysisResult&       out,
+      std::ostream&                  os) const
   {
     using Decimal    = Num;
-    using PFStat     = typename mkc_timeseries::StatUtils<Decimal>:: LogProfitFactorFromLogBarsStat_LogPF;
+    using PFStat     = typename mkc_timeseries::StatUtils<Decimal>::LogProfitFactorFromLogBarsStat_LogPF;
     using Resampler  = StationaryMaskValueResamplerAdapter<Decimal>;
     using AutoCI     = AutoCIResult<Decimal>;
     using Candidate  = typename AutoCI::Candidate;
@@ -897,10 +1096,7 @@ namespace palvalidator::filtering::stages
     using Stat       = mkc_timeseries::StatUtils<Decimal>;
 
     if (!ctx.clonedStrategy)
-      {
-	throw std::runtime_error(
-				 "runAutoProfitFactorBootstrap: clonedStrategy is null.");
-      }
+      throw std::runtime_error("runBarLevelAutoProfitFactorBootstrap: clonedStrategy is null.");
 
     if (ctx.highResReturns.size() < 2)
       {
@@ -908,54 +1104,29 @@ namespace palvalidator::filtering::stages
 	return std::nullopt;
       }
 
-    // -----------------------------------------------------------------------
-    // Precompute log-growth series once for the entire bootstrap run
-    // logBars[i] = log( max(1 + r_i, ruin_eps) )
-    // -----------------------------------------------------------------------
-    const double ruin_eps = Stat::DefaultRuinEps;
-    const auto&  rawReturns = ctx.highResReturns;
-
+    // Precompute log-growth series once for the entire bootstrap run.
     std::vector<Decimal> logBars =
-      Stat::makeLogGrowthSeries(rawReturns, ruin_eps);
+      Stat::makeLogGrowthSeries(ctx.highResReturns, Stat::DefaultRuinEps);
 
-    // -----------------------------------------------------------------------
-    // Retrieve Strategy Stop Loss for Robust "Zero-Loss" Handling
-    // -----------------------------------------------------------------------
-    double stopLossPct = 0.0;
-    double profitTargetPct = 0.0;
-    
-    // Try to cast to PalStrategy to access the single pattern.
-    // If it's a PalMetaStrategy, this cast will fail (nullptr), and we default to 0.0.
-    auto palStrategy =
+    // Retrieve stop-loss and profit-target priors from the strategy pattern.
+    // Defaults to 0.0 if not a PalStrategy or pattern unavailable.
+    double stopLossPct = 0.0, profitTargetPct = 0.0;
+    auto palStrat =
       std::dynamic_pointer_cast<mkc_timeseries::PalStrategy<Decimal>>(ctx.clonedStrategy);
-    if (palStrategy)
+    if (palStrat)
       {
-	auto pattern = palStrategy->getPalPattern();
+	auto pattern = palStrat->getPalPattern();
 	if (pattern)
 	  {
-	    // 1. Get Stop Loss from pattern (e.g., 2.55 for 2.55%)
-	    Decimal stopDec = pattern->getStopLossAsDecimal();
-
-	    // 2. Use PercentNumber factory to convert to decimal fraction (0.0255).
-	    //    This handles the division by 100 internally.
-	    auto stopPn =
-	      mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(stopDec);
-
-	    // 3. Extract as double for StatUtils
-	    stopLossPct = num::to_double(stopPn.getAsPercent());
-
-	    Decimal profitTargetDec = pattern->getProfitTargetAsDecimal();
-
-	    auto profitTargetPercent =
-	      mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(profitTargetDec);
-
-	    profitTargetPct = num::to_double(profitTargetPercent.getAsPercent());
+	    stopLossPct =
+	      num::to_double(mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(
+	          pattern->getStopLossAsDecimal()).getAsPercent());
+	    profitTargetPct =
+	      num::to_double(mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(
+	          pattern->getProfitTargetAsDecimal()).getAsPercent());
 	  }
       }
 
-    // -----------------------------------------------------------------------
-    // Configure Bootstrap Engines
-    // -----------------------------------------------------------------------
     const std::uint64_t stageTag = BootstrapStages::PROFIT_FACTOR;
     const std::uint64_t fold     = BootstrapStages::NO_FOLD;
 
@@ -981,7 +1152,6 @@ namespace palvalidator::filtering::stages
 		stopLossPct,
 		profitTargetPct);
 
-    // Pass the configured 'stat' object to StrategyAutoBootstrap
     StrategyAutoBootstrap<Decimal, PFStat, Resampler> autoPF(
 							     mBootstrapFactory,
 							     *ctx.clonedStrategy,
@@ -994,42 +1164,29 @@ namespace palvalidator::filtering::stages
        << " on precomputed log-bars"
        << " (StopLoss assumption=" << (stopLossPct * 100.0) << "%)...\n";
 
-    // NOTE: We now bootstrap the log-growth series (logBars) instead of raw returns.
     AutoCI result = autoPF.run(logBars, &os);
 
     const Candidate& chosen  = result.getChosenCandidate();
     const Decimal    lbLogPF = chosen.getLower();
-
-    // Convert LPF_stat = log(PF) back to PF = exp(LPF_stat)
     using mkc_timeseries::DecimalConstants;
-    const Decimal lbPF = std::exp(lbLogPF);
+    const Decimal    lbPF    = std::exp(lbLogPF);
 
-    // Populate PF AutoCI diagnostics
     out.pfAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
     out.pfAutoCIChosenScore       = chosen.getScore();
     out.pfAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
     out.pfAutoCILengthPenalty     = chosen.getLengthPenalty();
-    out.pfAutoCIChosenSeBoot    = chosen.getSeBoot();
+    out.pfAutoCIChosenSeBoot      = chosen.getSeBoot();
 
     const auto& candidates = result.getCandidates();
     bool hasBCa = false;
     for (const auto& c : candidates)
-      {
-	if (c.getMethod() == MethodId::BCa)
-	  {
-	    hasBCa = true;
-	    break;
-	  }
-      }
+      if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
     out.pfAutoCIHasBCaCandidate = hasBCa;
     out.pfAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
     out.pfAutoCINumCandidates   = candidates.size();
 
-    // Store bootstrap median for Profit Factor: convert from log(PF) -> PF
     try {
-      const double median_logpf = result.getBootstrapMedian();
-      const double median_pf = std::exp(median_logpf);
-      out.medianProfitFactor = Num(median_pf);
+      out.medianProfitFactor = Num(std::exp(result.getBootstrapMedian()));
     } catch (...) {
       out.medianProfitFactor = std::nullopt;
     }
@@ -1048,17 +1205,175 @@ namespace palvalidator::filtering::stages
        << "  BCaChosen=" << (out.pfAutoCIBCaChosen ? "true" : "false")
        << "\n";
 
-    // Report diagnostics for PF AutoCI if observer available
     try {
-      if (mObserver) {
+      if (mObserver)
         reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::ProfitFactor, result);
-      }
-    } catch (...) {
-      // swallow diagnostics errors
-    }
+    } catch (...) {}
 
     return lbPF;
   }
+
+  // ---------------------------------------------------------------------------
+  // runTradeLevelAutoProfitFactorBootstrap: trade-level IID bootstrap for PF
+  //
+  // Pre-computes log-growth bars for each Trade object via
+  // makeLogGrowthSeriesForTrades(), then bootstraps using
+  // LogProfitFactorFromLogBarsStat_LogPF — the same stat as the bar-level path.
+  // Its operator()(vector<Trade<Decimal>>) flattens the log-bars and computes
+  // log(PF) directly; no extra wrapper is needed.
+  //
+  // Result is log(PF); std::exp() converts back — same form as bar-level output.
+  //
+  // Normal / Basic / Percentile disabled (assume serial bar-level correlation).
+  // blockLength is unused (IID has no block structure).
+  // ---------------------------------------------------------------------------
+
+  std::optional<Num>
+  BootstrapAnalysisStage::runTradeLevelAutoProfitFactorBootstrap(
+      const StrategyAnalysisContext& ctx,
+      double                         confidenceLevel,
+      std::size_t                    /*blockLength*/,
+      BootstrapAnalysisResult&       out,
+      std::ostream&                  os) const
+  {
+    using Decimal   = Num;
+    using Stat      = mkc_timeseries::StatUtils<Decimal>;
+    using TradeType = Trade<Decimal>;
+    using Sampler   = typename Stat::LogProfitFactorFromLogBarsStat_LogPF;
+    using Resampler = IIDResampler<TradeType>;
+    using AutoCI    = AutoCIResult<Decimal>;
+    using Candidate = typename AutoCI::Candidate;
+    using MethodId  = typename AutoCI::MethodId;
+
+    if (!ctx.clonedStrategy)
+      throw std::runtime_error("runTradeLevelAutoProfitFactorBootstrap: clonedStrategy is null.");
+
+    if (ctx.tradeLevelReturns.size() < 2)
+      {
+	os << "   [Bootstrap] AutoCI trade-level (PF): skipped (fewer than 2 trades).\n";
+	return std::nullopt;
+      }
+
+    // Retrieve stop-loss and profit-target priors from the strategy pattern.
+    // Defaults to 0.0 if not a PalStrategy or pattern unavailable.
+    double stopLossPct = 0.0, profitTargetPct = 0.0;
+    auto palStrat =
+      std::dynamic_pointer_cast<mkc_timeseries::PalStrategy<Decimal>>(ctx.clonedStrategy);
+    if (palStrat)
+      {
+	auto pattern = palStrat->getPalPattern();
+	if (pattern)
+	  {
+	    stopLossPct =
+	      num::to_double(mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(
+		  pattern->getStopLossAsDecimal()).getAsPercent());
+	    profitTargetPct =
+	      num::to_double(mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(
+		  pattern->getProfitTargetAsDecimal()).getAsPercent());
+	  }
+      }
+
+    // Pre-compute log(max(1+r, ruin_eps)) for every bar in every trade.
+    // This satisfies LogProfitFactorFromLogBarsStat_LogPF's contract: its Trade
+    // overload assumes getDailyReturns() contains pre-computed log-bars.
+    const std::vector<TradeType> logTrades =
+      makeLogGrowthSeriesForTrades<Decimal>(ctx.tradeLevelReturns, Stat::DefaultRuinEps);
+
+    const std::uint64_t stageTag = BootstrapStages::PROFIT_FACTOR;
+    const std::uint64_t fold     = BootstrapStages::NO_FOLD;
+
+    // blockSize=1 for IID; enableTradeLevelBootstrapping routes MOutOfN to
+    // the fixed-ratio path inside StrategyAutoBootstrap.
+    BootstrapConfiguration cfg(
+      mNumResamples,
+      1,
+      confidenceLevel,
+      stageTag,
+      fold,
+      /*rescaleMOutOfN*/            true,
+      /*enableTradeLevelBootstrap*/ true);
+
+    BootstrapAlgorithmsConfiguration algoConfig(
+      /*Normal*/      false,
+      /*Basic*/       false,
+      /*Percentile*/  false,
+      /*MOutOfN*/     true,
+      /*PercentileT*/ true,
+      /*BCa*/         true);
+
+    os << "   [Bootstrap] AutoCI trade-level (PF): passing stop loss of "
+       << stopLossPct << " to LogProfitFactorFromLogBarsStat_LogPF\n";
+
+    // Same stat as the bar-level path, constructed identically.
+    Sampler stat(Stat::DefaultRuinEps,
+		 Stat::DefaultDenomFloor,
+		 Stat::DefaultPriorStrength,
+		 stopLossPct,
+		 profitTargetPct);
+
+    StrategyAutoBootstrap<Decimal, Sampler, Resampler, TradeType> autoPF(
+      mBootstrapFactory,
+      *ctx.clonedStrategy,
+      cfg,
+      algoConfig,
+      stat,
+      IntervalType::ONE_SIDED_LOWER);
+
+    os << "   [Bootstrap] AutoCI trade-level (PF): running bootstrap engines"
+       << " on " << ctx.tradeLevelReturns.size() << " trades (log-bars pre-computed)"
+       << " (StopLoss assumption=" << (stopLossPct * 100.0) << "%)...\n";
+
+    // run() receives logTrades; LogProfitFactorFromLogBarsStat_LogPF::operator()
+    // (vector<Trade>) flattens them and computes log(PF) directly.
+    AutoCI result = autoPF.run(logTrades, &os);
+
+    const Candidate& chosen  = result.getChosenCandidate();
+    const Decimal    lbLogPF = chosen.getLower();
+    using mkc_timeseries::DecimalConstants;
+    const Decimal    lbPF    = std::exp(lbLogPF);
+
+    out.pfAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
+    out.pfAutoCIChosenScore       = chosen.getScore();
+    out.pfAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
+    out.pfAutoCILengthPenalty     = chosen.getLengthPenalty();
+    out.pfAutoCIChosenSeBoot      = chosen.getSeBoot();
+
+    const auto& candidates = result.getCandidates();
+    bool hasBCa = false;
+    for (const auto& c : candidates)
+      if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
+    out.pfAutoCIHasBCaCandidate = hasBCa;
+    out.pfAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
+    out.pfAutoCINumCandidates   = candidates.size();
+
+    try {
+      out.medianProfitFactor = Num(std::exp(result.getBootstrapMedian()));
+    } catch (...) {
+      out.medianProfitFactor = std::nullopt;
+    }
+
+    os << "   [Bootstrap] AutoCI trade-level (PF):"
+       << " method=" << out.pfAutoCIChosenMethod
+       << "  LB(PF)=" << lbPF
+       << "  LB(logPF)=" << lbLogPF
+       << "  CL=" << chosen.getCl()
+       << "  n=" << chosen.getN()
+       << "  B_eff=" << chosen.getEffectiveB()
+       << "  score=" << out.pfAutoCIChosenScore
+       << "  stab_penalty=" << out.pfAutoCIStabilityPenalty
+       << "  len_penalty=" << out.pfAutoCILengthPenalty
+       << "  hasBCa=" << (out.pfAutoCIHasBCaCandidate ? "true" : "false")
+       << "  BCaChosen=" << (out.pfAutoCIBCaChosen ? "true" : "false")
+       << "\n";
+
+    try {
+      if (mObserver)
+        reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::ProfitFactor, result);
+    } catch (...) {}
+
+    return lbPF;
+  }
+
   
   // ---------------------------------------------------------------------------
   // execute() – top-level stage orchestration
