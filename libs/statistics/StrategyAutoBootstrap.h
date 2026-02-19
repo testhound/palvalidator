@@ -18,6 +18,7 @@
 #include "StatUtils.h"
 #include "StationaryMaskResamplers.h"
 #include "ParallelExecutors.h"
+#include "TradeResampling.h"
 
 namespace palvalidator
 {
@@ -38,13 +39,15 @@ namespace palvalidator
                              double confidenceLevel,
                              std::uint64_t stageTag,
                              std::uint64_t fold,
-                             bool rescaleMOutOfN = true)
+                             bool rescaleMOutOfN = true,
+			     bool enableTradeLevelBootstrapping = false)
         : m_numBootStrapReplications(numBootStrapReplications),
           m_blockSize(blockSize),
           m_confidenceLevel(confidenceLevel),
           m_stageTag(stageTag),
           m_fold(fold),
-          m_rescaleMOutOfN(rescaleMOutOfN)
+          m_rescaleMOutOfN(rescaleMOutOfN),
+	  m_enableTradeLevelBootstrapping(enableTradeLevelBootstrapping)
       {}
 
       std::size_t getNumBootStrapReplications() const
@@ -77,6 +80,11 @@ namespace palvalidator
         return m_rescaleMOutOfN;
       }
 
+      bool isTradeLevelBootstrappingEnabled() const
+      {
+	return m_enableTradeLevelBootstrapping;
+      }
+
       /// Outer B for Percentile-T bootstrap.
       std::size_t getPercentileTNumOuterReplications() const
       {
@@ -85,14 +93,14 @@ namespace palvalidator
 
       std::size_t getPercentileTNumInnerReplications(double ratio) const
       {
- const std::size_t outer_replications = m_numBootStrapReplications;
+	const std::size_t outer_replications = m_numBootStrapReplications;
 
- // Use the publicly accessible constant from PercentileTBootstrap
- constexpr std::size_t kMinInnerReplications = percentile_t_constants::MIN_INNER;
+	// Use the publicly accessible constant from PercentileTBootstrap
+	constexpr std::size_t kMinInnerReplications = percentile_t_constants::MIN_INNER;
 
- // Practical cap: diminishing returns beyond this because the PT engine
- // already has early stopping in the inner loop.
- constexpr std::size_t kMaxInnerReplications = 2000;
+	// Practical cap: diminishing returns beyond this because the PT engine
+	// already has early stopping in the inner loop.
+	constexpr std::size_t kMaxInnerReplications = 2000;
 
 	// If ratio is nonsensical, fall back to the minimum workable inner size.
 	if (!(std::isfinite(ratio)) || !(ratio > 0.0))
@@ -120,6 +128,7 @@ namespace palvalidator
       std::uint64_t m_stageTag;
       std::uint64_t m_fold;
       bool          m_rescaleMOutOfN;
+      bool m_enableTradeLevelBootstrapping;
     };
 
     /**
@@ -173,7 +182,7 @@ namespace palvalidator
       {
         return m_enableBCa;
       }
-
+      
     private:
       bool m_enableNormal;
       bool m_enableBasic;
@@ -192,7 +201,8 @@ namespace palvalidator
      * - Converts each engine's result into an AutoBootstrapSelector::Candidate.
      * - Calls AutoBootstrapSelector<Decimal>::select(...) and returns AutoCIResult<Decimal>.
      */
-    template <class Decimal, class Sampler, class Resampler>
+    template <class Decimal, class Sampler, class Resampler,
+              class SampleType = Decimal>
     class StrategyAutoBootstrap
     {
     public:
@@ -230,14 +240,16 @@ namespace palvalidator
       /**
        * @brief Run all configured bootstrap engines on @p returns and select the best CI.
        *
-       * @param returns  Return series (typically high-res mark-to-market returns).
+       * @param returns  Bar-level return series (SampleType = Decimal) or trade-level
+       *                 series (SampleType = Trade<Decimal>). The element type must match
+       *                 the SampleType template parameter of this class.
        * @param os       Optional logging stream. If non-null, engine failures are logged.
        *
        * @return AutoCIResult<Decimal> encapsulating the chosen method and all candidates.
        *
        * @throws std::runtime_error if no engine produced a usable candidate.
        */
-      Result run(const std::vector<Decimal>& returns, std::ostream* os = nullptr)
+      Result run(const std::vector<SampleType>& returns, std::ostream* os = nullptr)
       {
 	std::vector<Candidate> candidates;
 	candidates.reserve(6);
@@ -259,7 +271,9 @@ namespace palvalidator
 	  m_bootstrapConfiguration.getPercentileTNumInnerReplications(10.0);
 
 	// Shared resampler for percentile-like / Percentile-t engines.
-	Resampler resampler(blockSize);
+	// Bar-level resamplers are constructed with a block size; IIDResampler
+	// (used at trade level) is a zero-argument struct.
+	Resampler resampler = makeResampler(blockSize);
 
 	        typename Selector::ScoringWeights weights;
 
@@ -287,7 +301,7 @@ namespace palvalidator
 	    try
 	      {
 		auto [engine, crn] =
-		  m_factory.template makeNormal<Decimal, Sampler, Resampler, Executor>(
+		  m_factory.template makeNormal<Decimal, Sampler, Resampler, Executor, SampleType>(
 										       B_single,
 										       cl,
 										       resampler,
@@ -319,7 +333,7 @@ namespace palvalidator
 	    try
 	      {
 		auto [engine, crn] =
-		  m_factory.template makeBasic<Decimal, Sampler, Resampler, Executor>(
+		  m_factory.template makeBasic<Decimal, Sampler, Resampler, Executor, SampleType>(
 										      B_single,
 										      cl,
 										      resampler,
@@ -351,7 +365,7 @@ namespace palvalidator
 	    try
 	      {
 		auto [engine, crn] =
-		  m_factory.template makePercentile<Decimal, Sampler, Resampler, Executor>(
+		  m_factory.template makePercentile<Decimal, Sampler, Resampler, Executor, SampleType>(
 											   B_single,
 											   cl,
 											   resampler,
@@ -384,24 +398,68 @@ namespace palvalidator
 	      {
 		// Extract rescaling flag from configuration
 		const bool rescaleMOutOfN = m_bootstrapConfiguration.getRescaleMOutOfN();
-		
-		auto [engine, crn] =
-		  m_factory.template makeAdaptiveMOutOfN<Decimal, Sampler, Resampler, Executor>(
-												B_single,
-												cl,
-												resampler,
-												m_strategy,
-												stageTag,
-												static_cast<uint64_t>(blockSize),
-												fold,
-												rescaleMOutOfN,
-												m_interval_type);
 
-		// USE CONFIGURED SAMPLER INSTANCE
-		auto res = engine.run(returns, m_sampler_instance, crn);
-		candidates.push_back(
-				     Selector::template summarizePercentileLike(
-										MethodId::MOutOfN, engine, res));
+		// if constexpr is required here rather than a runtime if.
+		//
+		// Both branches are instantiated by the compiler regardless of which
+		// is executed at runtime.  The bar-level branch constructs an engine
+		// with SampleType=Decimal and calls engine.run(returns,...) where
+		// returns is vector<SampleType>.  When SampleType=Trade<Decimal> those
+		// types don't match — a compile error — even though the branch is
+		// never reached at runtime.  if constexpr discards the non-matching
+		// branch entirely so only the active branch is instantiated.
+		//
+		// The isTradeLevelBootstrappingEnabled() flag is structurally redundant
+		// with the compile-time SampleType check; it is preserved in
+		// BootstrapConfiguration for documentation and external inspection but
+		// cannot drive the MOutOfN dispatch here.
+		if constexpr (std::is_same_v<SampleType, Decimal>)
+		  {
+		    // Bar-level path: use adaptive ratio policy (TailVolatilityAdaptivePolicy).
+		    // makeAdaptiveMOutOfN intentionally does not expose SampleType — adaptive
+		    // mode is bar-level only (enforced by static_assert in the class).
+		    auto [engine, crn] =
+		      m_factory.template makeAdaptiveMOutOfN<Decimal, Sampler, Resampler, Executor>(
+								    B_single,
+								    cl,
+								    resampler,
+								    m_strategy,
+								    stageTag,
+								    static_cast<uint64_t>(blockSize),
+								    fold,
+								    rescaleMOutOfN,
+								    m_interval_type);
+
+		    auto res = engine.run(returns, m_sampler_instance, crn);
+		    candidates.push_back(
+		      Selector::template summarizePercentileLike(MethodId::MOutOfN, engine, res));
+		  }
+		else
+		  {
+		    // Trade-level path: adaptive ratio computation requires ~8+ scalar
+		    // observations for reliable Hill/skewness estimates and is blocked
+		    // by a static_assert inside MOutOfNPercentileBootstrap. Use a fixed
+		    // subsample ratio instead. 0.75 is a conservative default for the
+		    // small trade populations typical in backtesting.
+		    constexpr double TRADE_LEVEL_MOUTOFN_RATIO = 0.75;
+
+		    auto [engine, crn] =
+		      m_factory.template makeMOutOfN<Decimal, Sampler, Resampler, Executor, SampleType>(
+							  B_single,
+							  cl,
+							  TRADE_LEVEL_MOUTOFN_RATIO,
+							  resampler,
+							  m_strategy,
+							  stageTag,
+							  static_cast<uint64_t>(1), // IID: block length = 1
+							  fold,
+							  rescaleMOutOfN,
+							  m_interval_type);
+
+		    auto res = engine.run(returns, m_sampler_instance, crn);
+		    candidates.push_back(
+		      Selector::template summarizePercentileLike(MethodId::MOutOfN, engine, res));
+		  }
 	      }
 	    catch (const std::exception& e)
 	      {
@@ -419,7 +477,7 @@ namespace palvalidator
 	    try
 	      {
 		auto [engine, crn] =
-		  m_factory.template makePercentileT<Decimal, Sampler, Resampler, Executor>(
+		  m_factory.template makePercentileT<Decimal, Sampler, Resampler, Executor, SampleType>(
 											    B_outer_percentileT,
 											    B_inner_percentileT,
 											    cl,
@@ -450,10 +508,14 @@ namespace palvalidator
 	  {
 	    try
 	      {
-		// Use the configured statistic instance via lambda capture
+		// Wrap the configured statistic instance in a typed std::function.
+		// When SampleType = Decimal this is identical to the original bar-level
+		// signature. When SampleType = Trade<Decimal> the lambda accepts a
+		// vector of trades, and the factory's overload resolution selects the
+		// trade-level makeBCa overload from the vector<Trade<Decimal>> first arg.
 		Sampler capturedStat = m_sampler_instance;
-		std::function<Decimal(const std::vector<Decimal>&)> statFn =
-		  [capturedStat](const std::vector<Decimal>& r) { return capturedStat(r); };
+		std::function<Decimal(const std::vector<SampleType>&)> statFn =
+		  [capturedStat](const std::vector<SampleType>& r) { return capturedStat(r); };
 
 		auto bcaEngine =
 		  m_factory.template makeBCa<Decimal, Resampler>(
@@ -557,6 +619,22 @@ namespace palvalidator
       }
       
     private:
+      // -----------------------------------------------------------------------
+      // Resampler construction helper.
+      //
+      // Bar-level resamplers (StationaryBlockResampler, StationaryMask*) are
+      // constructed with a block size. IIDResampler<Trade<Decimal>> is a plain
+      // struct with no constructor arguments. if constexpr selects the right
+      // form at compile time so both paths produce well-formed code.
+      // -----------------------------------------------------------------------
+      Resampler makeResampler(std::size_t blockSize) const
+      {
+        if constexpr (std::is_same_v<SampleType, Decimal>)
+          return Resampler(blockSize);
+        else
+          return Resampler{};
+      }
+
       Factory& m_factory;
       const mkc_timeseries::BacktesterStrategy<Decimal>& m_strategy;
       BootstrapConfiguration             m_bootstrapConfiguration;

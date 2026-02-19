@@ -26,12 +26,15 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
+#include <optional>
+#include <set>
 
 #include "StrategyAutoBootstrap.h"
 #include "TradingBootstrapFactory.h"
 #include "AutoBootstrapSelector.h"
 #include "StatUtils.h"
 #include "StationaryMaskResamplers.h"
+#include "TradeResampling.h"
 #include "number.h"
 #include "DummyBacktesterStrategy.h"
 #include "Portfolio.h"
@@ -597,3 +600,573 @@ TEST_CASE("StrategyAutoBootstrap integration: Ratio stats enforce positive lower
 }
 
 
+// =============================================================================
+//
+//                     TRADE-LEVEL BOOTSTRAP TESTS
+//
+// These tests exercise the SampleType = Trade<Decimal> code path through
+// StrategyAutoBootstrap, TradingBootstrapFactory, and every bootstrap engine.
+//
+// Structural differences from bar-level tests:
+//
+//   1. Resampler  = IIDResampler<Trade<Decimal>>
+//      Trades are assumed independent so IID resampling is correct.
+//      IIDResampler has no constructor arguments (blockSize is irrelevant).
+//      BootstrapConfiguration is constructed with blockSize=1 to document
+//      that clearly, even though makeResampler() ignores the value at
+//      trade level via if constexpr.
+//
+//   2. run() receives std::vector<Trade<Decimal>> instead of std::vector<Decimal>.
+//
+//   3. MOutOfN must use a FIXED subsample ratio.
+//      Adaptive ratio computation (Hill estimator, skewness, kurtosis) requires
+//      ~8+ scalar observations to be reliable and is blocked by a static_assert
+//      inside MOutOfNPercentileBootstrap.  StrategyAutoBootstrap dispatches to
+//      makeMOutOfN (fixed-ratio) when isTradeLevelBootstrappingEnabled()==true
+//      and to makeAdaptiveMOutOfN (bar-level only) otherwise.
+//
+//   4. BCa receives the trade vector at construction time.
+//      The factory resolves to the trade-level makeBCa overload via overload
+//      resolution on the first argument type (vector<Trade<Decimal>> vs
+//      vector<Decimal>).
+//
+//   5. BootstrapConfiguration is constructed with
+//      enableTradeLevelBootstrapping=true.  All existing callers that omit
+//      this argument default to false, so backward compatibility is preserved.
+//
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// Trade-level sampler
+//
+// GeoMeanStat<Decimal> accepts const std::vector<Decimal>&, so it cannot be
+// used directly as a Sampler when SampleType = Trade<Decimal>.  We define a
+// thin wrapper here that flattens the multi-bar daily returns stored in each
+// Trade object into a single contiguous sequence using TradeFlatteningAdapter,
+// then delegates to GeoMeanStat.
+//
+// This is semantically correct: the geometric mean is computed over the full
+// bar-level return stream that constitutes all sampled trades, which is the
+// same view that the BCa jackknife uses internally.
+// ---------------------------------------------------------------------------
+
+struct TradeGeoMeanSampler
+{
+    // Satisfy the interface expected by StrategyAutoBootstrap and
+    // AutoBootstrapSelector.
+    static constexpr bool isRatioStatistic() { return false; }
+
+    mkc_timeseries::StatisticSupport support() const
+    {
+        // Delegate to the bar-level stat for the correct support descriptor.
+        return GeoMeanSampler{}.support();
+    }
+
+    Decimal operator()(const std::vector<mkc_timeseries::Trade<Decimal>>& trades) const
+    {
+        // TradeFlatteningAdapter is constructed with the downstream stat function.
+        // Its operator()(trades) concatenates all daily bar returns across the
+        // sampled trades into a flat vector, then applies the stat function.
+        mkc_timeseries::TradeFlatteningAdapter<Decimal> adapter(
+            [](const std::vector<Decimal>& flat) -> Decimal
+            {
+                return GeoMeanSampler{}(flat);
+            });
+        return adapter(trades);
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Trade-level type aliases
+// ---------------------------------------------------------------------------
+
+using TradeT            = mkc_timeseries::Trade<Decimal>;
+using TradeIIDResampler = mkc_timeseries::IIDResampler<TradeT>;
+
+// StrategyAutoBootstrap specialised for trade-level GeoMean bootstrapping.
+// The fourth template parameter (SampleType) is Trade<Decimal>.
+using TradeSABType = palvalidator::analysis::StrategyAutoBootstrap<
+    Decimal,
+    TradeGeoMeanSampler,
+    TradeIIDResampler,
+    TradeT>;
+
+// The factory type is the same concrete class regardless of SampleType because
+// TradingBootstrapFactory is only parameterised on the RNG engine type.
+using TradeSABFactory = typename TradeSABType::Factory;
+
+// ---------------------------------------------------------------------------
+// Trade data helpers
+//
+// Each function returns >= 20 Trade<Decimal> objects with explicit multi-bar
+// daily returns so that the direction of the aggregate statistic is obvious.
+// 20+ trades is comfortable above the minimum-n requirements of all engines
+// (BCa: n>=2; MOutOfN: n>=3; PercentileT: n>=3).
+//
+// Trades are constructed from a braced initialiser list of bar returns using
+// Trade<Decimal>'s range/move constructor.
+// ---------------------------------------------------------------------------
+
+// 20 clearly profitable trades: all daily returns are positive.
+// GeoMean of the flattened returns will be positive.
+static std::vector<TradeT> makePositiveTrades()
+{
+    return {
+        TradeT({ 0.012,  0.008}),
+        TradeT({ 0.015,  0.010,  0.005}),
+        TradeT({ 0.020,  0.018}),
+        TradeT({ 0.008,  0.012,  0.016,  0.009}),
+        TradeT({ 0.022,  0.014}),
+        TradeT({ 0.010,  0.008,  0.006}),
+        TradeT({ 0.018,  0.015}),
+        TradeT({ 0.025,  0.010,  0.008}),
+        TradeT({ 0.011,  0.013}),
+        TradeT({ 0.019,  0.007,  0.009,  0.004}),
+        TradeT({ 0.014,  0.016}),
+        TradeT({ 0.009,  0.011,  0.013}),
+        TradeT({ 0.021,  0.017}),
+        TradeT({ 0.013,  0.008,  0.010}),
+        TradeT({ 0.016,  0.012}),
+        TradeT({ 0.023,  0.019}),
+        TradeT({ 0.017,  0.011,  0.007}),
+        TradeT({ 0.024,  0.013}),
+        TradeT({ 0.010,  0.015,  0.008}),
+        TradeT({ 0.018,  0.020}),
+    };
+}
+
+// 20 clearly losing trades: all daily returns are negative.
+// GeoMean of the flattened returns will be negative.
+static std::vector<TradeT> makeNegativeTrades()
+{
+    return {
+        TradeT({-0.012, -0.008}),
+        TradeT({-0.015, -0.010, -0.005}),
+        TradeT({-0.020, -0.018}),
+        TradeT({-0.008, -0.012, -0.016, -0.009}),
+        TradeT({-0.022, -0.014}),
+        TradeT({-0.010, -0.008, -0.006}),
+        TradeT({-0.018, -0.015}),
+        TradeT({-0.025, -0.010, -0.008}),
+        TradeT({-0.011, -0.013}),
+        TradeT({-0.019, -0.007, -0.009, -0.004}),
+        TradeT({-0.014, -0.016}),
+        TradeT({-0.009, -0.011, -0.013}),
+        TradeT({-0.021, -0.017}),
+        TradeT({-0.013, -0.008, -0.010}),
+        TradeT({-0.016, -0.012}),
+        TradeT({-0.023, -0.019}),
+        TradeT({-0.017, -0.011, -0.007}),
+        TradeT({-0.024, -0.013}),
+        TradeT({-0.010, -0.015, -0.008}),
+        TradeT({-0.018, -0.020}),
+    };
+}
+
+// 20 trades with mixed returns, net positive in aggregate.
+static std::vector<TradeT> makeMixedTrades()
+{
+    return {
+        TradeT({ 0.015,  0.010}),
+        TradeT({-0.005, -0.003}),
+        TradeT({ 0.020,  0.012,  0.008}),
+        TradeT({-0.007, -0.004, -0.002}),
+        TradeT({ 0.018,  0.015}),
+        TradeT({ 0.011,  0.009,  0.006}),
+        TradeT({-0.008, -0.006}),
+        TradeT({ 0.022,  0.014,  0.010}),
+        TradeT({-0.010, -0.008, -0.003}),
+        TradeT({ 0.019,  0.013}),
+        TradeT({ 0.016,  0.011,  0.007}),
+        TradeT({-0.006, -0.004}),
+        TradeT({ 0.023,  0.017,  0.009}),
+        TradeT({ 0.014,  0.010}),
+        TradeT({-0.009, -0.005, -0.002}),
+        TradeT({ 0.021,  0.015}),
+        TradeT({ 0.012,  0.008,  0.005}),
+        TradeT({-0.004, -0.003}),
+        TradeT({ 0.018,  0.014,  0.011}),
+        TradeT({ 0.010,  0.007}),
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Helper: build a TradeSABType with trade-level bootstrapping enabled
+// ---------------------------------------------------------------------------
+
+static TradeSABType
+makeTradeLevelAutoBootstrap(
+    TradeSABFactory&                        factory,
+    DummyStrategy&                          strategy,
+    std::size_t                             B,
+    double                                  cl,
+    std::uint64_t                           stageTag,
+    std::uint64_t                           fold,
+    const BootstrapAlgorithmsConfiguration& algos = BootstrapAlgorithmsConfiguration{})
+{
+    BootstrapConfiguration cfg(
+        B,
+        /*blockSize*/                1,   // IIDResampler ignores blockSize; 1 documents that
+        cl,
+        stageTag,
+        fold,
+        /*rescaleMOutOfN*/           true,
+        /*enableTradeLevelBootstrap*/true);
+
+    return TradeSABType(factory, strategy, cfg, algos);
+}
+
+
+// ---------------------------------------------------------------------------
+// Unit tests: BootstrapConfiguration trade-level flag
+// ---------------------------------------------------------------------------
+
+TEST_CASE("BootstrapConfiguration: isTradeLevelBootstrappingEnabled defaults to false",
+          "[StrategyAutoBootstrap][BootstrapConfiguration][TradeLevel]")
+{
+    // The 5-argument constructor predates trade-level support.
+    // Verify that omitting the new flag leaves it disabled, preserving
+    // backward compatibility for all existing call sites.
+    BootstrapConfiguration cfg(500, 4, 0.95, 1u, 0u);
+
+    REQUIRE_FALSE(cfg.isTradeLevelBootstrappingEnabled());
+}
+
+TEST_CASE("BootstrapConfiguration: isTradeLevelBootstrappingEnabled reflects constructor arg",
+          "[StrategyAutoBootstrap][BootstrapConfiguration][TradeLevel]")
+{
+    SECTION("Explicitly disabled via sixth and seventh args")
+    {
+        BootstrapConfiguration cfg(500, 1, 0.95, 1u, 0u,
+                                   /*rescaleMOutOfN*/            true,
+                                   /*enableTradeLevelBootstrap*/ false);
+        REQUIRE_FALSE(cfg.isTradeLevelBootstrappingEnabled());
+    }
+
+    SECTION("Explicitly enabled")
+    {
+        BootstrapConfiguration cfg(500, 1, 0.95, 1u, 0u,
+                                   /*rescaleMOutOfN*/            true,
+                                   /*enableTradeLevelBootstrap*/ true);
+        REQUIRE(cfg.isTradeLevelBootstrappingEnabled());
+    }
+
+    SECTION("rescaleMOutOfN=false does not affect trade-level flag")
+    {
+        BootstrapConfiguration cfg(500, 1, 0.95, 1u, 0u,
+                                   /*rescaleMOutOfN*/            false,
+                                   /*enableTradeLevelBootstrap*/ true);
+        REQUIRE(cfg.isTradeLevelBootstrappingEnabled());
+        REQUIRE_FALSE(cfg.getRescaleMOutOfN());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// Unit tests: trade-level type wiring
+// ---------------------------------------------------------------------------
+
+TEST_CASE("StrategyAutoBootstrap trade-level: Type aliases are correctly wired",
+          "[StrategyAutoBootstrap][TradeLevel][TypeAliases]")
+{
+    // Static checks: TradeSABType must expose the same nested aliases as the
+    // bar-level specialisation, regardless of SampleType.
+    STATIC_REQUIRE(std::is_same_v<typename TradeSABType::Result,    AutoCIResult>);
+    STATIC_REQUIRE(std::is_same_v<typename TradeSABType::Candidate, typename AutoCIResult::Candidate>);
+    STATIC_REQUIRE(std::is_same_v<typename TradeSABType::MethodId,  typename AutoCIResult::MethodId>);
+
+    // The factory type is the same concrete class for both bar-level and
+    // trade-level because TradingBootstrapFactory is only parameterised on
+    // the RNG engine type, not on SampleType.
+    STATIC_REQUIRE(std::is_same_v<typename TradeSABType::Factory, TradeSABFactory>);
+    STATIC_REQUIRE(std::is_same_v<TradeSABFactory, FactoryAlias>);
+
+    // TradeGeoMeanSampler must satisfy the interface contracts that
+    // StrategyAutoBootstrap queries at run time.
+    STATIC_REQUIRE(TradeGeoMeanSampler::isRatioStatistic() == false);
+
+    // Runtime: a BootstrapConfiguration built for trade-level must say so.
+    BootstrapConfiguration cfg(500, 1, 0.95, 1u, 0u, true, true);
+    REQUIRE(cfg.isTradeLevelBootstrappingEnabled());
+}
+
+
+// ---------------------------------------------------------------------------
+// Integration tests: trade-level StrategyAutoBootstrap
+// ---------------------------------------------------------------------------
+
+TEST_CASE("StrategyAutoBootstrap trade-level integration: Mixed trades produce sane CI",
+          "[StrategyAutoBootstrap][TradeLevel][Integration]")
+{
+    // Smoke test: all six algorithms run on a mixed-sign trade population
+    // and produce at least one valid candidate with structural CI sanity.
+    TradeSABFactory factory(/*masterSeed*/ 112233u);
+
+    const std::size_t   B      = 500;
+    const double        CL     = 0.95;
+    const std::uint64_t stage  = 10;
+    const std::uint64_t fold   = 0;
+
+    auto trades = makeMixedTrades();
+    REQUIRE(trades.size() >= 10);
+
+    auto portfolio = createTestPortfolio();
+    DummyStrategy strategy("TradeMixed", portfolio, {});
+
+    BootstrapAlgorithmsConfiguration algos; // all enabled
+    auto sab = makeTradeLevelAutoBootstrap(factory, strategy, B, CL, stage, fold, algos);
+
+    AutoCIResult result = sab.run(trades);
+
+    REQUIRE(result.getCandidates().size() >= 1);
+
+    const auto& chosen = result.getChosenCandidate();
+
+    // Structural CI checks
+    REQUIRE(chosen.getUpper()  >= chosen.getLower());
+    REQUIRE(chosen.getCl()     == Catch::Approx(CL));
+    REQUIRE(chosen.getN()      == trades.size());
+
+    // Every individual candidate must also be structurally valid
+    for (const auto& c : result.getCandidates())
+    {
+        REQUIRE(c.getUpper() >= c.getLower());
+        REQUIRE(c.getCl()    == Catch::Approx(CL));
+        REQUIRE(c.getN()     == trades.size());
+    }
+}
+
+TEST_CASE("StrategyAutoBootstrap trade-level integration: Positive trades yield positive bootstrap mean",
+          "[StrategyAutoBootstrap][TradeLevel][Integration]")
+{
+    TradeSABFactory factory(/*masterSeed*/ 445566u);
+
+    const std::size_t   B      = 500;
+    const double        CL     = 0.95;
+    const std::uint64_t stage  = 11;
+    const std::uint64_t fold   = 0;
+
+    auto trades = makePositiveTrades();
+    REQUIRE(trades.size() >= 10);
+
+    // Pre-condition: verify the sampler returns a positive value on this data.
+    {
+        TradeGeoMeanSampler stat;
+        REQUIRE(stat(trades) > Decimal(0.0));
+    }
+
+    auto portfolio = createTestPortfolio();
+    DummyStrategy strategy("TradePositive", portfolio, {});
+
+    BootstrapAlgorithmsConfiguration algos; // all enabled
+    auto sab = makeTradeLevelAutoBootstrap(factory, strategy, B, CL, stage, fold, algos);
+
+    AutoCIResult result = sab.run(trades);
+
+    REQUIRE(result.getChosenCandidate().getMean() > Decimal(0.0));
+
+    // CI width must be non-degenerate
+    const auto& chosen = result.getChosenCandidate();
+    REQUIRE(chosen.getUpper() - chosen.getLower() > Decimal(0.0));
+}
+
+TEST_CASE("StrategyAutoBootstrap trade-level integration: Negative trades yield negative bootstrap mean",
+          "[StrategyAutoBootstrap][TradeLevel][Integration]")
+{
+    TradeSABFactory factory(/*masterSeed*/ 778899u);
+
+    const std::size_t   B      = 500;
+    const double        CL     = 0.95;
+    const std::uint64_t stage  = 12;
+    const std::uint64_t fold   = 0;
+
+    auto trades = makeNegativeTrades();
+    REQUIRE(trades.size() >= 10);
+
+    // Pre-condition: sampler returns a negative value on all-negative trades.
+    {
+        TradeGeoMeanSampler stat;
+        REQUIRE(stat(trades) < Decimal(0.0));
+    }
+
+    auto portfolio = createTestPortfolio();
+    DummyStrategy strategy("TradeNegative", portfolio, {});
+
+    BootstrapAlgorithmsConfiguration algos; // all enabled
+    auto sab = makeTradeLevelAutoBootstrap(factory, strategy, B, CL, stage, fold, algos);
+
+    AutoCIResult result = sab.run(trades);
+
+    REQUIRE(result.getChosenCandidate().getMean() < Decimal(0.0));
+}
+
+TEST_CASE("StrategyAutoBootstrap trade-level integration: MOutOfN takes fixed-ratio path",
+          "[StrategyAutoBootstrap][TradeLevel][Integration]")
+{
+    // Isolate the MOutOfN engine to verify that StrategyAutoBootstrap dispatches
+    // to makeMOutOfN (fixed ratio) rather than makeAdaptiveMOutOfN when
+    // isTradeLevelBootstrappingEnabled()==true.
+    //
+    // If the dispatch were wrong, MOutOfNPercentileBootstrap would throw
+    // std::logic_error at run time ("adaptive ratio mode is not supported for
+    // trade-level bootstrapping") — making this test fail immediately with a
+    // clear attribution.
+    TradeSABFactory factory(/*masterSeed*/ 314159u);
+
+    const std::size_t   B      = 500;
+    const double        CL     = 0.95;
+    const std::uint64_t stage  = 13;
+    const std::uint64_t fold   = 0;
+
+    auto trades = makeMixedTrades();
+
+    auto portfolio = createTestPortfolio();
+    DummyStrategy strategy("TradeMOutOfN_FixedRatio", portfolio, {});
+
+    // Enable only MOutOfN so any failure is unambiguously attributable to it.
+    BootstrapAlgorithmsConfiguration algos(
+        /*enableNormal*/      false,
+        /*enableBasic*/       false,
+        /*enablePercentile*/  false,
+        /*enableMOutOfN*/     true,
+        /*enablePercentileT*/ false,
+        /*enableBCa*/         false);
+
+    auto sab = makeTradeLevelAutoBootstrap(factory, strategy, B, CL, stage, fold, algos);
+
+    std::optional<AutoCIResult> resultOpt;
+    REQUIRE_NOTHROW(resultOpt.emplace(sab.run(trades)));
+    const AutoCIResult& result = *resultOpt;
+
+    // The sole candidate must be MOutOfN.
+    REQUIRE(result.getCandidates().size() == 1);
+    REQUIRE(result.getChosenCandidate().getMethod() == MethodId::MOutOfN);
+
+    // Structural sanity on the produced CI.
+    REQUIRE(result.getChosenCandidate().getUpper() >= result.getChosenCandidate().getLower());
+    REQUIRE(result.getChosenCandidate().getN()     == trades.size());
+}
+
+TEST_CASE("StrategyAutoBootstrap trade-level integration: BCa participates and succeeds",
+          "[StrategyAutoBootstrap][TradeLevel][Integration]")
+{
+    // BCa is the only algorithm that receives data at construction time via
+    // makeBCa.  Its trade-level dispatch path (overload resolution on the first
+    // argument type) is structurally different from all other engines and
+    // deserves an explicit presence check.
+    TradeSABFactory factory(/*masterSeed*/ 161803u);
+
+    const std::size_t   B      = 500;
+    const double        CL     = 0.95;
+    const std::uint64_t stage  = 14;
+    const std::uint64_t fold   = 0;
+
+    auto trades = makeMixedTrades();
+
+    auto portfolio = createTestPortfolio();
+    DummyStrategy strategy("TradeBCa", portfolio, {});
+
+    // Enable only BCa to isolate its behaviour.
+    BootstrapAlgorithmsConfiguration algos(
+        /*enableNormal*/      false,
+        /*enableBasic*/       false,
+        /*enablePercentile*/  false,
+        /*enableMOutOfN*/     false,
+        /*enablePercentileT*/ false,
+        /*enableBCa*/         true);
+
+    auto sab = makeTradeLevelAutoBootstrap(factory, strategy, B, CL, stage, fold, algos);
+
+    std::optional<AutoCIResult> resultOpt;
+    REQUIRE_NOTHROW(resultOpt.emplace(sab.run(trades)));
+    const AutoCIResult& result = *resultOpt;
+
+    REQUIRE(result.getCandidates().size() == 1);
+    REQUIRE(result.getChosenCandidate().getMethod() == MethodId::BCa);
+    REQUIRE(result.getChosenCandidate().getUpper()  >= result.getChosenCandidate().getLower());
+    REQUIRE(result.getChosenCandidate().getN()       == trades.size());
+}
+
+TEST_CASE("StrategyAutoBootstrap trade-level integration: Algorithm flags control candidates",
+          "[StrategyAutoBootstrap][TradeLevel][Integration]")
+{
+    // Mirror the bar-level flags test: enable only Percentile + BCa and verify
+    // no other method appears in the candidate set.
+    TradeSABFactory factory(/*masterSeed*/ 271828u);
+
+    const std::size_t   B      = 500;
+    const double        CL     = 0.95;
+    const std::uint64_t stage  = 15;
+    const std::uint64_t fold   = 0;
+
+    auto trades = makePositiveTrades();
+
+    auto portfolio = createTestPortfolio();
+    DummyStrategy strategy("TradeFlags", portfolio, {});
+
+    BootstrapAlgorithmsConfiguration algos(
+        /*enableNormal*/      false,
+        /*enableBasic*/       false,
+        /*enablePercentile*/  true,
+        /*enableMOutOfN*/     false,
+        /*enablePercentileT*/ false,
+        /*enableBCa*/         true);
+
+    auto sab = makeTradeLevelAutoBootstrap(factory, strategy, B, CL, stage, fold, algos);
+
+    AutoCIResult result = sab.run(trades);
+
+    bool hasPercentile = false;
+    bool hasBCa        = false;
+
+    for (const auto& c : result.getCandidates())
+    {
+        REQUIRE((c.getMethod() == MethodId::Percentile ||
+                 c.getMethod() == MethodId::BCa));
+
+        if (c.getMethod() == MethodId::Percentile) hasPercentile = true;
+        if (c.getMethod() == MethodId::BCa)        hasBCa        = true;
+    }
+
+    REQUIRE(hasPercentile);
+    REQUIRE(hasBCa);
+}
+
+TEST_CASE("StrategyAutoBootstrap trade-level integration: All six algorithms run without error",
+          "[StrategyAutoBootstrap][TradeLevel][Integration]")
+{
+    // Verify that every algorithm in the tournament completes successfully on
+    // trade data, producing at least one candidate per enabled method.  This
+    // is the broadest smoke test for the full trade-level code path.
+    TradeSABFactory factory(/*masterSeed*/ 299792u);
+
+    const std::size_t   B      = 500;
+    const double        CL     = 0.95;
+    const std::uint64_t stage  = 16;
+    const std::uint64_t fold   = 0;
+
+    auto trades = makeMixedTrades();
+
+    auto portfolio = createTestPortfolio();
+    DummyStrategy strategy("TradeAllAlgos", portfolio, {});
+
+    BootstrapAlgorithmsConfiguration algos; // all enabled
+    auto sab = makeTradeLevelAutoBootstrap(factory, strategy, B, CL, stage, fold, algos);
+
+    std::optional<AutoCIResult> resultOpt;
+    REQUIRE_NOTHROW(resultOpt.emplace(sab.run(trades)));
+    const AutoCIResult& result = *resultOpt;
+
+    // With 20 trades and B=500, every algorithm should succeed.
+    // Check each expected method is represented.
+    std::set<MethodId> foundMethods;
+    for (const auto& c : result.getCandidates())
+        foundMethods.insert(c.getMethod());
+
+    REQUIRE(foundMethods.count(MethodId::Normal)     > 0);
+    REQUIRE(foundMethods.count(MethodId::Basic)      > 0);
+    REQUIRE(foundMethods.count(MethodId::Percentile) > 0);
+    REQUIRE(foundMethods.count(MethodId::MOutOfN)    > 0);
+    REQUIRE(foundMethods.count(MethodId::PercentileT)> 0);
+    REQUIRE(foundMethods.count(MethodId::BCa)        > 0);
+}
