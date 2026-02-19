@@ -40,18 +40,26 @@ namespace palvalidator
      * @tparam Decimal
      *   Numeric value type.
      * @tparam Sampler
-     *   Callable with signature `Decimal(const std::vector<Decimal>&)`.
+     *   Callable with signature `Decimal(const std::vector<SampleType>&)`.
+     *   At bar level (SampleType = Decimal) this is `Decimal(const std::vector<Decimal>&)`.
+     *   At trade level (SampleType = Trade<Decimal>) this is
+     *   `Decimal(const std::vector<Trade<Decimal>>&)`.
      * @tparam Resampler
      *   Type that provides
-     *     `void operator()(const std::vector<Decimal>& x,
-     *                       std::vector<Decimal>&       y,
-     *                       std::size_t                 m,
-     *                       Rng&                        rng) const;`
+     *     `void operator()(const std::vector<SampleType>& x,
+     *                       std::vector<SampleType>&       y,
+     *                       std::size_t                    m,
+     *                       Rng&                           rng) const;`
      *   and `std::size_t getL() const;`.
      * @tparam Rng
      *   Random-number generator type. Defaults to `std::mt19937_64`.
      * @tparam Executor
      *   Parallel executor type used by `concurrency::parallel_for_chunked`.
+     * @tparam SampleType
+     *   Element type of the input vector passed to run(). Defaults to `Decimal`
+     *   for bar-level bootstrapping. Set to `Trade<Decimal>` for trade-level
+     *   bootstrapping, where Sampler accepts `const std::vector<Trade<Decimal>>&`
+     *   and Resampler operates on `std::vector<Trade<Decimal>>`.
      *
      * @note Thread Safety:
      *   - The run() methods are NOT thread-safe when called concurrently on the
@@ -65,7 +73,8 @@ namespace palvalidator
       class Sampler,
       class Resampler,
       class Rng      = std::mt19937_64,
-      class Executor = concurrency::SingleThreadExecutor
+      class Executor = concurrency::SingleThreadExecutor,
+      class SampleType = Decimal
       >
     class BasicBootstrap
     {
@@ -175,9 +184,9 @@ namespace palvalidator
        *       parallel bootstrap iterations, but diagnostic members are updated
        *       without synchronization.
        */
-      Result run(const std::vector<Decimal>& x,
-                 Sampler                      sampler,
-                 Rng&                         rng)
+      Result run(const std::vector<SampleType>& x,
+                 Sampler                         sampler,
+                 Rng&                            rng)
       {
         // Pre-generate seeds sequentially to ensure determinism.
         // Even with a mutex, grabbing seeds inside the parallel loop 
@@ -208,9 +217,9 @@ namespace palvalidator
        *       same instance due to updates to diagnostic members.
        */
       template<class Provider>
-      Result run(const std::vector<Decimal>& x,
-                 Sampler                      sampler,
-                 const Provider&              provider)
+      Result run(const std::vector<SampleType>& x,
+                 Sampler                         sampler,
+                 const Provider&                 provider)
       {
         auto make_engine = [&provider](std::size_t b) {
           return provider.make_engine(b);
@@ -302,9 +311,9 @@ namespace palvalidator
       }
 
       template<class EngineMaker>
-      Result run_core_(const std::vector<Decimal>& x,
-                       Sampler                      sampler,
-                       EngineMaker&&                make_engine)
+      Result run_core_(const std::vector<SampleType>& x,
+                       Sampler                         sampler,
+                       EngineMaker&&                   make_engine)
       {
         const std::size_t n = x.size();
         if (n < 3) {
@@ -324,7 +333,7 @@ namespace palvalidator
           *m_exec,
           [&](uint32_t b) {
             auto rng_b = make_engine(b);
-            std::vector<Decimal> y;
+            std::vector<SampleType> y;
             y.resize(n);
             // n-out-of-n: m = n
             m_resampler(x, y, n, rng_b);

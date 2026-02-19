@@ -48,21 +48,38 @@ namespace palvalidator
      *       diagnostic storage. Use separate instances or external synchronization.
      *
      * @tparam Decimal
-     *   Numeric value type (e.g., dec::decimal<8>).
+     *   Numeric value type for statistics and bounds (e.g., dec::decimal<8>).
      * @tparam Sampler
-     *   Callable with signature `Decimal(const std::vector<Decimal>&)` that computes the
-     *   statistic of interest on a series (e.g., GeoMeanStat).
+     *   Callable with signature `Decimal(const std::vector<SampleType>&)` that computes
+     *   the statistic of interest on a series (e.g., GeoMeanStat).
+     *   When SampleType = Decimal (default/bar-level): `Decimal(const std::vector<Decimal>&)`
+     *   When SampleType = Trade<Decimal> (trade-level): `Decimal(const std::vector<Trade<Decimal>>&)`
      * @tparam Resampler
-     *   Type that provides `void operator()(const std::vector<Decimal>& x,
-     *   std::vector<Decimal>& y, std::size_t m, Rng& rng) const;` and `std::size_t getL() const;`.
+     *   Type that provides `void operator()(const std::vector<SampleType>& x,
+     *   std::vector<SampleType>& y, std::size_t m, Rng& rng) const;` and
+     *   `std::size_t getL() const;`.
+     *   For trade-level use: IIDResampler<Trade<Decimal>>.
      * @tparam Rng
-     *   Random-number generator type. Defaults to `randutils::mt19937_rng`.
+     *   Random-number generator type. Defaults to `std::mt19937_64`.
+     * @tparam Executor
+     *   Parallel execution policy. Defaults to `SingleThreadExecutor`.
+     * @tparam SampleType
+     *   Element type of the input data vector. Defaults to Decimal (bar-level).
+     *   Set to Trade<Decimal> for trade-level bootstrapping.
+     *   All existing code with 3-5 explicit template parameters is unaffected.
+     *
+     *   IMPORTANT — adaptive mode and runWithRefinement() are NOT supported when
+     *   SampleType != Decimal. The Hill estimator, skewness, and kurtosis required
+     *   by StatisticalContext need ~8+ scalar losses, which are unavailable from
+     *   n~9 Trade objects. Use the fixed-ratio constructor or createFixedRatio()
+     *   at trade level. A static_assert enforces this at compile time.
      */
     template <class Decimal,
               class Sampler,
               class Resampler,
-              class Rng      = std::mt19937_64,
-              class Executor = concurrency::SingleThreadExecutor>
+              class Rng        = std::mt19937_64,
+              class Executor   = concurrency::SingleThreadExecutor,
+              class SampleType = Decimal>
     class MOutOfNPercentileBootstrap
     {
     public:
@@ -75,7 +92,7 @@ namespace palvalidator
         std::size_t B;
         std::size_t effective_B;
         std::size_t skipped;
-        std::size_t n;
+        std::size_t n;             // sample size in SampleType units (bars or trades)
         std::size_t m_sub;
         std::size_t L;
         double      computed_ratio;    // logical ratio reported to callers
@@ -295,11 +312,11 @@ namespace palvalidator
       // ====================================================================
       // RUN METHODS
       // ====================================================================
-      Result run(const std::vector<Decimal>& x,
-                 Sampler                      sampler,
-                 Rng&                         rng,
-                 std::size_t                  m_sub_override = 0,
-                 std::ostream*                diagnosticLog  = nullptr) const
+      Result run(const std::vector<SampleType>& x,
+                 Sampler                        sampler,
+                 Rng&                           rng,
+                 std::size_t                    m_sub_override = 0,
+                 std::ostream*                  diagnosticLog  = nullptr) const
       {
         // IMPORTANT: run_core_ parallelizes the loop, so we must not touch the
         // caller-provided RNG from inside the parallel region (std::* RNGs are not thread-safe).
@@ -318,7 +335,7 @@ namespace palvalidator
       }
 
       template <class Provider>
-      Result run(const std::vector<Decimal>& x,
+      Result run(const std::vector<SampleType>& x,
                  Sampler                      sampler,
                  const Provider&              provider,
                  std::size_t                  m_sub_override = 0,
@@ -337,7 +354,7 @@ namespace palvalidator
       // ====================================================================
       template <typename BootstrapStatistic, typename StrategyT, typename BootstrapFactoryT>
       Result runWithRefinement(
-        const std::vector<Decimal>& x,
+        const std::vector<SampleType>& x,
         Sampler sampler,
         StrategyT& strategy,
         BootstrapFactoryT& factory,
@@ -345,6 +362,19 @@ namespace palvalidator
         int fold,
         std::ostream* diagnosticLog = nullptr) const
       {
+        // TIER 3 GUARD: runWithRefinement() is not supported at trade level.
+        //
+        // Rationale: the refinement pipeline (ConcreteProbeEngineMaker, IProbeEngineMaker,
+        // StatisticalContext, TailVolatilityAdaptivePolicy) is wired to std::vector<Decimal>
+        // throughout. More fundamentally, the adaptive ratio heuristics (Hill estimator,
+        // skewness, kurtosis) require ~8+ scalar observations to produce reliable estimates.
+        // With n~9 Trade objects, those estimates are too noisy to drive a useful ratio
+        // decision. Use the fixed-ratio run() overload with IIDResampler<Trade<Decimal>>.
+        static_assert(std::is_same_v<SampleType, Decimal>,
+          "MOutOfNPercentileBootstrap::runWithRefinement() is not supported for "
+          "trade-level bootstrapping (SampleType != Decimal). "
+          "Use the fixed-ratio run() overload with IIDResampler<Trade<Decimal>> instead. "
+          "See class documentation for the rationale.");
         const std::size_t n = x.size();
         if (n < 3)
         {
@@ -513,11 +543,11 @@ namespace palvalidator
       // CORE BOOTSTRAP IMPLEMENTATION
       // ====================================================================
       template <class EngineMaker>
-      Result run_core_(const std::vector<Decimal>& x,
-                       Sampler                      sampler,
-                       std::size_t                  m_sub_override,
-                       EngineMaker&&                make_engine,
-                       std::ostream*                diagnosticLog = nullptr) const
+      Result run_core_(const std::vector<SampleType>& x,
+                       Sampler                         sampler,
+                       std::size_t                     m_sub_override,
+                       EngineMaker&&                   make_engine,
+                       std::ostream*                   diagnosticLog = nullptr) const
       {
         const std::size_t n = x.size();
         if (n < 3)
@@ -540,17 +570,41 @@ namespace palvalidator
         }
         else if (isAdaptiveMode())
         {
-          if (!m_ratioPolicy)
+          // TIER 2: StatisticalContext<Decimal> requires a flat vector<Decimal>.
+          // When SampleType = Trade<Decimal> this branch is unreachable at runtime
+          // (the static_assert in computeAdaptiveRatio() fires first at compile
+          // time if someone attempts it), but we use if constexpr here so the
+          // compiler never attempts to instantiate the Decimal-specific code with
+          // Trade-typed x, which would be a type error even before the assert.
+          if constexpr (std::is_same_v<SampleType, Decimal>)
           {
-            std::lock_guard<std::mutex> lock(*m_diagMutex);
-            m_diagValid = false;
-            throw std::runtime_error("Adaptive mode enabled but no policy set");
-          }
+            if (!m_ratioPolicy)
+            {
+              std::lock_guard<std::mutex> lock(*m_diagMutex);
+              m_diagValid = false;
+              throw std::runtime_error("Adaptive mode enabled but no policy set");
+            }
 
-          detail::StatisticalContext<Decimal> ctx(x);
-          actual_ratio = computeAdaptiveRatio(x, ctx, diagnosticLog);
-          m_sub        = static_cast<std::size_t>(std::floor(actual_ratio * n));
-          reported_ratio = actual_ratio;
+            detail::StatisticalContext<Decimal> ctx(x);
+            actual_ratio = computeAdaptiveRatio(x, ctx, diagnosticLog);
+            m_sub        = static_cast<std::size_t>(std::floor(actual_ratio * n));
+            reported_ratio = actual_ratio;
+          }
+          else
+          {
+            // Trade-level with adaptive mode is a programming error.
+            // A static_assert cannot be used here: even though this else-branch
+            // is inside an outer `if constexpr (std::is_same_v<SampleType, Decimal>)`
+            // block, the INNER runtime `if (isAdaptiveMode())` means this else-branch
+            // is the *active* (non-discarded) branch when SampleType != Decimal.
+            // A static_assert in an active branch always fires at compile time,
+            // regardless of runtime reachability.  A runtime throw is correct.
+            throw std::logic_error(
+              "MOutOfNPercentileBootstrap: adaptive ratio mode is not supported "
+              "for trade-level bootstrapping (SampleType != Decimal). "
+              "Use the fixed-ratio constructor instead of createAdaptive() or "
+              "createAdaptiveWithPolicy() at trade level.");
+          }
         }
         else
         {
@@ -575,7 +629,11 @@ namespace palvalidator
           *m_exec,
           [&](uint32_t b) {
             auto rng = make_engine(b);
-            std::vector<Decimal> y;
+            // y is std::vector<SampleType>.
+            // When SampleType = Decimal:        vector of bar returns (original behaviour).
+            // When SampleType = Trade<Decimal>: vector of Trade objects.
+            // SampleType must be default-constructible; Trade<Decimal> satisfies this.
+            std::vector<SampleType> y;
             y.resize(m_sub);
             m_resampler(x, y, m_sub, rng);
             const double v = num::to_double(sampler(y));
@@ -774,6 +832,14 @@ namespace palvalidator
                                   const detail::StatisticalContext<Decimal>& ctx,
                                   std::ostream*                              diagnosticLog) const
       {
+        // TIER 3 GUARD: adaptive ratio computation is not supported at trade level.
+        // This function is only reachable from the SampleType=Decimal branch of
+        // run_core_() (guarded by if constexpr), but the static_assert provides
+        // an explicit compile-time error if called directly on a trade-level instance.
+        static_assert(std::is_same_v<SampleType, Decimal>,
+          "MOutOfNPercentileBootstrap::computeAdaptiveRatio() is not supported for "
+          "trade-level bootstrapping (SampleType != Decimal). "
+          "Use the fixed-ratio run() overload with IIDResampler<Trade<Decimal>> instead.");
         auto policy = std::static_pointer_cast<
           IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>>(m_ratioPolicy);
 

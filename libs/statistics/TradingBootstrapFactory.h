@@ -21,9 +21,11 @@ using mkc_timeseries::IIDResampler;
 using mkc_timeseries::StationaryBlockResampler;
 using palvalidator::analysis::IntervalType;
 
-namespace palvalidator::analysis {
-    template <class Decimal, class Sampler, class Rng, class Provider>
-    class BCaCompatibleTBootstrap; // As defined above
+namespace palvalidator::analysis
+{
+  template <class Decimal, class Sampler, class Rng, class Provider,
+	    class SampleType>
+  class BCaCompatibleTBootstrap;
 }
 
 /**

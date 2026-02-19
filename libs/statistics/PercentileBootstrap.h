@@ -44,27 +44,36 @@ namespace palvalidator
      * @tparam Decimal
      *   Numeric value type (e.g., dec::decimal<8>).
      * @tparam Sampler
-     *   Callable with signature `Decimal(const std::vector<Decimal>&)` that computes
+     *   Callable with signature `Decimal(const std::vector<SampleType>&)` that computes
      *   the statistic of interest on a series.
+     *   At bar level (SampleType = Decimal) this is `Decimal(const std::vector<Decimal>&)`.
+     *   At trade level (SampleType = Trade<Decimal>) this is
+     *   `Decimal(const std::vector<Trade<Decimal>>&)`.
      * @tparam Resampler
      *   Type that provides
-     *     `void operator()(const std::vector<Decimal>& x,
-     *                       std::vector<Decimal>&       y,
-     *                       std::size_t                 m,
-     *                       Rng&                        rng) const;`
+     *     `void operator()(const std::vector<SampleType>& x,
+     *                       std::vector<SampleType>&       y,
+     *                       std::size_t                    m,
+     *                       Rng&                           rng) const;`
      *   and `std::size_t getL() const;`. For i.i.d. bootstrap, this typically draws
      *   with replacement from x into y with m = n.
      * @tparam Rng
      *   Random-number generator type. Defaults to `std::mt19937_64`.
      * @tparam Executor
      *   Parallel executor type used by `concurrency::parallel_for_chunked`.
+     * @tparam SampleType
+     *   Element type of the input vector passed to run(). Defaults to `Decimal`
+     *   for bar-level bootstrapping. Set to `Trade<Decimal>` for trade-level
+     *   bootstrapping, where Sampler accepts `const std::vector<Trade<Decimal>>&`
+     *   and Resampler operates on `std::vector<Trade<Decimal>>`.
      */
     template<
       class Decimal,
       class Sampler,
       class Resampler,
       class Rng      = std::mt19937_64,
-      class Executor = concurrency::SingleThreadExecutor
+      class Executor = concurrency::SingleThreadExecutor,
+      class SampleType = Decimal
       >
     class PercentileBootstrap
     {
@@ -236,9 +245,9 @@ namespace palvalidator
        * After this call, diagnostic getters (getBootstrapStatistics,
        * getBootstrapMean/Variance/Se) refer to this run's results.
        */
-      Result run(const std::vector<Decimal>& x,
-                 Sampler                      sampler,
-                 Rng&                         rng) const
+      Result run(const std::vector<SampleType>& x,
+                 Sampler                         sampler,
+                 Rng&                            rng) const
       {
         // Derive per-replicate engines from the supplied RNG.
         // Protect RNG access with mutex to prevent data races.
@@ -272,9 +281,9 @@ namespace palvalidator
        * getBootstrapMean/Variance/Se) refer to this run's results.
        */
       template<class Provider>
-      Result run(const std::vector<Decimal>& x,
-                 Sampler                      sampler,
-                 const Provider&              provider) const
+      Result run(const std::vector<SampleType>& x,
+                 Sampler                         sampler,
+                 const Provider&                 provider) const
       {
         auto make_engine = [&provider](std::size_t b) {
           return provider.make_engine(b);  // CRN: 1 engine per replicate index
@@ -450,9 +459,9 @@ namespace palvalidator
       }
 
       template<class EngineMaker>
-      Result run_core_(const std::vector<Decimal>& x,
-                       Sampler                      sampler,
-                       EngineMaker&&                make_engine) const
+      Result run_core_(const std::vector<SampleType>& x,
+                       Sampler                         sampler,
+                       EngineMaker&&                   make_engine) const
       {
         const std::size_t n = x.size();
         if (n < 3) {
@@ -482,7 +491,7 @@ namespace palvalidator
           *m_exec,
           [&](uint32_t b) {
             auto rng_b = make_engine(b);
-            std::vector<Decimal> y;
+            std::vector<SampleType> y;
             y.resize(n);
             // n-out-of-n: m = n
             m_resampler(x, y, n, rng_b);
