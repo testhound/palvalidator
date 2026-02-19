@@ -8,6 +8,7 @@
 #include "NormalBootstrap.h"
 #include "PercentileBootstrap.h"
 #include "BiasCorrectedBootstrap.h"
+#include "TradeResampling.h"
 #include "RngUtils.h"
 #include "StatUtils.h"
 #include "randutils.hpp"
@@ -342,12 +343,84 @@ public:
   }
 
   // ===========================================================================
-  //                    MOutOfNPercentileBootstrap
+  //  makeBCa — trade-level overloads (SampleType = Trade<Decimal>)
+  //
+  //  BCaBootStrap receives the data vector at construction time, so the factory
+  //  can offer distinct overloads: the first argument type
+  //  (vector<Decimal> vs vector<Trade<Decimal>>) lets the compiler select the
+  //  right overload unambiguously, and Decimal is deduced from that argument.
+  //
+  //  No default-statistic convenience overload is provided — there is no
+  //  analogue of computeMean for a vector of Trade objects.
+  //
+  //  Usage:
+  //    GeoMeanStat<Decimal> geoMean;
+  //    auto bca = factory.makeBCa(
+  //        tradeVec, 1000, 0.95, geoMean,
+  //        IIDResampler<Trade<Decimal>>{},
+  //        strategy, BootstrapStages::GEO_MEAN, 1, BootstrapStages::NO_FOLD);
   // ===========================================================================
 
-  // BacktesterStrategy overload (Executor defaults to SingleThreadExecutor)
+  // Full control: explicit statFn + BacktesterStrategy
+  template<class Decimal, class Resampler>
+  auto makeBCa(const std::vector<mkc_timeseries::Trade<Decimal>>& trades,
+               unsigned B, double CL,
+               std::function<Decimal(const std::vector<mkc_timeseries::Trade<Decimal>>&)> statFn,
+               Resampler sampler,
+               const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
+               uint64_t stageTag, uint64_t L, uint64_t fold,
+               IntervalType interval_type = IntervalType::TWO_SIDED)
+    -> BCaBootStrap<Decimal, Resampler, Engine,
+                    mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
+                    mkc_timeseries::Trade<Decimal>>
+  {
+    return makeBCaTradeImpl(trades, B, CL, std::move(statFn), std::move(sampler),
+                            static_cast<uint64_t>(strategy.deterministicHashCode()),
+                            stageTag, L, fold, interval_type);
+  }
+
+  // Full control: explicit statFn + raw strategy ID
+  template<class Decimal, class Resampler>
+  auto makeBCa(const std::vector<mkc_timeseries::Trade<Decimal>>& trades,
+               unsigned B, double CL,
+               std::function<Decimal(const std::vector<mkc_timeseries::Trade<Decimal>>&)> statFn,
+               Resampler sampler,
+               uint64_t strategyId,
+               uint64_t stageTag, uint64_t L, uint64_t fold,
+               IntervalType interval_type = IntervalType::TWO_SIDED)
+    -> BCaBootStrap<Decimal, Resampler, Engine,
+                    mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
+                    mkc_timeseries::Trade<Decimal>>
+  {
+    return makeBCaTradeImpl(trades, B, CL, std::move(statFn), std::move(sampler),
+                            strategyId, stageTag, L, fold, interval_type);
+  }
+
+  // ===========================================================================
+  //                    MOutOfNPercentileBootstrap
+  // ===========================================================================
+  //
+  //  MOutOfNPercentileBootstrap receives data at run() time, not at construction
+  //  time, so the factory never sees a data vector. This means:
+  //    • Overloads distinguished by vector<Decimal> vs vector<Trade<Decimal>>
+  //      are impossible — nothing in the factory's argument list differs.
+  //    • The correct mechanism is an explicit SampleType template parameter on
+  //      the factory method, defaulting to Decimal so all existing call sites
+  //      compile unchanged.
+  //    • Callers opting into trade-level specify SampleType = Trade<Decimal>
+  //      explicitly: factory.makeMOutOfN<Decimal, MySampler, IIDResampler<Trade<Decimal>>,
+  //                                      Trade<Decimal>>(...);
+  //
+  //  NOTE: makeAdaptiveMOutOfN deliberately does NOT expose SampleType.
+  //  Adaptive mode is blocked at trade level by a static_assert inside
+  //  MOutOfNPercentileBootstrap — surfacing SampleType on the factory method
+  //  would imply support for a path that always detonates at compile time.
+  // ===========================================================================
+
+  // BacktesterStrategy overload
   template<class Decimal, class Sampler, class Resampler,
-	   class Executor = concurrency::SingleThreadExecutor>
+           class Executor   = concurrency::SingleThreadExecutor,
+           class SampleType = Decimal>
   auto makeMOutOfN(std::size_t B, double CL, double m_ratio,
 		   const Resampler& resampler,
 		   const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
@@ -356,13 +429,13 @@ public:
 		   IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
     palvalidator::analysis::MOutOfNPercentileBootstrap<
-      Decimal, Sampler, Resampler, Engine, Executor>,
+      Decimal, Sampler, Resampler, Engine, Executor, SampleType>,
     mkc_timeseries::rng_utils::CRNRng<Engine>
     >
   {
     using Bootstrap =
       palvalidator::analysis::MOutOfNPercentileBootstrap<
-	Decimal, Sampler, Resampler, Engine, Executor>;
+	Decimal, Sampler, Resampler, Engine, Executor, SampleType>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
@@ -372,9 +445,10 @@ public:
     return std::make_pair(std::move(mn), std::move(crn));
   }
 
-  // Raw strategyId overload (Executor defaults to SingleThreadExecutor)
+  // Raw strategyId overload
   template<class Decimal, class Sampler, class Resampler,
-	   class Executor = concurrency::SingleThreadExecutor>
+           class Executor   = concurrency::SingleThreadExecutor,
+           class SampleType = Decimal>
   auto makeMOutOfN(std::size_t B, double CL, double m_ratio,
 		   const Resampler& resampler,
 		   uint64_t strategyId,
@@ -384,13 +458,13 @@ public:
 		   IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
     palvalidator::analysis::MOutOfNPercentileBootstrap<
-      Decimal, Sampler, Resampler, Engine, Executor>,
+      Decimal, Sampler, Resampler, Engine, Executor, SampleType>,
     mkc_timeseries::rng_utils::CRNRng<Engine>
     >
   {
     using Bootstrap =
       palvalidator::analysis::MOutOfNPercentileBootstrap<
-	Decimal, Sampler, Resampler, Engine, Executor>;
+	Decimal, Sampler, Resampler, Engine, Executor, SampleType>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
@@ -462,7 +536,8 @@ public:
 
   // Returns (bootstrap, CRNRng); Executor defaults to SingleThreadExecutor
   template<class Decimal, class Sampler, class Resampler,
-           class Executor = concurrency::SingleThreadExecutor>
+           class Executor   = concurrency::SingleThreadExecutor,
+           class SampleType = Decimal>
   auto makePercentileT(std::size_t B_outer, std::size_t B_inner,
                        double CL,
                        const Resampler& resampler,
@@ -474,11 +549,11 @@ public:
                        double m_ratio_outer = 1.0,
                        double m_ratio_inner = 1.0)
     -> std::pair<
-         palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor, SampleType>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
        >
   {
-    using PT  = palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>;
+    using PT  = palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor, SampleType>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
@@ -490,7 +565,8 @@ public:
 
   // Raw strategyId
   template<class Decimal, class Sampler, class Resampler,
-           class Executor = concurrency::SingleThreadExecutor>
+           class Executor   = concurrency::SingleThreadExecutor,
+           class SampleType = Decimal>
   auto makePercentileT(std::size_t B_outer, std::size_t B_inner,
                        double CL,
                        const Resampler& resampler,
@@ -501,11 +577,11 @@ public:
                        double m_ratio_inner = 1.0
 		       )
     -> std::pair<
-         palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor, SampleType>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
        >
   {
-    using PT  = palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor>;
+    using PT  = palvalidator::analysis::PercentileTBootstrap<Decimal, Sampler, Resampler, Engine, Executor, SampleType>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::PERCENTILE_T, L, fold) );
@@ -543,7 +619,8 @@ public:
 
   // BacktesterStrategy overload
   template<class Decimal, class Sampler, class Resampler,
-           class Executor = concurrency::SingleThreadExecutor>
+           class Executor   = concurrency::SingleThreadExecutor,
+           class SampleType = Decimal>
   auto makeBasic(std::size_t B, double CL,
                  const Resampler& resampler,
                  const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
@@ -552,12 +629,12 @@ public:
 		 uint64_t fold,
 		 IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
-         palvalidator::analysis::BasicBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         palvalidator::analysis::BasicBootstrap<Decimal, Sampler, Resampler, Engine, Executor, SampleType>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
        >
   {
     using Bootstrap = palvalidator::analysis::BasicBootstrap<
-        Decimal, Sampler, Resampler, Engine, Executor>;
+        Decimal, Sampler, Resampler, Engine, Executor, SampleType>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
@@ -569,7 +646,8 @@ public:
 
   // Raw strategyId overload
   template<class Decimal, class Sampler, class Resampler,
-           class Executor = concurrency::SingleThreadExecutor>
+           class Executor   = concurrency::SingleThreadExecutor,
+           class SampleType = Decimal>
   auto makeBasic(std::size_t B, double CL,
                  const Resampler& resampler,
                  uint64_t strategyId,
@@ -578,12 +656,12 @@ public:
 		 uint64_t fold,
 		 IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
-         palvalidator::analysis::BasicBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         palvalidator::analysis::BasicBootstrap<Decimal, Sampler, Resampler, Engine, Executor, SampleType>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
        >
   {
     using Bootstrap = palvalidator::analysis::BasicBootstrap<
-        Decimal, Sampler, Resampler, Engine, Executor>;
+        Decimal, Sampler, Resampler, Engine, Executor, SampleType>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::BASIC, L, fold) );
@@ -594,7 +672,8 @@ public:
 
   // BacktesterStrategy overload for NormalBootstrap
   template<class Decimal, class Sampler, class Resampler,
-           class Executor = concurrency::SingleThreadExecutor>
+           class Executor   = concurrency::SingleThreadExecutor,
+           class SampleType = Decimal>
   auto makeNormal(std::size_t B, double CL,
                   const Resampler& resampler,
                   const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
@@ -603,12 +682,12 @@ public:
 		  uint64_t fold,
 		  IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
-         palvalidator::analysis::NormalBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         palvalidator::analysis::NormalBootstrap<Decimal, Sampler, Resampler, Engine, Executor, SampleType>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
        >
   {
     using Bootstrap = palvalidator::analysis::NormalBootstrap<
-        Decimal, Sampler, Resampler, Engine, Executor>;
+        Decimal, Sampler, Resampler, Engine, Executor, SampleType>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
@@ -620,7 +699,8 @@ public:
 
   // Raw strategyId overload for NormalBootstrap
   template<class Decimal, class Sampler, class Resampler,
-           class Executor = concurrency::SingleThreadExecutor>
+           class Executor   = concurrency::SingleThreadExecutor,
+           class SampleType = Decimal>
   auto makeNormal(std::size_t B, double CL,
                   const Resampler& resampler,
                   uint64_t strategyId,
@@ -629,12 +709,12 @@ public:
 		  uint64_t fold,
 		  IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
-         palvalidator::analysis::NormalBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         palvalidator::analysis::NormalBootstrap<Decimal, Sampler, Resampler, Engine, Executor, SampleType>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
        >
   {
     using Bootstrap = palvalidator::analysis::NormalBootstrap<
-        Decimal, Sampler, Resampler, Engine, Executor>;
+        Decimal, Sampler, Resampler, Engine, Executor, SampleType>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::NORMAL, L, fold) );
@@ -645,7 +725,8 @@ public:
 
   // BacktesterStrategy overload for PercentileBootstrap
   template<class Decimal, class Sampler, class Resampler,
-           class Executor = concurrency::SingleThreadExecutor>
+           class Executor   = concurrency::SingleThreadExecutor,
+           class SampleType = Decimal>
   auto makePercentile(std::size_t B, double CL,
                       const Resampler& resampler,
                       const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
@@ -654,12 +735,12 @@ public:
 		      uint64_t fold,
 		      IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
-         palvalidator::analysis::PercentileBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         palvalidator::analysis::PercentileBootstrap<Decimal, Sampler, Resampler, Engine, Executor, SampleType>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
        >
   {
     using Bootstrap = palvalidator::analysis::PercentileBootstrap<
-        Decimal, Sampler, Resampler, Engine, Executor>;
+        Decimal, Sampler, Resampler, Engine, Executor, SampleType>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
@@ -671,7 +752,8 @@ public:
 
   // Raw strategyId overload for PercentileBootstrap
   template<class Decimal, class Sampler, class Resampler,
-           class Executor = concurrency::SingleThreadExecutor>
+           class Executor   = concurrency::SingleThreadExecutor,
+           class SampleType = Decimal>
   auto makePercentile(std::size_t B, double CL,
                       const Resampler& resampler,
                       uint64_t strategyId,
@@ -680,12 +762,12 @@ public:
 		      uint64_t fold,
 		      IntervalType interval_type = IntervalType::TWO_SIDED)
     -> std::pair<
-         palvalidator::analysis::PercentileBootstrap<Decimal, Sampler, Resampler, Engine, Executor>,
+         palvalidator::analysis::PercentileBootstrap<Decimal, Sampler, Resampler, Engine, Executor, SampleType>,
          mkc_timeseries::rng_utils::CRNRng<Engine>
        >
   {
     using Bootstrap = palvalidator::analysis::PercentileBootstrap<
-        Decimal, Sampler, Resampler, Engine, Executor>;
+        Decimal, Sampler, Resampler, Engine, Executor, SampleType>;
     using mkc_timeseries::rng_utils::CRNRng;
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::PERCENTILE, L, fold) );
@@ -725,6 +807,49 @@ private:
 							      std::move(sampler),
 							      prov,
 							      interval_type);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Trade-level BCa implementation.
+  //
+  // BCaBootStrap receives data at construction time, so the public makeBCa
+  // overloads (distinguished by vector<Decimal> vs vector<Trade<Decimal>>) can
+  // deduce Decimal from the data argument. This private helper exists purely to
+  // avoid duplicating the CRN key construction between the BacktesterStrategy
+  // and raw-strategyId public overloads, exactly mirroring makeBCaImpl.
+  //
+  // The CRN key hierarchy is identical to bar-level BCa — same
+  // masterSeed → strategyHash → stageTag → BCA → L → fold chain — ensuring
+  // a trade-level analysis and its bar-level counterpart for the same
+  // strategy/metric each draw from independent streams without changing
+  // the key structure.
+  // ---------------------------------------------------------------------------
+  template<class Decimal, class Resampler>
+  auto makeBCaTradeImpl(
+      const std::vector<mkc_timeseries::Trade<Decimal>>& trades,
+      unsigned B, double CL,
+      std::function<Decimal(const std::vector<mkc_timeseries::Trade<Decimal>>&)> statFn,
+      Resampler sampler,
+      uint64_t strategyHash,
+      uint64_t stageTag, uint64_t L,
+      uint64_t fold,
+      IntervalType interval_type = IntervalType::TWO_SIDED)
+    -> BCaBootStrap<Decimal, Resampler, Engine,
+                    mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
+                    mkc_timeseries::Trade<Decimal>>
+  {
+    using TradeT   = mkc_timeseries::Trade<Decimal>;
+    using Provider = mkc_timeseries::rng_utils::CRNEngineProvider<Engine>;
+    using Key      = mkc_timeseries::rng_utils::CRNKey;
+
+    Provider prov(
+      Key(m_masterSeed)
+        .with_tag(strategyHash)
+        .with_tags({ stageTag, BootstrapMethods::BCA, L, fold })
+    );
+
+    return BCaBootStrap<Decimal, Resampler, Engine, Provider, TradeT>(
+        trades, B, CL, std::move(statFn), std::move(sampler), prov, interval_type);
   }
 
   // Build a CRNKey from domain tags (handy if you compose CRN outside)
