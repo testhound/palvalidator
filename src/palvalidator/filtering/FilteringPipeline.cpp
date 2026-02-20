@@ -100,9 +100,10 @@ namespace palvalidator::filtering
                                         bool applyFragileAdvice,
                                         FilteringSummary& summary,
                                         BootstrapFactory& bootstrapFactory,
-                                        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer)
+                                        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer,
+                                        bool tradeLevelBootstrapping)
     : mBacktestingStage()
-    , mBootstrapStage(confidenceLevel, numResamples, bootstrapFactory)
+    , mBootstrapStage(confidenceLevel, numResamples, bootstrapFactory, tradeLevelBootstrapping)
     , mHurdleStage(hurdleCalc)
     , mRobustnessStage(robustnessConfig, summary, bootstrapFactory)
     , mLSensitivityStage(lSensitivityConfig, numResamples, confidenceLevel, bootstrapFactory)
@@ -164,6 +165,17 @@ namespace palvalidator::filtering
 	  tempFile << "=== END STRATEGY: " << strategyName << " ===\n\n";
 	  tempFile.close();
 	}
+    }
+    
+    // Check if we should skip bootstrap analysis for insufficient trades in trade-level mode
+    if (mBootstrapStage.isTradeLevelBootStrapping() && ctx.tradeLevelReturns.size() < 9)
+    {
+      std::ostringstream reason;
+      reason << "Insufficient trades for trade-level bootstrapping: "
+             << ctx.tradeLevelReturns.size()
+             << " trades (minimum 12 required)";
+      os << "✗ Strategy filtered out: " << reason.str() << "\n";
+      return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, reason.str());
     }
     
     // Stage 2: Bootstrap Analysis

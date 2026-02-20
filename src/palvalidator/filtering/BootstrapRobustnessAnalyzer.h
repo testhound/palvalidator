@@ -47,11 +47,13 @@ namespace palvalidator::analysis
     BootstrapConfig(unsigned int numSeeds,
                     double minPassRate,
                     bool requirePerfect = false,
-                    bool reportDetailedResults = false)
+                    bool reportDetailedResults = false,
+                    bool tradeLevelBootstrapping = false)
       : mNumSeeds(numSeeds)
       , mMinPassRate(minPassRate)
       , mRequirePerfect(requirePerfect)
       , mReportDetailedResults(reportDetailedResults)
+      , mTradeLevelBootstrapping(tradeLevelBootstrapping)
     {}
     
     // Getters
@@ -59,6 +61,7 @@ namespace palvalidator::analysis
     double getMinPassRate() const { return mMinPassRate; }
     bool getRequirePerfect() const { return mRequirePerfect; }
     bool getReportDetailedResults() const { return mReportDetailedResults; }
+    bool getTradeLevelBootstrapping() const { return mTradeLevelBootstrapping; }
 
 
   private:
@@ -66,6 +69,7 @@ namespace palvalidator::analysis
     double mMinPassRate;
     bool mRequirePerfect;
     bool mReportDetailedResults;
+    bool mTradeLevelBootstrapping;
   };
 
   /**

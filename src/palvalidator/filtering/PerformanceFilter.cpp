@@ -29,8 +29,9 @@ namespace palvalidator
 
     constexpr std::size_t kRegimeVolWindow = 20;
     PerformanceFilter::PerformanceFilter(const Num& confidenceLevel,
-	 unsigned int numResamples, uint64_t masterSeed,
-        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer)
+  unsigned int numResamples, uint64_t masterSeed,
+        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer,
+        bool tradeLevelBootstrapping)
     : mConfidenceLevel(confidenceLevel),
       mNumResamples(numResamples),
       mRobustnessConfig(),
@@ -39,7 +40,8 @@ namespace palvalidator
       mApplyFragileAdvice(true),
       mLSensitivity(),
       mBootstrapFactory(std::make_unique<BootstrapFactory>(masterSeed)),
-      mObserver(std::move(observer))
+      mObserver(std::move(observer)),
+      mTradeLevelBootstrapping(tradeLevelBootstrapping)
     {
     }
 
@@ -86,41 +88,64 @@ namespace palvalidator
       outputStream << "Filter 1 (Statistical Viability): Annualized Lower Bound > 0\n";
       outputStream << "Filter 2 (Economic Significance): Annualized Lower Bound > Trading Spread Costs\n";
       outputStream << "  - Cost assumptions: $0 commission; slippage/spread per side is data-driven when available.\n";
+      
+      // Output bootstrapping type
+      if (mTradeLevelBootstrapping) {
+        outputStream << "  - Bootstrapping method: Trade level bootstrapping\n";
+      } else {
+        outputStream << "  - Bootstrapping method: Bar level bootstrapping\n";
+      }
+
+      // Track strategies skipped due to insufficient trades
+      unsigned int skippedStrategiesCount = 0;
 
       for (const auto& strategy : survivingStrategies)
-	{
-	  try
-	    {
-	      // Create analysis context for this strategy
-	      StrategyAnalysisContext ctx(
-					  strategy,
-					  baseSecurity,
-					  inSampleBacktestingDates,
-					  oosBacktestingDates,
-					  timeFrame,
-					  oosSpreadStats
-					  );
+ {
+   try
+     {
+       // Create analysis context for this strategy
+       StrategyAnalysisContext ctx(
+       strategy,
+       baseSecurity,
+       inSampleBacktestingDates,
+       oosBacktestingDates,
+       timeFrame,
+       oosSpreadStats
+       );
 
-	      // Execute pipeline (handles all gates with fail-fast)
-	      auto pipeline = createPipeline();
-	      auto decision = pipeline->executeForStrategy(ctx, outputStream);
+       // Execute pipeline (handles all gates with fail-fast)
+       auto pipeline = createPipeline();
+       auto decision = pipeline->executeForStrategy(ctx, outputStream);
 
-	      // Update summary based on decision type
-	      updateSummaryForDecision(decision);
+       // Check if strategy was skipped due to insufficient trades
+       if (decision.decision == FilterDecisionType::FailInsufficientData) {
+  ++skippedStrategiesCount;
+       }
 
-	      // Keep strategy if passed all gates
-	      if (decision.passed())
-		{
-		  filteredStrategies.push_back(strategy);
-		}
-	    }
-	  catch (const std::exception& e)
-	    {
-	      outputStream << "Warning: Failed to evaluate strategy '" << strategy->getStrategyName()
-			   << "' performance: " << e.what() << "\n";
-	      outputStream << "Excluding strategy from filtered results.\n";
-	    }
-	}
+       // Update summary based on decision type
+       updateSummaryForDecision(decision);
+
+       // Keep strategy if passed all gates
+       if (decision.passed())
+  {
+    filteredStrategies.push_back(strategy);
+  }
+     }
+   catch (const std::exception& e)
+     {
+       outputStream << "Warning: Failed to evaluate strategy '" << strategy->getStrategyName()
+      << "' performance: " << e.what() << "\n";
+       outputStream << "Excluding strategy from filtered results.\n";
+     }
+ }
+
+      // Output statistics about skipped strategies due to insufficient trades
+      unsigned int totalStrategies = survivingStrategies.size();
+      outputStream << "Strategy processing summary:\n";
+      outputStream << "  Total strategies evaluated: " << totalStrategies << "\n";
+      outputStream << "  Strategies skipped due to insufficient trades (<9): " << skippedStrategiesCount << "\n";
+      outputStream << "  Strategies fully processed: " << (totalStrategies - skippedStrategiesCount) << "\n";
+      outputStream << "\n";
 
       // Count survivors by direction
       auto [survivorsLong, survivorsShort] = countSurvivorsByDirection(filteredStrategies);
@@ -173,8 +198,9 @@ namespace palvalidator
         mFragileEdgePolicy,
         mApplyFragileAdvice,
         mFilteringSummary,
- 	*mBootstrapFactory,
-        mObserver
+  *mBootstrapFactory,
+        mObserver,
+        mTradeLevelBootstrapping
       );
     }
 
