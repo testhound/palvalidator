@@ -438,29 +438,6 @@ namespace mkc_timeseries
 	return (*this)(flat); // Dispatches to the original operator()(const std::vector<Decimal>&)
       }
 
-      /**
-       * @brief Computes geometric mean from a vector of Trade objects.
-       * Flattens the multi-day trades into a single return stream before processing.
-       */
-      Decimal computeFromTrades(const std::vector<Trade<Decimal>>& trades) const
-      {
-	if (trades.empty())
-	  return DC::DecimalZero;
-
-	std::vector<Decimal> flatReturns;
-	// Pre-reserve based on a typical median of 3 bars per trade
-	flatReturns.reserve(trades.size() * 3);
-
-	for (const auto& trade : trades)
-	  {
-	    const auto& daily = trade.getDailyReturns();
-	    flatReturns.insert(flatReturns.end(), daily.begin(), daily.end());
-	  }
-
-	// Pass the flattened vector to the existing operator()
-	return (*this)(flatReturns);
-      }
-
     private:
       bool               m_clipRuin;
       bool               m_winsorSmallN;
@@ -596,30 +573,6 @@ namespace mkc_timeseries
 	}
 
 	return (*this)(flat); // Dispatches to the original operator()(const std::vector<Decimal>&)
-      }
-
-      /**
-       * @brief Computes geometric mean from a vector of Trade objects containing log-bars.
-       * This retains the performance benefit of avoiding repeated log() calls during bootstrapping.
-       * * @note Assumes Trade::getDailyReturns() contains pre-computed log(max(1+r, ruin_eps)).
-       */
-      Decimal computeFromTrades(const std::vector<Trade<Decimal>>& trades) const
-      {
-	if (trades.empty())
-	  return DC::DecimalZero;
-
-	std::vector<Decimal> flatLogBars;
-	flatLogBars.reserve(trades.size() * 3);
-
-	for (const auto& trade : trades)
-	  {
-	    const auto& logs = trade.getDailyReturns();
-	    flatLogBars.insert(flatLogBars.end(), logs.begin(), logs.end());
-	  }
-
-	// Pass the flattened log-vector to the existing operator()
-	// No log() calls occur inside this operator()
-	return (*this)(flatLogBars);
       }
 
     private:
@@ -1651,29 +1604,6 @@ namespace mkc_timeseries
 
 	return (*this)(flat); // Dispatches to the original operator()(const std::vector<Decimal>&)
       }
-
-      /**
-       * @brief Computes Log Profit Factor from a vector of Trade objects.
-       * Flattens the trades and delegates to the robust LogPF calculation.
-       */
-      Decimal computeFromTrades(const std::vector<Trade<Decimal>>& trades) const
-      {
-	if (trades.empty())
-	  return DecimalConstants<Decimal>::DecimalZero;
-
-	std::vector<Decimal> flatReturns;
-	// Pre-reserve based on a typical median of 3 bars per trade
-	flatReturns.reserve(trades.size() * 3);
-
-	for (const auto& trade : trades)
-	  {
-	    const auto& daily = trade.getDailyReturns();
-	    flatReturns.insert(flatReturns.end(), daily.begin(), daily.end());
-	  }
-
-	// Pass the flattened vector to the existing operator()
-	return (*this)(flatReturns);
-      }
       
     private:
       double m_ruinEps;
@@ -1856,28 +1786,6 @@ namespace mkc_timeseries
 	}
 
 	return (*this)(flat); // Dispatches to the original operator()(const std::vector<Decimal>&)
-      }
-      
-      /**
-       * @brief Computes Log Profit Factor from Trade objects containing pre-computed log-bars.
-       * Optimized for bootstrap performance.
-       */
-      Decimal computeFromTrades(const std::vector<Trade<Decimal>>& trades) const
-      {
-	if (trades.empty())
-	  return DecimalConstants<Decimal>::DecimalZero;
-
-	std::vector<Decimal> flatLogBars;
-	flatLogBars.reserve(trades.size() * 3);
-
-	for (const auto& trade : trades)
-	  {
-	    const auto& logs = trade.getDailyReturns();
-	    flatLogBars.insert(flatLogBars.end(), logs.begin(), logs.end());
-	  }
-
-	// Pass the flattened log-vector to the existing operator()
-	return (*this)(flatLogBars);
       }
       
     private:
