@@ -1406,24 +1406,25 @@ TEST_CASE("LogProfitFactorStat_LogPF trade overload: constructor parameters prop
   }
 
   SECTION("Higher prior_strength makes log(PF) more conservative via trade overload")
-  {
-    // Increasing prior_strength pulls log(PF) toward zero (more conservative).
-    // This verifies the parameter influences the result through the trade path.
-    auto trades = makeOneBarTrades(rawReturns);
+    {
+      // NOTE: prior_strength is no longer used in the denominator prior calculation.
+      // The prior is now anchored to 5% of sum_log_wins, making it independent of
+      // prior_strength. Varying prior_strength must produce identical results.
+      auto trades = makeOneBarTrades(rawReturns);
 
-    LogPFStat stat_low (1e-8, 1e-6, /*prior=*/0.5);
-    LogPFStat stat_high(1e-8, 1e-6, /*prior=*/2.0);
+      LogPFStat stat_low (1e-8, 1e-6, /*prior=*/0.5);
+      LogPFStat stat_high(1e-8, 1e-6, /*prior=*/2.0);
 
-    double result_low  = num::to_double(stat_low(trades));
-    double result_high = num::to_double(stat_high(trades));
+      double result_low  = num::to_double(stat_low(trades));
+      double result_high = num::to_double(stat_high(trades));
 
-    // Both must be finite.
-    REQUIRE(std::isfinite(result_low));
-    REQUIRE(std::isfinite(result_high));
+      REQUIRE(std::isfinite(result_low));
+      REQUIRE(std::isfinite(result_high));
 
-    // Higher prior → more conservative (result closer to zero).
-    REQUIRE(result_high < result_low);
-  }
+      // prior_strength is intentionally unused: results must be identical.
+      REQUIRE(result_high == Catch::Approx(result_low).epsilon(1e-12));
+    }
+  
 
   SECTION("Functor is copyable: copy and original produce identical results")
   {
@@ -2044,25 +2045,33 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF trade overload: constructor para
   }
 
   SECTION("Custom stop_loss_pct propagates through trade overload")
-  {
-    LogPFBars stat1(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.03, 0.02);
-    LogPFBars stat2(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.05, 0.02);
-    LogPFBars stat3(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.10, 0.02);
+    {
+      // NOTE: stop_loss_pct no longer affects the denominator prior. It only
+      // influences the numerator floor (tiny_win_return in Step 4). To observe
+      // this effect, wins must be small enough for the floor to activate.
+      // With normal-sized wins (rawReturns), all calls produce identical results.
+      std::vector<DecimalType> tinyWinReturns = {
+	DecimalType("0.0001"), DecimalType("-0.05"),
+	DecimalType("-0.03"),  DecimalType("0.0002")
+      };
+      auto trades = makeOneBarLogTrades(tinyWinReturns, ruin_eps);
 
-    auto trades = makeOneBarLogTrades(rawReturns, ruin_eps);
+      LogPFBars stat1(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.03, 0.0);
+      LogPFBars stat2(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.05, 0.0);
+      LogPFBars stat3(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.10, 0.0);
 
-    // Each stat must agree with its own flat-vector call.
-    REQUIRE(num::to_double(stat1(trades)) ==
-            Catch::Approx(num::to_double(stat1(flattenTrades(trades)))).epsilon(1e-12));
-    REQUIRE(num::to_double(stat2(trades)) ==
-            Catch::Approx(num::to_double(stat2(flattenTrades(trades)))).epsilon(1e-12));
-    REQUIRE(num::to_double(stat3(trades)) ==
-            Catch::Approx(num::to_double(stat3(flattenTrades(trades)))).epsilon(1e-12));
+      // Each stat must agree with its own flat-vector call.
+      REQUIRE(num::to_double(stat1(trades)) ==
+	      Catch::Approx(num::to_double(stat1(flattenTrades(trades)))).epsilon(1e-12));
+      REQUIRE(num::to_double(stat2(trades)) ==
+	      Catch::Approx(num::to_double(stat2(flattenTrades(trades)))).epsilon(1e-12));
+      REQUIRE(num::to_double(stat3(trades)) ==
+	      Catch::Approx(num::to_double(stat3(flattenTrades(trades)))).epsilon(1e-12));
 
-    // Different stop losses must produce different results.
-    REQUIRE(num::to_double(stat1(trades)) != num::to_double(stat2(trades)));
-    REQUIRE(num::to_double(stat2(trades)) != num::to_double(stat3(trades)));
-  }
+      // Larger stop_loss → larger numer_floor → higher log(PF) when wins are tiny.
+      REQUIRE(num::to_double(stat1(trades)) < num::to_double(stat2(trades)));
+      REQUIRE(num::to_double(stat2(trades)) < num::to_double(stat3(trades)));
+    }
 
   SECTION("Custom profit_target_pct propagates — tiny-win regime shows ordering")
   {
@@ -2091,28 +2100,29 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF trade overload: constructor para
   }
 
   SECTION("Higher prior_strength makes log(PF) strictly lower (more pessimistic)")
-  {
-    // Confirmed from flat-vector tests: higher prior → strictly lower log(PF),
-    // regardless of the absolute sign.  Do NOT use |result_high| < |result_low|.
-    auto trades = makeOneBarLogTrades(rawReturns, ruin_eps);
+    {
+      // NOTE: prior_strength is no longer used in the denominator prior calculation.
+      // The prior is now anchored to 5% of sum_log_wins, making it independent of
+      // prior_strength. Varying prior_strength must produce identical results.
+      auto trades = makeOneBarLogTrades(rawReturns, ruin_eps);
 
-    LogPFBars stat_low (ruin_eps, 1e-6, /*prior=*/0.5);
-    LogPFBars stat_mid (ruin_eps, 1e-6, /*prior=*/1.0);
-    LogPFBars stat_high(ruin_eps, 1e-6, /*prior=*/2.0);
+      LogPFBars stat_low (ruin_eps, 1e-6, /*prior=*/0.5);
+      LogPFBars stat_mid (ruin_eps, 1e-6, /*prior=*/1.0);
+      LogPFBars stat_high(ruin_eps, 1e-6, /*prior=*/2.0);
 
-    double result_low  = num::to_double(stat_low(trades));
-    double result_mid  = num::to_double(stat_mid(trades));
-    double result_high = num::to_double(stat_high(trades));
+      double result_low  = num::to_double(stat_low(trades));
+      double result_mid  = num::to_double(stat_mid(trades));
+      double result_high = num::to_double(stat_high(trades));
 
-    REQUIRE(std::isfinite(result_low));
-    REQUIRE(std::isfinite(result_mid));
-    REQUIRE(std::isfinite(result_high));
+      REQUIRE(std::isfinite(result_low));
+      REQUIRE(std::isfinite(result_mid));
+      REQUIRE(std::isfinite(result_high));
 
-    // Strict ordering: lower prior → less pessimistic → higher log(PF).
-    REQUIRE(result_high < result_mid);
-    REQUIRE(result_mid  < result_low);
-  }
-
+      // prior_strength is intentionally unused: all results must be identical.
+      REQUIRE(result_high == Catch::Approx(result_mid).epsilon(1e-12));
+      REQUIRE(result_mid  == Catch::Approx(result_low).epsilon(1e-12));
+    }
+ 
   SECTION("All custom parameters: trade overload matches flat log-bar overload")
   {
     const double denom_floor       = 1e-5;
