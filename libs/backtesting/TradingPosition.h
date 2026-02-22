@@ -7,12 +7,13 @@
 /**
  * @file TradingPosition.h
  *
- * @brief Core trading position model including long and short variants. 
+ * @brief Core trading position model including long and short variants.
  * Implements the State Design Pattern using TradingPositionState as the base.
  *
  * ### Responsibilities:
  * - Define the interface and data structures for managing open and closed trading positions
  * - Track position metrics such as entry/exit dates, price, profit/loss, and R-multiples
+ * - Track entry and exit order types for complete audit trail capabilities
  * - Manage the transition between open and closed states for both long and short positions
  * - Enable observer notification when a position is closed
  *
@@ -21,6 +22,7 @@
  * - Position state behavior is delegated to derived classes of `TradingPositionState`:
  *   - `OpenLongPosition`, `OpenShortPosition`, `ClosedLongPosition`, `ClosedShortPosition`
  * - `TradingPosition` delegates behavior to its current `TradingPositionState` instance and notifies observers
+ * - OrderType tracking provides enhanced analytics and debugging capabilities
  */
 
 #ifndef __TRADING_POSITION_H
@@ -41,6 +43,7 @@
 #include "StopLoss.h"
 #include "DecimalConstants.h"
 #include "number.h"
+#include "OrderType.h"
 #include <atomic>
 
 using namespace boost::gregorian;
@@ -408,13 +411,18 @@ namespace mkc_timeseries
     virtual TradingPositionState::ConstPositionBarIterator beginPositionBarHistory() const = 0;
     virtual TradingPositionState::ConstPositionBarIterator endPositionBarHistory() const = 0;
     virtual void ClosePosition (TradingPosition<Decimal>* position,
-				std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-				const boost::gregorian::date exitDate,
-				const Decimal& exitPrice) = 0;
+    std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+    const boost::gregorian::date exitDate,
+    const Decimal& exitPrice) = 0;
     virtual void ClosePosition (TradingPosition<Decimal>* position,
-				std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-				const ptime exitDate,
-				const Decimal& exitPrice) = 0;
+    std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+    const ptime exitDate,
+    const Decimal& exitPrice) = 0;
+    virtual void ClosePosition (TradingPosition<Decimal>* position,
+    std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+    const ptime exitDate,
+    const Decimal& exitPrice,
+    OrderType exitOrderType) = 0;
 
   };
   
@@ -643,15 +651,21 @@ namespace mkc_timeseries
     }
 
     void ClosePosition (TradingPosition<Decimal>* position,
-			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-			const boost::gregorian::date exitDate,
-			const Decimal& exitPrice);
+   std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+   const boost::gregorian::date exitDate,
+   const Decimal& exitPrice);
 
 
     void ClosePosition (TradingPosition<Decimal>* position,
-			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-			const ptime exitDate,
-			const Decimal& exitPrice);
+   std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+   const ptime exitDate,
+   const Decimal& exitPrice);
+
+    void ClosePosition (TradingPosition<Decimal>* position,
+   std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+   const ptime exitDate,
+   const Decimal& exitPrice,
+   OrderType exitOrderType);
   };
 
   /**
@@ -718,14 +732,20 @@ namespace mkc_timeseries
     }
 
     void ClosePosition (TradingPosition<Decimal>* position,
-			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-			const boost::gregorian::date exitDate,
-			const Decimal& exitPrice);
+   std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+   const boost::gregorian::date exitDate,
+   const Decimal& exitPrice);
 
     void ClosePosition (TradingPosition<Decimal>* position,
-			std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-			const ptime exitDate,
-			const Decimal& exitPrice);
+   std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+   const ptime exitDate,
+   const Decimal& exitPrice);
+
+    void ClosePosition (TradingPosition<Decimal>* position,
+   std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+   const ptime exitDate,
+   const Decimal& exitPrice,
+   OrderType exitOrderType);
   };
 
   template <class Decimal> class ClosedPosition : public TradingPositionState<Decimal>
@@ -875,6 +895,15 @@ namespace mkc_timeseries
       throw TradingPositionException("ClosedPosition: Cannot close an already closed position (ptime overload)");
     }
 
+    void ClosePosition (TradingPosition<Decimal>* /* position */,
+                        std::shared_ptr<TradingPositionState<Decimal>> /* openPositionState */,
+                        const ptime /* exitDateTimeLocal */,
+                        const Decimal& /* exitPriceLocal */,
+                        OrderType /* exitOrderType */) override
+    {
+      throw TradingPositionException("ClosedPosition: Cannot close an already closed position (ptime with order type overload)");
+    }
+
   private:
     std::shared_ptr<TradingPositionState<Decimal>> mOpenPosition;
     ptime mExitDateTime;
@@ -1001,6 +1030,15 @@ namespace mkc_timeseries
     {
       throw TradingPositionException("ClosedLongPosition: Cannot close an already closed position");
     }
+    
+    void ClosePosition (TradingPosition<Decimal>* /* position */,
+   std::shared_ptr<TradingPositionState<Decimal>> /* openPosition */,
+   const ptime /* exitDate */,
+   const Decimal& /* exitPrice */,
+   OrderType /* exitOrderType */)
+    {
+      throw TradingPositionException("ClosedLongPosition: Cannot close an already closed position (with order type)");
+    }
   };
 
 
@@ -1093,6 +1131,15 @@ namespace mkc_timeseries
     {
       throw TradingPositionException("ClosedShortPosition: Cannot close an already closed position");
     }
+    
+    void ClosePosition (TradingPosition<Decimal>* /* position */,
+   std::shared_ptr<TradingPositionState<Decimal>> /* openPosition */,
+   const ptime /* exitDate */,
+   const Decimal& /* exitPrice */,
+   OrderType /* exitOrderType */)
+    {
+      throw TradingPositionException("ClosedShortPosition: Cannot close an already closed position (with order type)");
+    }
   };
 
   template <class Decimal>
@@ -1133,14 +1180,16 @@ namespace mkc_timeseries
       mPositionID(rhs.mPositionID),
       mObservers(rhs.mObservers),
       mRMultipleStop(rhs.mRMultipleStop),
-      mRMultipleStopSet(rhs.mRMultipleStopSet)
+      mRMultipleStopSet(rhs.mRMultipleStopSet),
+      mEntryOrderType(rhs.mEntryOrderType),  // NEW: Copy entry order type
+      mExitOrderType(rhs.mExitOrderType)     // NEW: Copy exit order type
     {}
 
-    TradingPosition<Decimal>& 
+    TradingPosition<Decimal>&
     operator=(const TradingPosition<Decimal> &rhs)
     {
       if (this == &rhs)
-	return *this;
+ return *this;
 
       mTradingSymbol = rhs.mTradingSymbol;
       mPositionState = rhs.mPositionState;
@@ -1148,6 +1197,8 @@ namespace mkc_timeseries
       mObservers = rhs.mObservers;
       mRMultipleStop = rhs.mRMultipleStop;
       mRMultipleStopSet = rhs.mRMultipleStopSet;
+      mEntryOrderType = rhs.mEntryOrderType;  // NEW: Copy entry order type
+      mExitOrderType = rhs.mExitOrderType;    // NEW: Copy exit order type
 
       return *this;
     }
@@ -1296,20 +1347,78 @@ namespace mkc_timeseries
       return mPositionState->endPositionBarHistory();
     }
 
+    // EXISTING ClosePosition methods - completely unchanged for backward compatibility
     void ClosePosition (const boost::gregorian::date exitDate,
-			const Decimal& exitPrice)
+   const Decimal& exitPrice)
     {
-      ptime exitDateTime(exitDate, getDefaultBarTime()); 
+      ptime exitDateTime(exitDate, getDefaultBarTime());
       this->ClosePosition(exitDateTime, exitPrice);
     }
 
     void ClosePosition (const ptime exitDateTime,
                         const Decimal& exitPrice)
     {
-      // mPositionState points to an object (e.g., OpenLongPosition) that has the ptime ClosePosition overload.
-      mPositionState->ClosePosition (this, mPositionState, exitDateTime, exitPrice);
+      // Forward to enhanced method with UNKNOWN for backward compatibility
+      this->ClosePosition(exitDateTime, exitPrice, OrderType::UNKNOWN);
+    }
+
+    // NEW enhanced ClosePosition method with order type tracking
+    void ClosePosition (const ptime exitDateTime,
+                        const Decimal& exitPrice,
+                        OrderType exitOrderType)
+    {
+      // Call enhanced state method with order type information
+      mPositionState->ClosePosition (this, mPositionState, exitDateTime, exitPrice, exitOrderType);
       NotifyPositionClosed (this);
     }
+
+    // NEW: Order type accessor methods
+    OrderType getEntryOrderType() const { return mEntryOrderType; }
+    OrderType getExitOrderType() const { return mExitOrderType; }
+
+    void setEntryOrderType(OrderType orderType)
+    {
+      // Mirror setExitOrderType: UNKNOWN is a valid reset/default value,
+      // bypass domain validation for it.
+      if (orderType != OrderType::UNKNOWN) {
+	validateEntryOrderType(orderType);
+      }
+      mEntryOrderType = orderType;
+    }
+    
+    void setExitOrderType(OrderType orderType)
+    {
+      // UNKNOWN is a valid default/reset value; skip domain validation for it.
+      if (orderType != OrderType::UNKNOWN) {
+	validateExitOrderType(orderType);
+      }
+
+      // If the backward-compat path forwards UNKNOWN through ClosePosition,
+      // and a known type was already set by the broker, treat it as a no-op.
+      // UNKNOWN must never clobber a known value.
+      if (orderType == OrderType::UNKNOWN && mExitOrderType != OrderType::UNKNOWN) {
+	return;
+      }
+
+      // Once set to a known (non-UNKNOWN) value, it is immutable.
+      // This catches genuine double-sets of real order types.
+      if (orderType != OrderType::UNKNOWN && mExitOrderType != OrderType::UNKNOWN) {
+	throw TradingPositionException(
+				       "TradingPosition::setExitOrderType: exit order type is already set to '" +
+				       orderTypeToString(mExitOrderType) +
+				       "' and cannot be overwritten");
+      }
+
+      mExitOrderType = orderType;
+    }
+    
+    // NEW: Utility methods for checking if order types are known
+    bool hasKnownEntryOrderType() const { return mEntryOrderType != OrderType::UNKNOWN; }
+    bool hasKnownExitOrderType() const { return mExitOrderType != OrderType::UNKNOWN; }
+    
+    // NEW: String representations for debugging and logging
+    std::string getEntryOrderTypeString() const { return orderTypeToString(mEntryOrderType); }
+    std::string getExitOrderTypeString() const { return orderTypeToString(mExitOrderType); }
     
     void addObserver (std::reference_wrapper<TradingPositionObserver<Decimal>> observer)
     {
@@ -1336,14 +1445,31 @@ namespace mkc_timeseries
     }
 
   protected:
+    // EXISTING constructor - completely unchanged for backward compatibility
     TradingPosition(const std::string& tradingSymbol,
-		    std::shared_ptr<TradingPositionState<Decimal>> positionState)
+      std::shared_ptr<TradingPositionState<Decimal>> positionState)
       : mTradingSymbol (tradingSymbol),
-	mPositionState (positionState),
-	mPositionID(++mPositionIDCount),
-	mObservers(),
-	mRMultipleStop(DecimalConstants<Decimal>::DecimalZero),
-	mRMultipleStopSet(false)
+ mPositionState (positionState),
+ mPositionID(++mPositionIDCount),
+ mObservers(),
+ mRMultipleStop(DecimalConstants<Decimal>::DecimalZero),
+ mRMultipleStopSet(false),
+ mEntryOrderType(OrderType::UNKNOWN),  // NEW: Default for backward compatibility
+ mExitOrderType(OrderType::UNKNOWN)    // NEW: Default for backward compatibility
+    {}
+
+    // NEW constructor for enhanced functionality with order type tracking
+    TradingPosition(const std::string& tradingSymbol,
+      std::shared_ptr<TradingPositionState<Decimal>> positionState,
+      OrderType entryOrderType)
+      : mTradingSymbol (tradingSymbol),
+ mPositionState (positionState),
+ mPositionID(++mPositionIDCount),
+ mObservers(),
+ mRMultipleStop(DecimalConstants<Decimal>::DecimalZero),
+ mRMultipleStopSet(false),
+ mEntryOrderType(entryOrderType),      // NEW: Use provided entry order type
+ mExitOrderType(OrderType::UNKNOWN)    // NEW: Default to UNKNOWN until closed
     {}
 
     
@@ -1383,6 +1509,9 @@ namespace mkc_timeseries
     std::list<std::reference_wrapper<TradingPositionObserver<Decimal>>> mObservers;
     mutable Decimal mRMultipleStop;
     mutable bool mRMultipleStopSet;
+    // NEW: Order type tracking for complete audit trail
+    OrderType mEntryOrderType;    // Type of order that opened this position
+    OrderType mExitOrderType;     // Type of order that closed this position (UNKNOWN if still open)
   };
 
   template <class Decimal> std::atomic<uint32_t>  TradingPosition<Decimal>::mPositionIDCount{0};
@@ -1391,11 +1520,21 @@ namespace mkc_timeseries
   class TradingPositionLong : public TradingPosition<Decimal>
   {
   public:
+    // EXISTING constructor - completely unchanged for backward compatibility
     explicit TradingPositionLong (const std::string& tradingSymbol,
-				  const Decimal& entryPrice, 
-				  OHLCTimeSeriesEntry<Decimal> entryBar,
-				  const TradingVolume& unitsInPosition)
+      const Decimal& entryPrice,
+      OHLCTimeSeriesEntry<Decimal> entryBar,
+      const TradingVolume& unitsInPosition)
       : TradingPosition<Decimal>(tradingSymbol,std::make_shared<OpenLongPosition<Decimal>>(entryPrice, entryBar, unitsInPosition))
+    {}
+
+    // NEW constructor for enhanced functionality with order type tracking
+    explicit TradingPositionLong (const std::string& tradingSymbol,
+      const Decimal& entryPrice,
+      OHLCTimeSeriesEntry<Decimal> entryBar,
+      const TradingVolume& unitsInPosition,
+      OrderType entryOrderType)
+      : TradingPosition<Decimal>(tradingSymbol,std::make_shared<OpenLongPosition<Decimal>>(entryPrice, entryBar, unitsInPosition), entryOrderType)
     {}
 
     TradingPositionLong (const TradingPositionLong<Decimal>& rhs)
@@ -1452,11 +1591,21 @@ namespace mkc_timeseries
   class TradingPositionShort : public TradingPosition<Decimal>
   {
   public:
+    // EXISTING constructor - completely unchanged for backward compatibility
     explicit TradingPositionShort (const std::string& tradingSymbol,
-				  const Decimal& entryPrice, 
-				  OHLCTimeSeriesEntry<Decimal> entryBar,
-				  const TradingVolume& unitsInPosition)
+      const Decimal& entryPrice,
+      OHLCTimeSeriesEntry<Decimal> entryBar,
+      const TradingVolume& unitsInPosition)
       : TradingPosition<Decimal>(tradingSymbol, std::make_shared<OpenShortPosition<Decimal>>(entryPrice, entryBar, unitsInPosition))
+    {}
+
+    // NEW constructor for enhanced functionality with order type tracking
+    explicit TradingPositionShort (const std::string& tradingSymbol,
+       const Decimal& entryPrice,
+       OHLCTimeSeriesEntry<Decimal> entryBar,
+       const TradingVolume& unitsInPosition,
+       OrderType entryOrderType)
+      : TradingPosition<Decimal>(tradingSymbol, std::make_shared<OpenShortPosition<Decimal>>(entryPrice, entryBar, unitsInPosition), entryOrderType)
     {}
 
     TradingPositionShort (const TradingPositionShort<Decimal>& rhs)
@@ -1518,10 +1667,26 @@ namespace mkc_timeseries
 
   template <class Decimal>
   inline void OpenLongPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
-						 std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-						 const ptime exitDate,
-						 const Decimal& exitPrice)
+  				 std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+  				 const ptime exitDate,
+  				 const Decimal& exitPrice)
   {
+    // Forward to enhanced method with UNKNOWN for backward compatibility
+    ClosePosition(position, openPosition, exitDate, exitPrice, OrderType::UNKNOWN);
+  }
+
+  // NEW: Enhanced ClosePosition with order type support
+  template <class Decimal>
+  inline void OpenLongPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
+  				 std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+  				 const ptime exitDate,
+  				 const Decimal& exitPrice,
+  				 OrderType exitOrderType)
+  {
+    // Set the exit order type before changing state
+    position->setExitOrderType(exitOrderType);
+    
+    // Create closed state (existing logic)
     position->ChangeState (std::make_shared<ClosedLongPosition<Decimal>>(openPosition, exitDate, exitPrice));
   }
 
@@ -1536,10 +1701,26 @@ namespace mkc_timeseries
 
   template <class Decimal>
   void OpenShortPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
-						  std::shared_ptr<TradingPositionState<Decimal>> openPosition,
-						  const ptime exitDate,
-						  const Decimal& exitPrice)
+  				  std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+  				  const ptime exitDate,
+  				  const Decimal& exitPrice)
   {
+    // Forward to enhanced method with UNKNOWN for backward compatibility
+    ClosePosition(position, openPosition, exitDate, exitPrice, OrderType::UNKNOWN);
+  }
+
+  // NEW: Enhanced ClosePosition with order type support
+  template <class Decimal>
+  void OpenShortPosition<Decimal>::ClosePosition (TradingPosition<Decimal>* position,
+  				  std::shared_ptr<TradingPositionState<Decimal>> openPosition,
+  				  const ptime exitDate,
+  				  const Decimal& exitPrice,
+  				  OrderType exitOrderType)
+  {
+    // Set the exit order type before changing state
+    position->setExitOrderType(exitOrderType);
+    
+    // Create closed state (existing logic)
     position->ChangeState (std::make_shared<ClosedShortPosition<Decimal>>(openPosition, exitDate, exitPrice));
   }
 

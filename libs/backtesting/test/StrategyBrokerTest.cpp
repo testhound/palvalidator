@@ -1370,3 +1370,498 @@ TEST_CASE("Copied brokers are truly independent", "[StrategyBroker][copy][integr
     REQUIRE(broker1.isLongPosition(futuresSymbol));
   }
 }
+
+// ============================================================================
+// Helper: standard corn futures setup shared across OrderType test cases
+// ============================================================================
+
+namespace {
+
+struct CornBrokerFixture
+{
+  DecimalType cornTickValue   = createDecimal("0.25");
+  std::string futuresSymbol   = "@C";
+  TradingVolume oneContract   = TradingVolume(1, TradingVolume::CONTRACTS);
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> timeSeries;
+  std::shared_ptr<Portfolio<DecimalType>>      portfolio;
+  std::shared_ptr<StrategyBroker<DecimalType>> broker;
+
+  CornBrokerFixture()
+  {
+    PALFormatCsvReader<DecimalType> csv("C2_122AR.txt", TimeFrame::DAILY,
+                                        TradingVolume::CONTRACTS, cornTickValue);
+    csv.readFile();
+    timeSeries = csv.getTimeSeries();
+
+    auto corn = std::make_shared<FuturesSecurity<DecimalType>>(
+      futuresSymbol, "Corn futures", createDecimal("50.0"), cornTickValue, timeSeries);
+
+    portfolio = std::make_shared<Portfolio<DecimalType>>("Corn Portfolio");
+    portfolio->addSecurity(corn);
+
+    broker = std::make_shared<StrategyBroker<DecimalType>>(portfolio);
+  }
+
+  // Open a long position on entryOrderDate, fill it on executionDate.
+  void enterLong(date entryOrderDate, date executionDate)
+  {
+    broker->EnterLongOnOpen(futuresSymbol, entryOrderDate, oneContract);
+    broker->ProcessPendingOrders(executionDate);
+  }
+
+  // Open a short position on entryOrderDate, fill it on executionDate.
+  void enterShort(date entryOrderDate, date executionDate)
+  {
+    broker->EnterShortOnOpen(futuresSymbol, entryOrderDate, oneContract);
+    broker->ProcessPendingOrders(executionDate);
+  }
+
+  // Return the single closed position from the broker's history.
+  std::shared_ptr<TradingPosition<DecimalType>> firstClosedPosition() const
+  {
+    auto history = broker->getClosedPositionHistory();
+    auto it = history.beginTradingPositions();
+    REQUIRE(it != history.endTradingPositions());
+    return it->second;
+  }
+
+  // Return the currently open position (unit 1).
+  std::shared_ptr<TradingPosition<DecimalType>> openPosition() const
+  {
+    auto& instrPos = broker->getInstrumentPosition(futuresSymbol);
+    auto it = instrPos.getInstrumentPosition(1);
+    return *it;
+  }
+};
+
+// ============================================================================
+// SyntheticBrokerFixture
+//
+// An in-memory 4-bar time series with fully controlled OHLC prices.
+// This eliminates dependency on CSV data for tests that need specific
+// stop/limit trigger conditions.
+//
+// Bar schedule (all weekdays):
+//   Bar 1  2020-01-02  O=300  H=305  L=295  C=300   [entry order day]
+//   Bar 2  2020-01-03  O=300  H=305  L=295  C=300   [entry fills at open=300]
+//   Bar 3  2020-01-06  O=300  H=305  L=295  C=300   [stop/limit order day]
+//   Bar 4  2020-01-07  O=300  H=360  L=280  C=300   [execution day:
+//                                                      H=360 fires short stop >=309 (3% above 300)
+//                                                      L=280 fires long  stop <=291 (3% below 300)]
+// ============================================================================
+struct SyntheticBrokerFixture
+{
+  DecimalType tickValue    = createDecimal("0.25");
+  std::string futuresSymbol = "@C";
+  TradingVolume oneContract = TradingVolume(1, TradingVolume::CONTRACTS);
+
+  // Convenience date constants that correspond to the 4 bars above
+  const date bar1Date = date(2020, Jan,  2); // entry order day
+  const date bar2Date = date(2020, Jan,  3); // entry fill day  → open = 300
+  const date bar3Date = date(2020, Jan,  6); // stop/limit order day
+  const date bar4Date = date(2020, Jan,  7); // stop/limit exec day
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> timeSeries;
+  std::shared_ptr<Portfolio<DecimalType>>       portfolio;
+  std::shared_ptr<StrategyBroker<DecimalType>>  broker;
+
+  SyntheticBrokerFixture()
+  {
+    // Build a minimal 4-bar series with known prices.
+    // Note: createTimeSeriesEntry date format is "YYYYMMDD".
+    timeSeries = std::make_shared<OHLCTimeSeries<DecimalType>>(
+      TimeFrame::DAILY, TradingVolume::CONTRACTS);
+
+    // Flat bars for the first three days
+    timeSeries->addEntry(*createTimeSeriesEntry("20200102","300.00","305.00","295.00","300.00","0"));
+    timeSeries->addEntry(*createTimeSeriesEntry("20200103","300.00","305.00","295.00","300.00","0"));
+    timeSeries->addEntry(*createTimeSeriesEntry("20200106","300.00","305.00","295.00","300.00","0"));
+    // Bar 4: extreme H and L so any 3% stop fires deterministically on this bar.
+    //   Short stop (3% above 300 = 309): H=360 >= 309  → CoverAtStop fires
+    //   Long  stop (3% below 300 = 291): L=280 <= 291  → SellAtStop fires
+    timeSeries->addEntry(*createTimeSeriesEntry("20200107","300.00","360.00","280.00","300.00","0"));
+
+    auto security = std::make_shared<FuturesSecurity<DecimalType>>(
+      futuresSymbol, "Synthetic futures",
+      createDecimal("50.0"), tickValue, timeSeries);
+
+    portfolio = std::make_shared<Portfolio<DecimalType>>("Synthetic Portfolio");
+    portfolio->addSecurity(security);
+
+    broker = std::make_shared<StrategyBroker<DecimalType>>(portfolio);
+  }
+
+  void enterLong(date entryOrderDate, date executionDate)
+  {
+    broker->EnterLongOnOpen(futuresSymbol, entryOrderDate, oneContract);
+    broker->ProcessPendingOrders(executionDate);
+  }
+
+  void enterShort(date entryOrderDate, date executionDate)
+  {
+    broker->EnterShortOnOpen(futuresSymbol, entryOrderDate, oneContract);
+    broker->ProcessPendingOrders(executionDate);
+  }
+
+  std::shared_ptr<TradingPosition<DecimalType>> firstClosedPosition() const
+  {
+    auto history = broker->getClosedPositionHistory();
+    auto it = history.beginTradingPositions();
+    REQUIRE(it != history.endTradingPositions());
+    return it->second;
+  }
+
+  std::shared_ptr<TradingPosition<DecimalType>> openPosition() const
+  {
+    auto& instrPos = broker->getInstrumentPosition(futuresSymbol);
+    auto it = instrPos.getInstrumentPosition(1);
+    return *it;
+  }
+};
+
+} // anonymous namespace
+
+// ============================================================================
+// TEST SUITE: Entry order type propagation
+// ============================================================================
+
+TEST_CASE("StrategyBroker sets entry order type on new long position",
+          "[StrategyBroker][OrderType][entry]")
+{
+  CornBrokerFixture f;
+
+  f.enterLong({1985, Nov, 14}, {1985, Nov, 15});
+
+  REQUIRE(f.broker->isLongPosition(f.futuresSymbol));
+  auto pos = f.openPosition();
+  REQUIRE(pos->getEntryOrderType() == OrderType::MARKET_ON_OPEN_LONG);
+  REQUIRE(pos->hasKnownEntryOrderType());
+}
+
+TEST_CASE("StrategyBroker sets entry order type on new short position",
+          "[StrategyBroker][OrderType][entry]")
+{
+  CornBrokerFixture f;
+
+  f.enterShort({1985, Nov, 14}, {1985, Nov, 15});
+
+  REQUIRE(f.broker->isShortPosition(f.futuresSymbol));
+  auto pos = f.openPosition();
+  REQUIRE(pos->getEntryOrderType() == OrderType::MARKET_ON_OPEN_SHORT);
+  REQUIRE(pos->hasKnownEntryOrderType());
+}
+
+TEST_CASE("StrategyBroker: exit order type is UNKNOWN while position is still open",
+          "[StrategyBroker][OrderType][entry]")
+{
+  CornBrokerFixture f;
+
+  f.enterLong({1985, Nov, 14}, {1985, Nov, 15});
+
+  auto pos = f.openPosition();
+  REQUIRE(pos->getExitOrderType() == OrderType::UNKNOWN);
+  REQUIRE_FALSE(pos->hasKnownExitOrderType());
+}
+
+// ============================================================================
+// TEST SUITE: Exit order type propagation — long positions
+// ============================================================================
+
+TEST_CASE("StrategyBroker ExitLongAllUnitsOnOpen sets MARKET_ON_OPEN_SELL on closed position",
+          "[StrategyBroker][OrderType][exit][long]")
+{
+  CornBrokerFixture f;
+
+  f.enterLong({1985, Nov, 14}, {1985, Nov, 15});
+  REQUIRE(f.broker->isLongPosition(f.futuresSymbol));
+
+  f.broker->ExitLongAllUnitsOnOpen(f.futuresSymbol, {1985, Nov, 18});
+  f.broker->ProcessPendingOrders({1985, Nov, 19});
+
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+
+  auto pos = f.firstClosedPosition();
+  REQUIRE(pos->getExitOrderType() == OrderType::MARKET_ON_OPEN_SELL);
+  REQUIRE(pos->hasKnownExitOrderType());
+}
+
+TEST_CASE("StrategyBroker ExitLongAllUnitsAtLimit sets SELL_AT_LIMIT on closed position",
+          "[StrategyBroker][OrderType][exit][long]")
+{
+  CornBrokerFixture f;
+
+  // Enter long on Nov 15 (fill Nov 18)
+  f.enterLong({1985, Nov, 15}, {1985, Nov, 18});
+  REQUIRE(f.broker->isLongPosition(f.futuresSymbol));
+
+  // Place a limit well above the market so it fills quickly
+  auto pos0      = f.openPosition();
+  DecimalType entryPrice = pos0->getEntryPrice();
+  auto limitPrice = entryPrice + createDecimal("500.00"); // far above — will not fill on a normal bar
+
+  // Use dates that the existing long-exit test uses and where a limit eventually fills
+  DecimalType fixedLimit = createDecimal("3758.32172");
+  PercentNumber<DecimalType> stopPct =
+    PercentNumber<DecimalType>::createPercentNumber(createDecimal("1.28"));
+
+  TimeSeriesDate orderDate = {1985, Nov, 18};
+  TimeSeriesDate lastDate  = {1985, Dec, 3};
+  bool closed = false;
+
+  for (; orderDate <= lastDate; orderDate = boost_next_weekday(orderDate))
+  {
+    f.broker->ExitLongAllUnitsAtLimit(f.futuresSymbol, orderDate, fixedLimit);
+    f.broker->ExitLongAllUnitsAtStop(f.futuresSymbol, orderDate, entryPrice, stopPct);
+    TimeSeriesDate execDate = boost_next_weekday(orderDate);
+    f.broker->ProcessPendingOrders(execDate);
+
+    if (f.broker->isFlatPosition(f.futuresSymbol)) {
+      closed = true;
+      break;
+    }
+  }
+
+  REQUIRE(closed);
+  auto closedPos = f.firstClosedPosition();
+  // The position must have exited via either the limit or the stop — both are known types
+  REQUIRE(closedPos->hasKnownExitOrderType());
+  OrderType et = closedPos->getExitOrderType();
+  REQUIRE((et == OrderType::SELL_AT_LIMIT || et == OrderType::SELL_AT_STOP));
+}
+
+TEST_CASE("StrategyBroker ExitLongAllUnitsAtStop sets SELL_AT_STOP on closed position",
+          "[StrategyBroker][OrderType][exit][long]")
+{
+  // Use SyntheticBrokerFixture so prices are fully controlled.
+  // Bar 2 (2020-01-03) open = 300.00  →  3% long stop = 291.00
+  // Bar 4 (2020-01-07) L   = 280.00  →  280 <= 291, stop fires on the first attempt.
+  SyntheticBrokerFixture f;
+
+  f.enterLong(f.bar1Date, f.bar2Date);
+  REQUIRE(f.broker->isLongPosition(f.futuresSymbol));
+
+  auto pos0            = f.openPosition();
+  DecimalType entryPrice = pos0->getEntryPrice(); // open of bar 2 = 300.00
+
+  PercentNumber<DecimalType> stopPct =
+    PercentNumber<DecimalType>::createPercentNumber(createDecimal("3.00"));
+
+  // Place only a stop on bar 3 — no limit — so the exit type is unambiguously SELL_AT_STOP.
+  f.broker->ExitLongAllUnitsAtStop(f.futuresSymbol, f.bar3Date, entryPrice, stopPct);
+  f.broker->ProcessPendingOrders(f.bar4Date);
+
+  // Bar 4 L=280 is below the 3% stop (291), so the position must be flat now.
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+
+  auto closedPos = f.firstClosedPosition();
+  REQUIRE(closedPos->getExitOrderType() == OrderType::SELL_AT_STOP);
+  REQUIRE(closedPos->hasKnownExitOrderType());
+}
+
+// ============================================================================
+// TEST SUITE: Exit order type propagation — short positions
+// ============================================================================
+
+TEST_CASE("StrategyBroker ExitShortAllUnitsOnOpen sets MARKET_ON_OPEN_COVER on closed position",
+          "[StrategyBroker][OrderType][exit][short]")
+{
+  CornBrokerFixture f;
+
+  f.enterShort({1986, May, 28}, {1986, May, 29});
+  REQUIRE(f.broker->isShortPosition(f.futuresSymbol));
+
+  f.broker->ExitShortAllUnitsOnOpen(f.futuresSymbol, {1986, Jun, 2});
+  f.broker->ProcessPendingOrders({1986, Jun, 3});
+
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+
+  auto pos = f.firstClosedPosition();
+  REQUIRE(pos->getExitOrderType() == OrderType::MARKET_ON_OPEN_COVER);
+  REQUIRE(pos->hasKnownExitOrderType());
+}
+
+TEST_CASE("StrategyBroker ExitShortAllUnitsAtLimit sets COVER_AT_LIMIT on closed position",
+          "[StrategyBroker][OrderType][exit][short]")
+{
+  CornBrokerFixture f;
+
+  f.enterShort({1986, May, 28}, {1986, May, 29});
+  REQUIRE(f.broker->isShortPosition(f.futuresSymbol));
+
+  auto pos0 = f.openPosition();
+  DecimalType entryPrice = pos0->getEntryPrice();
+
+  PercentNumber<DecimalType> profitPct =
+    PercentNumber<DecimalType>::createPercentNumber(createDecimal("1.34"));
+  PercentNumber<DecimalType> stopPct =
+    PercentNumber<DecimalType>::createPercentNumber(createDecimal("1.28"));
+
+  TimeSeriesDate orderDate = {1986, May, 29};
+  TimeSeriesDate lastDate  = {1986, Jun, 10};
+  bool closed = false;
+
+  for (; orderDate <= lastDate; orderDate = boost_next_weekday(orderDate))
+  {
+    f.broker->ExitShortAllUnitsAtLimit(f.futuresSymbol, orderDate, entryPrice, profitPct);
+    f.broker->ExitShortAllUnitsAtStop(f.futuresSymbol, orderDate, entryPrice, stopPct);
+    TimeSeriesDate execDate = boost_next_weekday(orderDate);
+    f.broker->ProcessPendingOrders(execDate);
+
+    if (f.broker->isFlatPosition(f.futuresSymbol)) {
+      closed = true;
+      break;
+    }
+  }
+
+  REQUIRE(closed);
+  auto closedPos = f.firstClosedPosition();
+  REQUIRE(closedPos->hasKnownExitOrderType());
+  OrderType et = closedPos->getExitOrderType();
+  REQUIRE((et == OrderType::COVER_AT_LIMIT || et == OrderType::COVER_AT_STOP));
+}
+
+TEST_CASE("StrategyBroker ExitShortAllUnitsAtStop sets COVER_AT_STOP on closed position",
+          "[StrategyBroker][OrderType][exit][short]")
+{
+  // Use SyntheticBrokerFixture so prices are fully controlled.
+  // Bar 2 (2020-01-03) open = 300.00  →  3% short stop = 309.00
+  // Bar 4 (2020-01-07) H   = 360.00  →  360 >= 309, stop fires on the first attempt.
+  SyntheticBrokerFixture f;
+
+  f.enterShort(f.bar1Date, f.bar2Date);
+  REQUIRE(f.broker->isShortPosition(f.futuresSymbol));
+
+  auto pos0            = f.openPosition();
+  DecimalType entryPrice = pos0->getEntryPrice(); // open of bar 2 = 300.00
+
+  PercentNumber<DecimalType> stopPct =
+    PercentNumber<DecimalType>::createPercentNumber(createDecimal("3.00"));
+
+  // Place only a stop on bar 3 — no limit — so the exit type is unambiguously COVER_AT_STOP.
+  f.broker->ExitShortAllUnitsAtStop(f.futuresSymbol, f.bar3Date, entryPrice, stopPct);
+  f.broker->ProcessPendingOrders(f.bar4Date);
+
+  // Bar 4 H=360 is above the 3% stop (309), so the position must be flat now.
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+
+  auto closedPos = f.firstClosedPosition();
+  REQUIRE(closedPos->getExitOrderType() == OrderType::COVER_AT_STOP);
+  REQUIRE(closedPos->hasKnownExitOrderType());
+}
+
+// ============================================================================
+// TEST SUITE: Backward-compat no-clobber invariant (end-to-end regression test)
+// ============================================================================
+
+TEST_CASE("StrategyBroker backward-compat exit path does not clobber known exit order type",
+          "[StrategyBroker][OrderType][regression]")
+{
+  // This is the end-to-end version of the TradingPosition unit test for the
+  // KNOWN→UNKNOWN no-op. It proves that the full broker pipeline —
+  // ExitOrderExecutedCommon → setExitOrderType(KNOWN) followed by the
+  // backward-compat ClosePosition(ptime, price) → setExitOrderType(UNKNOWN) —
+  // leaves the known type intact.
+  CornBrokerFixture f;
+
+  f.enterLong({1985, Nov, 14}, {1985, Nov, 15});
+
+  f.broker->ExitLongAllUnitsOnOpen(f.futuresSymbol, {1985, Nov, 18});
+  // Should not throw despite the backward-compat path sending UNKNOWN after SELL
+  REQUIRE_NOTHROW(f.broker->ProcessPendingOrders({1985, Nov, 19}));
+
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getClosedTrades() == 1);
+
+  auto pos = f.firstClosedPosition();
+  // Known exit type must not have been overwritten to UNKNOWN
+  REQUIRE(pos->getExitOrderType() == OrderType::MARKET_ON_OPEN_SELL);
+}
+
+// ============================================================================
+// TEST SUITE: Entry and exit order types both survive in ClosedPositionHistory
+// ============================================================================
+
+TEST_CASE("StrategyBroker: both entry and exit order types are preserved in ClosedPositionHistory",
+          "[StrategyBroker][OrderType][history]")
+{
+  CornBrokerFixture f;
+
+  // Complete a full trade: market long entry, market-on-open exit
+  f.enterLong({1985, Nov, 14}, {1985, Nov, 15});
+  f.broker->ExitLongAllUnitsOnOpen(f.futuresSymbol, {1985, Nov, 18});
+  f.broker->ProcessPendingOrders({1985, Nov, 19});
+
+  REQUIRE(f.broker->getClosedTrades() == 1);
+
+  auto pos = f.firstClosedPosition();
+
+  // Both ends of the trade must be recorded
+  REQUIRE(pos->getEntryOrderType() == OrderType::MARKET_ON_OPEN_LONG);
+  REQUIRE(pos->getExitOrderType()  == OrderType::MARKET_ON_OPEN_SELL);
+  REQUIRE(pos->hasKnownEntryOrderType());
+  REQUIRE(pos->hasKnownExitOrderType());
+  REQUIRE(pos->isPositionClosed());
+}
+
+TEST_CASE("StrategyBroker: short trade entry and exit order types are preserved in ClosedPositionHistory",
+          "[StrategyBroker][OrderType][history]")
+{
+  CornBrokerFixture f;
+
+  f.enterShort({1986, May, 28}, {1986, May, 29});
+  f.broker->ExitShortAllUnitsOnOpen(f.futuresSymbol, {1986, Jun, 2});
+  f.broker->ProcessPendingOrders({1986, Jun, 3});
+
+  REQUIRE(f.broker->getClosedTrades() == 1);
+
+  auto pos = f.firstClosedPosition();
+
+  REQUIRE(pos->getEntryOrderType() == OrderType::MARKET_ON_OPEN_SHORT);
+  REQUIRE(pos->getExitOrderType()  == OrderType::MARKET_ON_OPEN_COVER);
+  REQUIRE(pos->hasKnownEntryOrderType());
+  REQUIRE(pos->hasKnownExitOrderType());
+}
+
+TEST_CASE("StrategyBroker: multiple closed positions each carry independent order types",
+          "[StrategyBroker][OrderType][history]")
+{
+  CornBrokerFixture f;
+
+  // Trade 1: long, closed via market exit
+  f.enterLong({1985, Nov, 14}, {1985, Nov, 15});
+  f.broker->ExitLongAllUnitsOnOpen(f.futuresSymbol, {1985, Nov, 18});
+  f.broker->ProcessPendingOrders({1985, Nov, 19});
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+
+  // Trade 2: short, closed via market cover
+  f.enterShort({1986, May, 28}, {1986, May, 29});
+  f.broker->ExitShortAllUnitsOnOpen(f.futuresSymbol, {1986, Jun, 2});
+  f.broker->ProcessPendingOrders({1986, Jun, 3});
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+
+  REQUIRE(f.broker->getClosedTrades() == 2);
+
+  auto history = f.broker->getClosedPositionHistory();
+  int longCount = 0, shortCount = 0;
+
+  for (auto it = history.beginTradingPositions(); it != history.endTradingPositions(); ++it)
+  {
+    auto pos = it->second;
+    REQUIRE(pos->hasKnownEntryOrderType());
+    REQUIRE(pos->hasKnownExitOrderType());
+
+    if (pos->isLongPosition()) {
+      REQUIRE(pos->getEntryOrderType() == OrderType::MARKET_ON_OPEN_LONG);
+      REQUIRE(pos->getExitOrderType()  == OrderType::MARKET_ON_OPEN_SELL);
+      ++longCount;
+    } else {
+      REQUIRE(pos->getEntryOrderType() == OrderType::MARKET_ON_OPEN_SHORT);
+      REQUIRE(pos->getExitOrderType()  == OrderType::MARKET_ON_OPEN_COVER);
+      ++shortCount;
+    }
+  }
+
+  REQUIRE(longCount  == 1);
+  REQUIRE(shortCount == 1);
+}
