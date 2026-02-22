@@ -391,12 +391,13 @@ namespace mkc_timeseries
     std::vector<Trade<Decimal>> 
     getClosedTradeLevelReturns(StrategyPtr strat,
 			       bool applyCosts = false,
-			       Decimal costPerSide = DecimalConstants<Decimal>::DefaultEquitySlippage) const 
+			       Decimal costPerSide = DecimalConstants<Decimal>::DefaultEquitySlippage,
+			       bool exemptLimitExits = false) const 
     {
       // Extract only closed trades from position history
       return strat->getStrategyBroker()
 	.getClosedPositionHistory()
-	.getTradeLevelReturns(applyCosts, costPerSide);
+	.getTradeLevelReturns(applyCosts, costPerSide, exemptLimitExits);
     }
 
     std::vector<ExpandedBarMetrics<Decimal>> getExpandedHighResReturns(StrategyPtr strat) const

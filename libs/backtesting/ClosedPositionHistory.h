@@ -472,7 +472,8 @@ namespace mkc_timeseries
      */
     std::vector<Trade<Decimal>>
     getTradeLevelReturns(bool applyCosts = false,
-			 Decimal costPerSide = DecimalConstants<Decimal>::DefaultEquitySlippage) const
+			 Decimal costPerSide = DecimalConstants<Decimal>::DefaultEquitySlippage,
+			 bool exemptLimitExits = false) const
     {
       const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
       const Decimal one  = DecimalConstants<Decimal>::DecimalOne;
@@ -508,14 +509,22 @@ namespace mkc_timeseries
 	const Decimal rawExit = positionPtr->getExitPrice();
 	if (!applyCosts)
 	  return rawExit;
-
+	// When exemptLimitExits is true, limit-order exits (profit targets) fill
+	// at a price the market came to us — no adverse slippage on the exit side.
+	if (exemptLimitExits)
+	  {
+	    const OrderType exitType = positionPtr->getExitOrderType();
+	    if (exitType == OrderType::SELL_AT_LIMIT || exitType == OrderType::COVER_AT_LIMIT)
+	      return rawExit;
+	  }
+	// All other exits, or when exemptLimitExits is false: apply normal cost.
 	// Long: receive less on exit (worse) => exit*(1-c)
 	// Short: pay more to buy-to-cover (worse) => exit*(1+c)
 	return positionPtr->isShortPosition()
 	  ? rawExit * (one + costPerSide)
 	  : rawExit * (one - costPerSide);
       };
-
+ 
       for (auto const& [ptime, pos] : mPositions)
 	{
 	  std::vector<Decimal> dailySequence;

@@ -3374,3 +3374,102 @@ TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - large cost severely pen
     // Must now be a loss
     REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) < 0.0);
 }
+
+// ---------------------------------------------------------------------------
+// Tests for exemptLimitExits parameter in getTradeLevelReturns
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - exemptLimitExits logic",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts][exemptLimitExits]")
+{
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    // We'll use a 1% cost for straightforward mental math
+    const D cost("0.01");
+
+    SECTION("applyCosts=false completely ignores exemptLimitExits")
+    {
+        auto pos = createSameBarPosition("@C", t, D("100.0"), D("110.0"));
+        pos->setExitOrderType(OrderType::SELL_AT_LIMIT); 
+        history.addClosedPosition(pos);
+
+        // Call with: applyCosts = false, cost = 0.01, exemptLimitExits = true
+        auto trades = history.getTradeLevelReturns(false, cost, true);
+        
+        REQUIRE(trades.size() == 1);
+        
+        // Expected return with NO costs: (110 - 100) / 100 = 0.10
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == Catch::Approx(0.10).epsilon(1e-6));
+    }
+
+    SECTION("Long position with SELL_AT_LIMIT exempts exit cost")
+    {
+        auto pos = createSameBarPosition("@C", t, D("100.0"), D("110.0"));
+        pos->setExitOrderType(OrderType::SELL_AT_LIMIT);
+        history.addClosedPosition(pos);
+
+        auto trades = history.getTradeLevelReturns(true, cost, true);
+        
+        // Effective entry: pays slippage = 100 * 1.01 = 101.0
+        // Effective exit: EXEMPT from slippage = 110.0
+        // Return = (110.0 - 101.0) / 101.0 = 9 / 101 ≈ 0.08910891
+        const double expected = (110.0 - 101.0) / 101.0;
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == Catch::Approx(expected).epsilon(1e-6));
+    }
+
+    SECTION("Long position with market/stop exit applies normal round-trip costs")
+    {
+        auto pos = createSameBarPosition("@C", t, D("100.0"), D("110.0"));
+        // Use any order type that ISN'T a limit exemption (using MARKET_ON_OPEN_SELL)
+        pos->setExitOrderType(OrderType::MARKET_ON_OPEN_SELL); 
+        history.addClosedPosition(pos);
+
+        auto trades = history.getTradeLevelReturns(true, cost, true);
+        
+        // Effective entry: pays slippage = 100 * 1.01 = 101.0
+        // Effective exit: pays slippage = 110 * 0.99 = 108.9
+        // Return = (108.9 - 101.0) / 101.0 = 7.9 / 101 ≈ 0.07821782
+        const double expected = (110.0 * 0.99 - 100.0 * 1.01) / (100.0 * 1.01);
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == Catch::Approx(expected).epsilon(1e-6));
+    }
+
+    SECTION("Short position with COVER_AT_LIMIT exempts exit cost")
+    {
+        // Use multi-bar mock short position
+        auto pos = createMockShortPosition("@C", t, D("100.0"), D("90.0"), {D("95.0")});
+        pos->setExitOrderType(OrderType::COVER_AT_LIMIT);
+        history.addClosedPosition(pos);
+
+        auto trades = history.getTradeLevelReturns(true, cost, true);
+        
+        // Short effective entry: receives less = 100 * 0.99 = 99.0
+        // Short effective exit: EXEMPT from paying more = 90.0
+        // Price return = (90.0 - 99.0) / 99.0 = -9.0 / 99.0
+        // Short P&L return = -Price return = +9.0 / 99.0 ≈ 0.09090909
+        const double effectiveEntry = 100.0 * 0.99;
+        const double effectiveExit = 90.0; // Exempt
+        const double expected = -(effectiveExit - effectiveEntry) / effectiveEntry;
+        
+        REQUIRE(num::to_double(trades[0].getDailyReturns().back()) == Catch::Approx(expected).epsilon(1e-6));
+    }
+
+    SECTION("Short position with market/stop exit applies normal round-trip costs")
+    {
+        auto pos = createMockShortPosition("@C", t, D("100.0"), D("90.0"), {D("95.0")});
+        // Use any order type that ISN'T a limit exemption (using MARKET_ON_OPEN_COVER)
+        pos->setExitOrderType(OrderType::MARKET_ON_OPEN_COVER); 
+        history.addClosedPosition(pos);
+
+        auto trades = history.getTradeLevelReturns(true, cost, true);
+        
+        // Short effective entry: receives less = 100 * 0.99 = 99.0
+        // Short effective exit: pays more to cover = 90 * 1.01 = 90.9
+        // Expected P&L return = -(90.9 - 99.0) / 99.0 = 8.1 / 99.0 ≈ 0.08181818
+        const double effectiveEntry = 100.0 * 0.99;
+        const double effectiveExit = 90.0 * 1.01;
+        const double expected = -(effectiveExit - effectiveEntry) / effectiveEntry;
+        
+        REQUIRE(num::to_double(trades[0].getDailyReturns().back()) == Catch::Approx(expected).epsilon(1e-6));
+    }
+}
