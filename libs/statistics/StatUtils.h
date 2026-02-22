@@ -2976,7 +2976,7 @@ namespace mkc_timeseries
 					 Decimal sum_loss_mag,
 					 double  ruin_eps,
 					 double  denom_floor,
-					 double  prior_strength,
+					 [[maybe_unused]] double  prior_strength,
 					 double  stop_loss_return_space,
 					 double  profit_target_return_space,
 					 double  tiny_win_fraction,
@@ -2986,35 +2986,26 @@ namespace mkc_timeseries
       const Decimal zero = DC::DecimalZero;
       const Decimal one  = DC::DecimalOne;
 
-      // --- Step 2: Prior loss magnitude from stop loss ---
-      Decimal prior_loss_mag = DC::DecimalZero;
-
-      if (stop_loss_return_space > 0.0)
-	{
-	  const Decimal stopLossAbs = Decimal(std::abs(stop_loss_return_space));
-	  Decimal growth_sl = one - stopLossAbs;
-
-	  if (growth_sl <= zero)
-            growth_sl = Decimal(ruin_eps);
-
-	  const Decimal lr_sl = std::log(growth_sl);
-	  const Decimal stopLoss_log_mag = -lr_sl;
-
-	  prior_loss_mag = stopLoss_log_mag * Decimal(prior_strength);
-	}
-      else
-	{
-	  // Conservative fallback if stop loss omitted
-	  prior_loss_mag = Decimal(std::max(-std::log(ruin_eps), denom_floor)) 
-	    * Decimal(prior_strength);
-	}
+      // --- Step 2: Prior loss magnitude anchored to observed win mass ---
+      // The prior's sole purpose is to prevent denominator collapse when a resample
+      // contains no losses. It is deliberately sized as a small fraction of the
+      // observed win mass so it cannot dominate the denominator regardless of
+      // stop loss size or strategy type.
+      //
+      // Note: stop_loss_return_space is intentionally NOT used here. It survives
+      // only for its role in computing tiny_win_return (numerator floor) below.
+      // Prior sizing based on the stop loss caused left-tail collapse in small
+      // samples because the fixed stop-loss-sized prior dominated the denominator
+      // in resamples that drew few wins.
+      const Decimal prior_loss_mag = std::max(Decimal(denom_floor),
+					      Decimal(0.05) * sum_log_wins);
 
       // --- Step 3: Denominator with floor ---
       Decimal denom = sum_loss_mag + prior_loss_mag;
 
       const Decimal d_denom_floor = Decimal(denom_floor);
       if (denom < d_denom_floor)
-        denom = d_denom_floor;
+	denom = d_denom_floor;
 
       // --- Step 4: Numerator floor ---
       double stopAbs   = std::abs(stop_loss_return_space);
@@ -3022,24 +3013,24 @@ namespace mkc_timeseries
 
       double scale = 0.0;
       if (stopAbs > 0.0 && targetAbs > 0.0)
-        scale = std::min(stopAbs, targetAbs);
+	scale = std::min(stopAbs, targetAbs);
       else if (targetAbs > 0.0)
-        scale = targetAbs;
+	scale = targetAbs;
       else if (stopAbs > 0.0)
-        scale = stopAbs;
+	scale = stopAbs;
 
-      const double tiny_win_return = std::max(tiny_win_min_return, 
+      const double tiny_win_return = std::max(tiny_win_min_return,
 					      tiny_win_fraction * scale);
       const Decimal numer_floor = std::log(Decimal(1.0 + tiny_win_return));
 
       Decimal numer = sum_log_wins;
       if (numer < numer_floor)
-        numer = numer_floor;
+	numer = numer_floor;
 
       // --- Step 5: logPF = log(numer) - log(denom) ---
       return std::log(numer) - std::log(denom);
     }
-
+    
     template<typename LossMagContainer>
     static Decimal computeRobustPF_FromSums(
 					    Decimal sum_log_wins,
