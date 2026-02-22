@@ -1659,6 +1659,9 @@ namespace palvalidator
       opts.sampleFraction  = 1.0;                           // full m-out-of-n by default
       opts.treatZeroAsLoss = false;
 
+      constexpr std::size_t minTradesForACFBlockLen = 30;
+      opts.useACFBlockLen = (cph.getNumPositions() >= minTradesForACFBlockLen);
+
       MetaLosingStreakBootstrapBound<Num,
          StationaryTradeBlockSampler<Num>,
          ExecT,
@@ -1669,11 +1672,16 @@ namespace palvalidator
 
       // Safety belt: empirical upper bound should never be < observed
       if (upper < observed)
-	upper = observed;
+	{
+	  os << "      [Warning] Bootstrap upper bound (" << upper
+	     << ") was below observed streak (" << observed
+	     << "); clamped to observed.\n";
+	  upper = observed;
+	}
 
       os << "      Losing-streak bound @ " << (mConfidenceLevel * 100)
-  << "% CL: observed=" << observed
-  << ", upper bound=" << upper << " (trades)\n";
+	 << "% CL: observed=" << observed
+	 << ", upper bound=" << upper << " (trades)\n";
 
       return {observed, upper};
     }
@@ -1738,7 +1746,7 @@ namespace palvalidator
 	{
 	  // 3) Construct the bounder (stationary block bootstrap + BCa)
 	  using BoundFutureReturnsT = mkc_timeseries::BoundFutureReturns<Num>;
-	  const double cl = 0.99;
+	  const double cl = 0.95;
 	  const double pL = 0.05; // lower-tail quantile (5th percentile) for monitoring
 	  const double pU = 0.90; // upper (not used for gating here, but standard pair)
 	  const std::size_t B = mNumResamples;
