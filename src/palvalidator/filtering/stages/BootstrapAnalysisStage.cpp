@@ -1380,13 +1380,15 @@ namespace palvalidator::filtering::stages
   // ---------------------------------------------------------------------------
 
   double
-  BootstrapAnalysisStage::getAdjusteConfidenceInterval(const Num& confidenceInterval, const std::vector<Num>& strategyReturns) const
+  BootstrapAnalysisStage::getAdjusteConfidenceInterval(const Num& confidenceInterval, size_t returnsSize) const
   {
     static Num adjustedLowerInterval = num::fromString<Num>(std::string("0.90"));
     static Num typicalLowerInterval = num::fromString<Num>(std::string("0.95"));
     
-    
-    if ((strategyReturns.size() < 30) && (confidenceInterval >= typicalLowerInterval))
+    if (isTradeLevelBootStrapping())
+      return num::to_double(confidenceInterval);
+
+    if ((returnsSize < 30) && (confidenceInterval >= typicalLowerInterval))
       return num::to_double(adjustedLowerInterval);
     else
       return num::to_double(confidenceInterval);
@@ -1436,8 +1438,13 @@ namespace palvalidator::filtering::stages
     //const double confLevel = num::to_double(mConfidenceLevel);
     auto returnsSize = ctx.highResReturns.size();
     os << "BootstrapAnalysisStage::execute given confidence interval = " << mConfidenceLevel << " for size = " << returnsSize << std::endl;
+
+    double confLevel = 0.0;
     
-    const double confLevel = getAdjusteConfidenceInterval(mConfidenceLevel, ctx.highResReturns);
+    if (isTradeLevelBootStrapping())
+      confLevel = getAdjusteConfidenceInterval(mConfidenceLevel, ctx.tradeLevelReturns.size());
+    else
+      confLevel = getAdjusteConfidenceInterval(mConfidenceLevel, ctx.highResReturns.size());
 
     os << "BootstrapAnalysisStage::execute actual confidence interval = " << confLevel << std::endl;
     
