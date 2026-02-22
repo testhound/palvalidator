@@ -236,7 +236,8 @@ void filterMetaStrategy(
     unsigned int numResamples,
     ValidationMethod validationMethod,
     std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-    const DateRange& inSampleDates)
+    const DateRange& inSampleDates,
+    bool performTradeLevelBootstrapping = false)
 {
     const Num confidenceLevel = Num("0.95");
     
@@ -246,7 +247,7 @@ void filterMetaStrategy(
     
     // The MetaStrategyAnalyzer might need to be updated as well, but for now,
     // we will pass a default-constructed RiskParameters object.
-    MetaStrategyAnalyzer analyzer(getRiskParameters(), confidenceLevel, numResamples);
+    MetaStrategyAnalyzer analyzer(getRiskParameters(), confidenceLevel, numResamples, performTradeLevelBootstrapping);
     analyzer.analyzeMetaStrategy(survivingStrategies, baseSecurity,
      backtestingDates, theTimeFrame,
 				 os, validationMethod,
@@ -446,7 +447,8 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
 				numBootstrapSamples,
 				validationMethod,
 				oosSpreadStats,
-				config->getInsampleDateRange());
+				config->getInsampleDateRange(),
+				tradeLevelBootstrapping);
     }
     
     bootlog << "Performance filtering results: " << filteredStrategies.size() << " passed, "
