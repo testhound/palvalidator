@@ -20,6 +20,7 @@
 namespace mkc_timeseries {
   template<typename Decimal> class BackTester;
   template<typename Decimal> class ClosedPositionHistory;
+  template<typename Decimal> class Trade;
 }
 
 // Forward declaration for CostStressHurdlesT
@@ -136,7 +137,10 @@ namespace palvalidator
        * @param confidenceLevel Confidence level for BCa bootstrap analysis (e.g., 0.95)
        * @param numResamples Number of bootstrap resamples (e.g., 2000)
        */
-      MetaStrategyAnalyzer(const RiskParameters& riskParams, const Num& confidenceLevel, unsigned int numResamples);
+      MetaStrategyAnalyzer(const RiskParameters& riskParams,
+			   const Num& confidenceLevel,
+			   unsigned int numResamples,
+			   bool performTradeLevelBootstrapping = false);
 
       /**
        * @brief Analyze meta-strategy performance using unified PalMetaStrategy approach
@@ -176,6 +180,11 @@ namespace palvalidator
         return mMetaStrategyPassed;
       }
 
+      bool performTradeLevelBootstrapping() const
+      {
+	return mPerformTradeLevelBootstrapping;
+      }
+      
       /**
        * @brief Get the annualized lower bound from the last meta-strategy analysis
        * @return Annualized geometric mean lower bound for the portfolio
@@ -400,6 +409,25 @@ namespace palvalidator
 					 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats) const;
       
 
+      // Trade-Level Overload: Slice Bootstrapper
+      std::vector<Num> bootstrapReturnSlices(
+					     const std::vector<mkc_timeseries::Trade<Num>>& trades,
+					     std::size_t K,
+					     unsigned int numResamples,
+					     double confidenceLevel,
+					     double annualizationFactor) const;
+
+      // Trade-Level Overload: Multi-Split Gate
+      MultiSplitResult runMultiSplitGate(
+					 const std::vector<mkc_timeseries::Trade<Num>>& tradeReturns,
+					 std::size_t K,
+					 double annualizationFactor,
+					 const mkc_timeseries::Security<Num>* baseSecurity,
+					 mkc_timeseries::TimeFrame::Duration timeFrame,
+					 const mkc_timeseries::BackTester<Num>* bt,
+					 std::ostream& os,
+					 std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats) const;
+
       // Helper methods for analyzeMetaStrategyUnified
       std::shared_ptr<PalMetaStrategy<Num>> createMetaStrategy(
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
@@ -574,7 +602,11 @@ namespace palvalidator
           const std::vector<Num>& metaReturns,
           uint32_t numTrades,
           size_t blockLength) const;
-      
+
+      DrawdownResults performDrawdownAnalysisForPyramid(
+          const std::vector<mkc_timeseries::Trade<Num>>& tradeReturns,
+          uint32_t numTrades) const;
+
       /**
        * @brief Perform future returns bound analysis on closed position history
        * @param closedPositionHistory History of closed positions
@@ -599,6 +631,10 @@ namespace palvalidator
           double annualizationFactor,
           size_t blockLength,
           std::ostream& outputStream) const;
+
+      BootstrapResults performBootstrapAnalysis(const std::vector<mkc_timeseries::Trade<Num>>& tradeReturns,
+						double annualizationFactor,
+						std::ostream& outputStream) const;
       
       struct CostHurdleResults {
           Num riskFreeHurdle;
@@ -608,12 +644,6 @@ namespace palvalidator
       
       CostHurdleResults calculateCostHurdles(
           const Num& annualizedTrades,
-          std::ostream& outputStream) const;
-      
-      void performDrawdownAnalysis(
-          const std::vector<Num>& metaReturns,
-          uint32_t numTrades,
-          size_t blockLength,
           std::ostream& outputStream) const;
       
       void reportFinalResults(
@@ -628,6 +658,7 @@ namespace palvalidator
       unsigned int mNumResamples;                ///< Number of bootstrap resamples
       bool mMetaStrategyPassed;                  ///< Result of last meta-strategy analysis
       Num mAnnualizedLowerBound;                 ///< Last calculated annualized lower bound
+      bool mPerformTradeLevelBootstrapping;
       Num mRequiredReturn;                       ///< Last calculated required return
       std::optional<Num> mEffectiveSlippageFloor;
     };

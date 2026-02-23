@@ -395,136 +395,252 @@ namespace palvalidator
       std::size_t m_L;
     };
 
+    // ============================================================================
     // Adapter: make StationaryMaskValueResampler compatible with BCaBootStrap
     // (returns-by-value operator() and block jackknife API)
-    template <class Decimal, class Rng = randutils::mt19937_rng>
+    //
+    // REFACTORED for trade-level bootstrap support while maintaining 100%
+    // backward compatibility with existing bar-level code.
+    //
+    // Template parameter T can be:
+    //   - Decimal (bar-level): Traditional usage
+    //   - Trade<Decimal> (trade-level): New capability
+    //
+    // The adapter delegates resampling to StationaryMaskValueResampler<T> and
+    // provides both traditional and generic jackknife overloads for BCa.
+    // ============================================================================
+    template <class T, class Rng = randutils::mt19937_rng>
     struct StationaryMaskValueResamplerAdapter
     {
     public:
-      using Inner = palvalidator::resampling::StationaryMaskValueResampler<Decimal>;
-      using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
+      using Inner = palvalidator::resampling::StationaryMaskValueResampler<T>;
+      
+      // BACKWARD COMPATIBILITY: Traditional StatFn typedef (T -> T)
+      // Existing code may reference this type explicitly
+      using StatFn = std::function<T(const std::vector<T>&)>;
 
+      /**
+       * @brief Construct the adapter with a mean block length.
+       * @param L Mean block length for stationary bootstrap (must be >= 1)
+       * @throws std::invalid_argument if L < 1
+       */
       explicit StationaryMaskValueResamplerAdapter(std::size_t L)
-	: m_inner(L)
-	, m_L(L)
+        : m_inner(L)
+        , m_L(L)
       {}
 
-      // BCa expects: vector<Decimal> operator()(x, n, rng)
-      std::vector<Decimal>
-      operator()(const std::vector<Decimal>& x, std::size_t n, Rng& rng) const
+      /**
+       * @brief Resample and return by value (BCa interface).
+       * 
+       * This is the signature expected by BCaBootStrap for generating
+       * bootstrap resamples.
+       *
+       * @param x Input sample of length n_orig
+       * @param n Desired output length (typically same as x.size())
+       * @param rng Random number generator
+       * @return Resampled vector of length n
+       * @throws std::invalid_argument if x is empty
+       */
+      std::vector<T>
+      operator()(const std::vector<T>& x, std::size_t n, Rng& rng) const
       {
         if (x.empty())
-	  {
+          {
             throw std::invalid_argument("StationaryMaskValueResamplerAdapter: empty sample.");
-	  }
-        std::vector<Decimal> y;
+          }
+        std::vector<T> y;
         y.resize(n);
         m_inner(x, y, n, rng); // fill-by-reference
         return y;              // return-by-value to satisfy BCa
       }
 
-      // MOutOfNPercentileBootstrap expects: void operator()(x, y, m, rng)
-      void operator()(const std::vector<Decimal>& x,
-                      std::vector<Decimal>& y,
+      /**
+       * @brief Resample by filling an output buffer (MOutOfNPercentileBootstrap interface).
+       *
+       * This is the signature expected by MOutOfNPercentileBootstrap which
+       * provides its own output buffer.
+       *
+       * @param x Input sample
+       * @param y Output buffer (resized and filled by this call)
+       * @param m Desired output length
+       * @param rng Random number generator
+       */
+      void operator()(const std::vector<T>& x,
+                      std::vector<T>& y,
                       std::size_t m,
                       Rng& rng) const
       {
         m_inner(x, y, m, rng); // delegate to inner resampler
       }
 
-      // BCa expects a jackknife for acceleration 'a'
-      // We implement a delete-block jackknife (circular, length L_eff)
-      std::vector<Decimal>
-      jackknife(const std::vector<Decimal>& x, const StatFn& stat) const
+      /**
+       * @brief Delete-block jackknife for BCa acceleration constant.
+       * BACKWARD COMPATIBLE VERSION: Traditional signature (T -> T)
+       *
+       * This overload is called when the statistic function matches the
+       * traditional StatFn signature (same type in and out).
+       *
+       * Existing bar-level code uses this automatically.
+       *
+       * @param x Input sample of length n
+       * @param stat Statistic function (std::function<T(const std::vector<T>&)>)
+       * @return Vector of jackknife pseudo-values
+       */
+      std::vector<T>
+      jackknife(const std::vector<T>& x, const StatFn& stat) const
       {
-	const std::size_t n = x.size();
-
-	// --- Guard 1: Absolute minimum for any jackknife ---
-	// Need at least L_eff observations to delete AND enough remaining
-	// observations for the statistic to be defined (minKeep >= 2).
-	const std::size_t minKeep = 2;
-	if (n < minKeep + 1)
-	  {
-	    throw std::invalid_argument(
-					"StationaryMaskValueResamplerAdapter::jackknife requires n >= 3.");
-	  }
-
-	// --- Guard 2: Clamp L_eff so we always retain at least minKeep observations ---
-	// Without this, near n==L cases produce keep==1 and degenerate stat calls.
-	const std::size_t L_eff = std::min<std::size_t>(m_L, n - minKeep);
-
-	// --- Guard 3: Ensure the sample is large enough for this block length ---
-	// We need at least 2 non-overlapping blocks: one to delete, one to keep.
-	if (n < L_eff + minKeep)
-	  {
-	    throw std::invalid_argument(
-					"StationaryMaskValueResamplerAdapter::jackknife: sample too small "
-					"for delete-block jackknife with this block length. "
-					"Reduce block length or increase sample size.");
-	  }
-
-	const std::size_t keep      = n - L_eff;
-	// --- Fix 1: Non-overlapping blocks only ---
-	// Previously the loop ran n times (start = 0, 1, 2, ..., n-1), producing
-	// n highly-correlated pseudo-values differing by only one observation.
-	// This is a sliding-window delete, which overcounts and causes systematic
-	// underestimation of |a| (the BCa acceleration constant).
-	//
-	// The correct Künsch (1989) delete-block jackknife uses only floor(n/L_eff)
-	// non-overlapping blocks, stepping by L_eff each iteration.
-	// Each pseudo-value then reflects the influence of a genuinely distinct
-	// segment of the time series on the statistic.
-	//
-	// BCaBootStrap::calculateBCaBounds() is confirmed safe for variable-length
-	// jackknife output: it captures jk_stats.size() into n_jk independently
-	// of n, and all downstream loops are range-based.
-	const std::size_t numBlocks = n / L_eff;   // number of pseudo-values returned
-	std::vector<Decimal> jk(numBlocks);
-	std::vector<Decimal> y(keep);
-
-	for (std::size_t b = 0; b < numBlocks; ++b)
-	  {
-	    // Non-overlapping start: advance by L_eff each iteration
-	    const std::size_t start = b * L_eff;
-
-	    // Circular index immediately after the deleted block
-	    const std::size_t start_keep = (start + L_eff) % n;
-
-	    // Copy 'keep' entries from x[start_keep ... ) with circular wrap.
-	    // At most two spans are needed (tail then optional head).
-	    const std::size_t tail = std::min<std::size_t>(keep, n - start_keep);
-
-	    std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(start_keep),
-			static_cast<std::ptrdiff_t>(tail),
-			y.begin());
-
-	    const std::size_t head = keep - tail;
-	    if (head != 0)
-	      {
-		std::copy_n(x.begin(),
-			    static_cast<std::ptrdiff_t>(head),
-			    y.begin() + static_cast<std::ptrdiff_t>(tail));
-	      }
-
-	    jk[b] = stat(y);
-	  }
-
-	return jk;   // size == numBlocks == n/L_eff, NOT n
+        // Delegate to the generic implementation
+        return jackknife_impl(x, stat);
       }
 
+      /**
+       * @brief Delete-block jackknife for BCa acceleration constant.
+       * GENERIC VERSION: Supports statistics with different return type (Trade<Decimal> -> Decimal)
+       *
+       * This overload is called when the statistic function does NOT match
+       * the traditional StatFn signature. It auto-deduces the return type.
+       *
+       * Enabled only when StatFunc is not convertible to StatFn (avoids ambiguity).
+       *
+       * Trade-level code uses this automatically when stat returns Decimal
+       * from vector<Trade<Decimal>>.
+       *
+       * @param x Input sample of length n
+       * @param stat Statistic function (any callable with compatible signature)
+       * @return Vector of jackknife pseudo-values (type auto-deduced)
+       */
+      template <class StatFunc,
+                typename = typename std::enable_if<
+                  !std::is_convertible<StatFunc, StatFn>::value
+                >::type>
+      auto jackknife(const std::vector<T>& x, const StatFunc& stat) const
+        -> std::vector<decltype(stat(x))>
+      {
+        return jackknife_impl(x, stat);
+      }
+
+    private:
+      /**
+       * @brief Common implementation for both jackknife overloads.
+       *
+       * Implements Künsch (1989) delete-block jackknife:
+       * - Deletes non-overlapping blocks of length L_eff
+       * - Steps by L_eff each iteration (NOT sliding window)
+       * - Returns floor(n/L_eff) pseudo-values (NOT n)
+       *
+       * This avoids the systematic underestimation of |a| caused by
+       * highly-correlated pseudo-values in sliding-window approaches.
+       *
+       * @param x Input sample of length n
+       * @param stat Statistic function
+       * @return Vector of jackknife pseudo-values
+       * @throws std::invalid_argument if n < 3 or sample too small for block length
+       */
+      template <class StatFunc>
+      auto jackknife_impl(const std::vector<T>& x, const StatFunc& stat) const
+        -> std::vector<decltype(stat(x))>
+      {
+        using ResultType = decltype(stat(x));
+        
+        const std::size_t n = x.size();
+
+        // --- Guard 1: Absolute minimum for any jackknife ---
+        // Need at least L_eff observations to delete AND enough remaining
+        // observations for the statistic to be defined (minKeep >= 2).
+        const std::size_t minKeep = 2;
+        if (n < minKeep + 1)
+          {
+            throw std::invalid_argument(
+                                        "StationaryMaskValueResamplerAdapter::jackknife requires n >= 3.");
+          }
+
+        // --- Guard 2: Clamp L_eff so we always retain at least minKeep observations ---
+        // Without this, near n==L cases produce keep==1 and degenerate stat calls.
+        const std::size_t L_eff = std::min<std::size_t>(m_L, n - minKeep);
+
+        // --- Guard 3: Ensure the sample is large enough for this block length ---
+        // We need at least 2 non-overlapping blocks: one to delete, one to keep.
+        if (n < L_eff + minKeep)
+          {
+            throw std::invalid_argument(
+                                        "StationaryMaskValueResamplerAdapter::jackknife: sample too small "
+                                        "for delete-block jackknife with this block length. "
+                                        "Reduce block length or increase sample size.");
+          }
+
+        const std::size_t keep = n - L_eff;
+        
+        // --- Künsch (1989) delete-block jackknife: non-overlapping blocks only ---
+        // Previously the loop ran n times (start = 0, 1, 2, ..., n-1), producing
+        // n highly-correlated pseudo-values differing by only one observation.
+        // This is a sliding-window delete, which overcounts and causes systematic
+        // underestimation of |a| (the BCa acceleration constant).
+        //
+        // The correct delete-block jackknife uses only floor(n/L_eff) non-overlapping
+        // blocks, stepping by L_eff each iteration. Each pseudo-value then reflects
+        // the influence of a genuinely distinct segment of the time series on the
+        // statistic.
+        //
+        // BCaBootStrap::calculateBCaBounds() is confirmed safe for variable-length
+        // jackknife output: it captures jk_stats.size() into n_jk independently
+        // of n, and all downstream loops are range-based.
+        const std::size_t numBlocks = n / L_eff;   // number of pseudo-values returned
+        
+        std::vector<ResultType> jk(numBlocks);
+        std::vector<T> y(keep);
+
+        for (std::size_t b = 0; b < numBlocks; ++b)
+          {
+            // Non-overlapping start: advance by L_eff each iteration
+            const std::size_t start = b * L_eff;
+
+            // Circular index immediately after the deleted block
+            const std::size_t start_keep = (start + L_eff) % n;
+
+            // Copy 'keep' entries from x[start_keep ... ) with circular wrap.
+            // At most two spans are needed (tail then optional head).
+            const std::size_t tail = std::min<std::size_t>(keep, n - start_keep);
+
+            std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(start_keep),
+                        static_cast<std::ptrdiff_t>(tail),
+                        y.begin());
+
+            const std::size_t head = keep - tail;
+            if (head != 0)
+              {
+                std::copy_n(x.begin(),
+                            static_cast<std::ptrdiff_t>(head),
+                            y.begin() + static_cast<std::ptrdiff_t>(tail));
+              }
+
+            jk[b] = stat(y);
+          }
+
+        return jk;   // size == numBlocks == n/L_eff, NOT n
+      }
+
+    public:
+      /**
+       * @brief Get the mean block length (alias for getL).
+       * @return Mean block length L
+       */
       std::size_t meanBlockLen() const
       {
         return m_L;
       }
 
+      /**
+       * @brief Get the mean block length.
+       * @return Mean block length L
+       */
       std::size_t getL() const
       {
         return m_L;
       }
 
     private:
-      Inner        m_inner;
-      std::size_t  m_L;
+      Inner        m_inner;  // StationaryMaskValueResampler<T>
+      std::size_t  m_L;      // Mean block length
     };
   }
 } // namespace palvalidator::resampling

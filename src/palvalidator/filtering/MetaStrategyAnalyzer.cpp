@@ -29,6 +29,7 @@
 #include "RegimeMixStationaryResampler.h"
 #include "BarAlignedSeries.h"
 #include "RegimeLabeler.h"
+#include "TradeResampling.h"
 #include "filtering/PositionSizingCalculator.h"
 #include <fstream>
 
@@ -38,7 +39,7 @@ namespace palvalidator
   {
     static std::size_t kMinSliceLen = 20;
     using palvalidator::filtering::makeCostStressHurdles;
-
+    using mkc_timeseries::Trade;
 
     /**
      * @brief Calculates the block length for stationary bootstrap, switching between
@@ -127,15 +128,18 @@ namespace palvalidator
     }
 
     MetaStrategyAnalyzer::MetaStrategyAnalyzer(const RiskParameters& riskParams,
-    	       const Num& confidenceLevel,
-    	       unsigned int numResamples)
+					       const Num& confidenceLevel,
+					       unsigned int numResamples,
+					       bool performTradeLevelBootstrapping)
       : mHurdleCalculator(riskParams),
 	mConfidenceLevel(confidenceLevel),
 	mNumResamples(numResamples),
-	mMetaStrategyPassed(false)
+	mMetaStrategyPassed(false),
+	mPerformTradeLevelBootstrapping(performTradeLevelBootstrapping)
     {
       // Note: mAnnualizedLowerBound and mRequiredReturn are not initialized here
       // They will be set when analyzeMetaStrategy() is called
+      // mEffectiveSlippageFloor is also left as default (std::nullopt)
     }
 
     /**
@@ -189,6 +193,10 @@ namespace palvalidator
 	}
 
       outputStream << "\n[Meta] Building unified PalMetaStrategy from " << survivingStrategies.size() << " survivors...\n";
+      if (performTradeLevelBootstrapping())
+	outputStream << "Performing trade level bootstrapping\n";
+      else
+	outputStream << "Performing bar level bootstrapping\n";
 
       analyzeMetaStrategyUnified(survivingStrategies, baseSecurity, oosBacktestingDates,
 				 timeFrame, outputStream, validationMethod, oosSpreadStats, inSampleDates);
@@ -1223,15 +1231,15 @@ namespace palvalidator
      */
     MetaStrategyAnalyzer::PyramidGateResults
     MetaStrategyAnalyzer::runPyramidValidationGates(
-        const std::vector<Num>& metaReturns,
-        std::shared_ptr<BackTester<Num>> bt,
-        const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-        std::shared_ptr<Security<Num>> baseSecurity,
-        const DateRange& oosBacktestingDates,
-        TimeFrame::Duration timeFrame,
-        std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-        std::ostream& outputStream,
-        const DateRange& inSampleDates) const
+						    const std::vector<Num>& metaReturns,
+						    std::shared_ptr<BackTester<Num>> bt,
+						    const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+						    std::shared_ptr<Security<Num>> baseSecurity,
+						    const DateRange& oosBacktestingDates,
+						    TimeFrame::Duration timeFrame,
+						    std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
+						    std::ostream& outputStream,
+						    const DateRange& inSampleDates) const
     {
       using mkc_timeseries::DecimalConstants;
 
@@ -1242,88 +1250,136 @@ namespace palvalidator
       const double annualizationFactor = calculateAnnualizationFactor(timeFrame, baseSecurity);
 
       const double Keff = mkc_timeseries::computeEffectiveAnnualizationFactor(metaAnnualizedTrades,
-                                                                               metaMedianHold,
-                                                                               annualizationFactor,
-                                                                               &outputStream);
+									      metaMedianHold,
+									      annualizationFactor,
+									      &outputStream);
 
       const double p = (annualizationFactor > 0.0) ? (Keff / annualizationFactor) : 1.0;
       if (p > 1.2 || p < 0.01) {
-        outputStream << "      [Meta] Warning: participation p=" << p
-                    << " looks unusual; verify estimated annualized trades / median hold.\n";
+	outputStream << "      [Meta] Warning: participation p=" << p
+		     << " looks unusual; verify estimated annualized trades / median hold.\n";
       }
 
-      // Regular (whole-sample) BCa gate
+      // Compute standard per-period estimates for baseline context
       calculatePerPeriodEstimates(metaReturns, outputStream);
-      const auto bootstrapResults = performBootstrapAnalysis(metaReturns, Keff, Lmeta, outputStream);
+
+      // --- GATE 2: Regular BCa Bootstrap (Branched via Overloading) ---
+      BootstrapResults bootstrapResults;
+      std::vector<mkc_timeseries::Trade<Num>> tradeReturns;
+
+      if (performTradeLevelBootstrapping())
+	{
+	  // Extract the meta-strategy from the backtester to get closed trades
+	  auto strat = *(bt->beginStrategies());
+	  tradeReturns = bt->getClosedTradeLevelReturns(strat.get());
+      
+	  // Dispatch to Trade-Level overload (IID)
+	  bootstrapResults = performBootstrapAnalysis(tradeReturns, Keff, outputStream);
+	}
+      else
+	{
+	  // Dispatch to Bar-Level overload (Stationary Block)
+	  bootstrapResults = performBootstrapAnalysis(metaReturns, Keff, Lmeta, outputStream);
+	}
 
       // Build calibrated + Qn-stressed cost hurdles
-      
       const auto H = makeCostStressHurdles<Num>(mHurdleCalculator,
-                                                oosSpreadStats,
-                                                metaAnnualizedTrades,
-                                                mEffectiveSlippageFloor);
+						oosSpreadStats,
+						metaAnnualizedTrades,
+						mEffectiveSlippageFloor);
       outputStream << "         Estimated annualized trades: "
-                  << metaAnnualizedTrades << " /yr\n";
+		   << metaAnnualizedTrades << " /yr\n";
 
       printCostStressConcise<Num>(outputStream,
-                                  H,
-                                  bootstrapResults.lbGeoAnn,
-                                  "Meta",
-                                  oosSpreadStats,
-                                  false,
-                                  mHurdleCalculator.calculateRiskFreeHurdle());
+				  H,
+				  bootstrapResults.lbGeoAnn,
+				  "Meta",
+				  oosSpreadStats,
+				  false,
+				  mHurdleCalculator.calculateRiskFreeHurdle());
 
       // Policy: require LB > base AND LB > +1·Qn
       const bool passBase = (bootstrapResults.lbGeoAnn > H.baseHurdle);
       const bool pass1Qn = (bootstrapResults.lbGeoAnn > H.h_1q);
       const bool regularBootstrapPass = (passBase && pass1Qn);
 
-      // Selection-aware gate
+
+      // --- GATE 3: Selection-Aware Gate ---
+      // Note: Maintained at bar-level. Aggregating overlapping trades mathematically
+      // without stepping through time bar-by-bar is complex and error-prone.
       const bool passMetaSelectionAware =
-        runSelectionAwareMetaGate(survivingStrategies,
-                                  baseSecurity,
-                                  oosBacktestingDates,
-                                  timeFrame,
-                                  Lmeta,
-                                  Keff,
-                                  bt.get(),
-                                  outputStream,
-                                  oosSpreadStats);
+	runSelectionAwareMetaGate(survivingStrategies,
+				  baseSecurity,
+				  oosBacktestingDates,
+				  timeFrame,
+				  Lmeta,
+				  Keff,
+				  bt.get(),
+				  outputStream,
+				  oosSpreadStats);
 
-      // Multi-split OOS gate
-      const std::size_t K = chooseInitialSliceCount(metaReturns.size(), Lmeta);
-      outputStream << "      Multi-split bootstrap: K=" << K
-                  << ", L=" << Lmeta << ", n=" << metaReturns.size() << "\n";
 
-      const auto ms = runMultiSplitGate(
-          metaReturns,
-          K,
-          Lmeta,
-          Keff,
-          baseSecurity.get(),
-          timeFrame,
-          bt.get(),
-          outputStream,
-          oosSpreadStats);
+      // --- GATE 4: Multi-Split OOS Gate (Branched via Overloading) ---
+      MultiSplitResult ms;
+
+      if (performTradeLevelBootstrapping())
+	{
+	  // Use block length 1 for IID trade slicing
+	  const std::size_t K = chooseInitialSliceCount(tradeReturns.size(), 1); 
+	  outputStream << "      Multi-split bootstrap: K=" << K
+		       << ", L=1 (Trade IID), n=" << tradeReturns.size() << " trades\n";
+
+	  // Dispatch to Trade-Level overload
+	  ms = runMultiSplitGate(
+				 tradeReturns,
+				 K,
+				 Keff,
+				 baseSecurity.get(),
+				 timeFrame,
+				 bt.get(),
+				 outputStream,
+				 oosSpreadStats);
+	}
+      else
+	{
+	  const std::size_t K = chooseInitialSliceCount(metaReturns.size(), Lmeta);
+	  outputStream << "      Multi-split bootstrap: K=" << K
+		       << ", L=" << Lmeta << ", n=" << metaReturns.size() << " bars\n";
+
+	  // Dispatch to Bar-Level overload
+	  ms = runMultiSplitGate(
+				 metaReturns,
+				 K,
+				 Lmeta,
+				 Keff,
+				 baseSecurity.get(),
+				 timeFrame,
+				 bt.get(),
+				 outputStream,
+				 oosSpreadStats);
+	}
 
       // Non-penalizing when not applied (too short to slice)
       const bool multiSplitPass = (!ms.applied) || ms.pass;
 
-      // Regime Mix Gate
+
+      // --- GATE 5: Regime Mix Gate ---
+      // Note: Maintained at bar-level. Requires mapping specific days to specific
+      // market volatility regimes. 
       outputStream << "\n";
       const auto regimeResult = runRegimeMixGate(
-          bt,
-          baseSecurity,
-          oosBacktestingDates,
-          Keff,
-          H.baseHurdle,
-          Lmeta,
-          outputStream,
-          inSampleDates
-      );
+						 bt,
+						 baseSecurity,
+						 oosBacktestingDates,
+						 Keff,
+						 H.baseHurdle,
+						 Lmeta,
+						 outputStream,
+						 inSampleDates
+						 );
 
       return PyramidGateResults(regularBootstrapPass, multiSplitPass, passMetaSelectionAware,
-                                bootstrapResults, H, Keff, Lmeta, metaAnnualizedTrades, regimeResult);
+				bootstrapResults, H, Keff, Lmeta, metaAnnualizedTrades, regimeResult);
     }
 
     /**
@@ -1345,6 +1401,7 @@ namespace palvalidator
      * Returns:
      * A `PyramidRiskResults` object containing the computed risk metrics.
      */
+
     MetaStrategyAnalyzer::PyramidRiskResults
     MetaStrategyAnalyzer::runPyramidRiskAnalysis(
         const std::vector<Num>& metaReturns,
@@ -1352,8 +1409,6 @@ namespace palvalidator
         std::size_t lMeta,
         std::ostream& outputStream) const
     {
-      using mkc_timeseries::DecimalConstants;
-
       // Future Returns Bound Analysis
       outputStream << "\n";
       Num futureReturnsLowerBoundPct = performFutureReturnsBoundAnalysis(closedHistory, outputStream);
@@ -1362,9 +1417,20 @@ namespace palvalidator
       const auto [observedLosingStreak, losingStreakUpperBound] =
         computeLosingStreakBound(closedHistory, outputStream);
 
-      // Drawdown analysis
+      // --- Drawdown analysis (Branched for Trade/Bar Level) ---
       const uint32_t numTrades = closedHistory.getNumPositions();
-      auto drawdownResults = performDrawdownAnalysisForPyramid(metaReturns, numTrades, lMeta);
+      DrawdownResults drawdownResults;
+
+      if (performTradeLevelBootstrapping())
+      {
+          // Extract closed trades directly from the history
+          auto tradeReturns = closedHistory.getTradeLevelReturns();
+          drawdownResults = performDrawdownAnalysisForPyramid(tradeReturns, numTrades);
+      }
+      else
+      {
+          drawdownResults = performDrawdownAnalysisForPyramid(metaReturns, numTrades, lMeta);
+      }
 
       return PyramidRiskResults(drawdownResults, futureReturnsLowerBoundPct,
                                 observedLosingStreak, losingStreakUpperBound);
@@ -1593,6 +1659,9 @@ namespace palvalidator
       opts.sampleFraction  = 1.0;                           // full m-out-of-n by default
       opts.treatZeroAsLoss = false;
 
+      constexpr std::size_t minTradesForACFBlockLen = 30;
+      opts.useACFBlockLen = (cph.getNumPositions() >= minTradesForACFBlockLen);
+
       MetaLosingStreakBootstrapBound<Num,
          StationaryTradeBlockSampler<Num>,
          ExecT,
@@ -1603,11 +1672,16 @@ namespace palvalidator
 
       // Safety belt: empirical upper bound should never be < observed
       if (upper < observed)
-	upper = observed;
+	{
+	  os << "      [Warning] Bootstrap upper bound (" << upper
+	     << ") was below observed streak (" << observed
+	     << "); clamped to observed.\n";
+	  upper = observed;
+	}
 
       os << "      Losing-streak bound @ " << (mConfidenceLevel * 100)
-  << "% CL: observed=" << observed
-  << ", upper bound=" << upper << " (trades)\n";
+	 << "% CL: observed=" << observed
+	 << ", upper bound=" << upper << " (trades)\n";
 
       return {observed, upper};
     }
@@ -1656,28 +1730,33 @@ namespace palvalidator
 	}
 
       // 2) Pick block length (adaptive: median-hold for very short; n^(1/3) for medium; ACF for long)
-      const unsigned int medianHold = closedPositionHistory.getMedianHoldingPeriod();
+      const unsigned int medianHoldBars = closedPositionHistory.getMedianHoldingPeriod();
+      unsigned int medianHoldMonths = std::max<unsigned int>(1, medianHoldBars / 21);
       const std::size_t blockLength = calculateBlockLengthAdaptive(
 								   monthly,          // returns
-								   medianHold,       // median holding period (bars → months here)
+								   medianHoldMonths,       // median holding period (bars → months here)
 								   outputStream,     // logs which path was chosen
 								   100,              // min size for ACF on monthly
 								   12,               // maxACFLag for monthly
 								   2,                // min L from ACF
-								   12                 // max L from ACF (monthly)
+								   6                 // max L from ACF (monthly)
 								   );
 
       try
 	{
 	  // 3) Construct the bounder (stationary block bootstrap + BCa)
 	  using BoundFutureReturnsT = mkc_timeseries::BoundFutureReturns<Num>;
-	  const double cl = 0.99;
+	  const double cl = 0.95;
 	  const double pL = 0.05; // lower-tail quantile (5th percentile) for monitoring
 	  const double pU = 0.90; // upper (not used for gating here, but standard pair)
 	  const std::size_t B = mNumResamples;
 
+	  std::size_t L = blockLength;
+	  L = std::min<std::size_t>(L, monthly.size() / 4);
+	  L = std::max<std::size_t>(2, L);
+
 	  BoundFutureReturnsT bfr(monthly,                // monthly return series
-				  blockLength,            // L
+				  L,                      // L
 				  pL, pU,                 // lower/upper quantiles
 				  B,                      // bootstrap resamples
 				  cl,
@@ -1702,32 +1781,43 @@ namespace palvalidator
 	  const std::string INDENT = "      ";  // 6 spaces, matches other report sections
 
 	  outputStream << "\n" << INDENT << "=== Future Monthly Return Bound (Monitoring) ===\n";
-	  outputStream << INDENT << "Lower Bound (monthly, " << std::lround(100 * cl)
-		       << "% confidence): " << pct(lb)
-		       << "    [Block length L = " << blockLength << "]\n";
 
-	  outputStream << INDENT << "What this means: With about " << std::lround(100 * cl)
-		       << "% confidence, any future month is expected to be no worse than "
-		       << pct(lb) << ".\n";
+	  // Headline numbers
+	  outputStream << INDENT << "Monthly downside threshold (p=" << std::lround(100 * pL) << "%): "
+		       << pct(lb)
+		       << "    [Block length L = " << L << "]\n";
 
-	  outputStream << INDENT << "How we estimated it: We used a block bootstrap with L = "
-		       << blockLength
-		       << " to respect typical month-to-month dependence.\n"
-		       << INDENT
-		       << "We then looked at the "
-		       << std::lround(100 * pL)
-		       << "th percentile of monthly returns and applied a BCa confidence interval.\n"
-		       << INDENT
-		       << "The number shown above is the **lower endpoint** of that interval (a conservative bound).\n";
+	  // What it is (precise, non-overstated)
+	  outputStream << INDENT << "Definition: This is the *one-sided* "
+		       << std::lround(100 * cl) << "% BCa lower confidence bound for the "
+		       << std::lround(100 * pL) << "th percentile of monthly returns.\n";
+
+	  outputStream << INDENT << "Interpretation: Months worse than this bound should be uncommon.\n"
+		       << INDENT << "It is NOT a guarantee that *every* future month will exceed this value.\n";
+
+	  // How it was estimated (methods, but readable)
+	  outputStream << INDENT << "Method: Stationary block bootstrap to preserve month-to-month dependence,\n"
+		       << INDENT << "then BCa confidence interval on the "
+		       << std::lround(100 * pL) << "th percentile.\n";
 
 	  outputStream << INDENT << "Data used: " << n
 		       << " monthly returns"
-		       << "  |  Bootstrap resamples: " << B
-		       << "  |  Confidence level: " << std::lround(100 * cl) << "%\n";
+		       << "  |  Resamples: " << B
+		       << "  |  Confidence: " << std::lround(100 * cl) << "%\n";
 
-	  outputStream << INDENT << "Interpretation guide:\n"
-		       << INDENT << " • If this bound is well above 0%, downside months are usually mild.\n"
-		       << INDENT << " • If it’s near/below 0%, expect occasional negative months of that size.\n"
+	  // Practical monitoring guidance
+	  outputStream << INDENT << "Monitoring guidance:\n"
+		       << INDENT << " • A 'breach' occurs when a realized month return < " << pct(lb) << ".\n"
+		       << INDENT << " • One breach can happen by chance; repeated breaches suggest conditions have changed.\n"
+		       << INDENT << " • Rule-of-thumb flags (for p=" << std::lround(100 * pL) << "%):\n"
+		       << INDENT << "     - 12 months: 3+ breaches is concerning\n"
+		       << INDENT << "     - 24 months: 4+ breaches is concerning\n"
+		       << INDENT << "     - 36 months: 5+ breaches is concerning\n";
+
+	  // Optional: context on sign/magnitude
+	  outputStream << INDENT << "Notes:\n"
+		       << INDENT << " • If this bound is well above 0%, even bad months are usually mild.\n"
+		       << INDENT << " • If it is below 0%, expect occasional drawdown months of that magnitude.\n"
 		       << INDENT << " • Larger L assumes stronger serial dependence; smaller L assumes less.\n";
 
 	  // 6) Return as a percent (matches prior behavior in your PyramidResults table)
@@ -1942,6 +2032,70 @@ namespace palvalidator
       return {lbGeoPeriod, lbMeanPeriod, lbGeoAnn, lbMeanAnn, blockLength};
     }
 
+    MetaStrategyAnalyzer::BootstrapResults
+    MetaStrategyAnalyzer::performBootstrapAnalysis(const std::vector<Trade<Num>>& tradeReturns,
+						   double annualizationFactor,
+						   std::ostream& outputStream) const
+    {
+      using mkc_timeseries::DecimalConstants;
+
+      outputStream << "      [Meta] Performing TRADE-LEVEL BCa Bootstrap Analysis...\n";
+
+      if (tradeReturns.size() < 2)
+	{
+	  throw std::runtime_error("Trade-level bootstrap requires at least 2 closed trades.");
+	}
+
+      // Pre-compute log-growth bars for trades (avoids log() in inner loop)
+      std::vector<mkc_timeseries::Trade<Num>> logTrades;
+      logTrades.reserve(tradeReturns.size());
+      for (const auto& trade : tradeReturns)
+	{
+	  std::vector<Num> logBars = mkc_timeseries::StatUtils<Num>::makeLogGrowthSeries(
+											 trade.getDailyReturns(), mkc_timeseries::StatUtils<Num>::DefaultRuinEps);
+	  logTrades.emplace_back(std::move(logBars));
+	}
+
+      // Define Resampler and Statistics
+      using TradeType = mkc_timeseries::Trade<Num>;
+      using ResamplerT = mkc_timeseries::IIDResampler<TradeType>;
+      using GeoStat = mkc_timeseries::GeoMeanFromLogBarsStat<Num>;
+
+      // Custom lambda for arithmetic mean: flattens the resampled trades to compute mean
+      auto statMean = [](const std::vector<TradeType>& trades) -> Num {
+	std::vector<Num> flatReturns;
+	flatReturns.reserve(trades.size() * 5); 
+	for (const auto& t : trades) {
+	  const auto& rets = t.getDailyReturns();
+	  flatReturns.insert(flatReturns.end(), rets.begin(), rets.end());
+	}
+	return mkc_timeseries::StatUtils<Num>::computeMean(flatReturns);
+      };
+
+      // Instantiate Trade-Level BCaBootStrap (5th template arg is TradeType)
+      using TradeBCA = mkc_timeseries::BCaBootStrap<Num, ResamplerT, randutils::mt19937_rng, void, TradeType>;
+      
+      ResamplerT iidSampler;
+      GeoStat statGeo;
+
+      TradeBCA metaGeo(logTrades, mNumResamples, mConfidenceLevel.getAsDouble(), statGeo, iidSampler);
+      TradeBCA metaMean(tradeReturns, mNumResamples, mConfidenceLevel.getAsDouble(), statMean, iidSampler);
+
+      const Num lbGeoPeriod = metaGeo.getLowerBound();
+      const Num lbMeanPeriod = metaMean.getLowerBound();
+      
+      outputStream << "      Per-period BCa lower bounds (Trade-Level IID): "
+		   << "Geo=" << (lbGeoPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%, "
+               << "Mean=" << (lbMeanPeriod * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
+
+      // Annualize portfolio BCa results
+      mkc_timeseries::BCaAnnualizer<Num> metaGeoAnn(metaGeo, annualizationFactor);
+      mkc_timeseries::BCaAnnualizer<Num> metaMeanAnn(metaMean, annualizationFactor);
+
+      // Return L=1 for IID
+      return {lbGeoPeriod, lbMeanPeriod, metaGeoAnn.getAnnualizedLowerBound(), metaMeanAnn.getAnnualizedLowerBound(), 1};
+    }
+    
     void MetaStrategyAnalyzer::performBlockLengthSensitivity(
 							     const std::vector<Num>& metaReturns,
 							     std::size_t calculatedL,
@@ -2054,6 +2208,69 @@ namespace palvalidator
 
 	  // Annualize the BCa bounds (correct approach)
 	  BCaAnnualizer<Num> ann(bca, annualizationFactor);  // (1+r)^factor - 1
+	  out.push_back(ann.getAnnualizedLowerBound());
+	}
+
+      return out;
+    }
+
+    std::vector<Num>
+    MetaStrategyAnalyzer::bootstrapReturnSlices(
+						const std::vector<mkc_timeseries::Trade<Num>>& trades,
+						std::size_t K,
+						unsigned int numResamples,
+						double confidenceLevel,
+						double annualizationFactor) const
+    {
+      using mkc_timeseries::BCaAnnualizer;
+      using mkc_timeseries::StatUtils;
+      using TradeType = mkc_timeseries::Trade<Num>;
+      using ResamplerT = mkc_timeseries::IIDResampler<TradeType>;
+      using GeoStat = mkc_timeseries::GeoMeanFromLogBarsStat<Num>;
+      using TradeBCA = mkc_timeseries::BCaBootStrap<Num, ResamplerT, randutils::mt19937_rng, void, TradeType>;
+
+      std::vector<Num> out;
+
+      // Enforce a smaller minimum slice length for trades (e.g., 4 trades per slice)
+      const std::size_t minTradesPerSlice = 4;
+  
+      // createSliceIndicesForBootstrap's template deduction will seamlessly handle Trade<Num>
+      const auto slices = mkc_timeseries::createSliceIndicesForBootstrap(trades, K, minTradesPerSlice);
+  
+      if (slices.empty())
+	{
+	  return out; // Caller will handle empty array (skip multi-split)
+	}
+
+      out.reserve(slices.size());
+
+      for (const auto& slice : slices)
+	{
+	  const auto start = slice.first;
+	  const auto end   = slice.second;
+
+	  // Extract the specific trade slice
+	  std::vector<TradeType> xs(trades.begin() + static_cast<std::ptrdiff_t>(start),
+				    trades.begin() + static_cast<std::ptrdiff_t>(end));
+
+	  // Pre-compute log-growth bars specifically for this slice
+	  std::vector<TradeType> logTrades;
+	  logTrades.reserve(xs.size());
+	  for (const auto& trade : xs)
+	    {
+	      std::vector<Num> logBars = StatUtils<Num>::makeLogGrowthSeries(
+									     trade.getDailyReturns(), StatUtils<Num>::DefaultRuinEps);
+	      logTrades.emplace_back(std::move(logBars));
+	    }
+
+	  ResamplerT sampler;
+	  GeoStat statGeo;
+
+	  // Run IID BCa on the log-transformed slice
+	  TradeBCA bca(logTrades, numResamples, confidenceLevel, statGeo, sampler);
+
+	  // Annualize the BCa bound
+	  BCaAnnualizer<Num> ann(bca, annualizationFactor);
 	  out.push_back(ann.getAnnualizedLowerBound());
 	}
 
@@ -2203,6 +2420,103 @@ namespace palvalidator
       return r;
     }
 
+    MetaStrategyAnalyzer::MultiSplitResult
+    MetaStrategyAnalyzer::runMultiSplitGate(
+					    const std::vector<mkc_timeseries::Trade<Num>>& tradeReturns,
+					    std::size_t K,
+					    double annualizationFactor,
+					    const mkc_timeseries::Security<Num>* baseSecurity,
+					    mkc_timeseries::TimeFrame::Duration timeFrame,
+					    const mkc_timeseries::BackTester<Num>* bt,
+					    std::ostream& os,
+					    std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats) const
+    {
+      using mkc_timeseries::DecimalConstants;
+
+      MultiSplitResult r;
+      r.applied  = false;
+      r.pass     = true;   // Default non-penalizing when skipped
+      r.medianLB = Num(0);
+      r.minLB    = Num(0);
+
+      // Define the absolute minimum trades needed to form a valid slice
+      const std::size_t minTradesPerSlice = 4;
+
+      std::size_t K_eff = K;
+      while (K_eff > 1 && tradeReturns.size() < K_eff * minTradesPerSlice)
+	{
+	  --K_eff;
+	}
+
+      if (K_eff < 2)
+	{
+	  os << "      [Slices] Not applied (n=" << tradeReturns.size()
+	     << " trades is too short for ≥" << minTradesPerSlice << " trades per slice).\n";
+	  return r; // Not applied, non-gating skip
+	}
+
+      if (K_eff != K)
+	{
+	  os << "      [Slices] Adjusted K from " << K << " → " << K_eff
+	     << " to meet min slice length ≥ " << minTradesPerSlice << " trades.\n";
+	}
+
+      // --- Per-slice BCa (Annualized LB per slice) ---
+      const auto sliceLBsAnn = bootstrapReturnSlices(
+						     tradeReturns, K_eff, mNumResamples, mConfidenceLevel.getAsDouble(), annualizationFactor);
+
+      if (sliceLBsAnn.size() != K_eff)
+	{
+	  os << "      [Slices] Not applied (slicing failed internally for K=" << K_eff << ").\n";
+	  return r; 
+	}
+
+      r.applied  = true;
+      r.sliceLBs = sliceLBsAnn;
+
+      // --- Aggregate (median/min) and compute hurdle ---
+      auto lbs = r.sliceLBs;
+      std::sort(lbs.begin(), lbs.end());
+      r.medianLB = lbs[lbs.size() / 2];
+      r.minLB    = lbs.front();
+
+      const Num annualizedTrades = Num(bt->getEstimatedAnnualizedTrades());
+  
+      const auto H = makeCostStressHurdles<Num>(mHurdleCalculator,
+						oosSpreadStats,
+						annualizedTrades,
+						mEffectiveSlippageFloor);
+
+      os << "      [Slices] LBs (ann, %): ";
+      for (std::size_t i = 0; i < lbs.size(); ++i)
+	{
+	  os << (i ? ", " : "") << (lbs[i] * DecimalConstants<Num>::DecimalOneHundred);
+	}
+
+      printCostStressConcise<Num>(os, H, r.medianLB, "Slices", oosSpreadStats, false, 
+				  mHurdleCalculator.calculateRiskFreeHurdle());
+
+      // 1. Consistency: The "Typical" period must clear the high hurdle
+      const bool passConsistency = (r.medianLB > H.baseHurdle) && (r.medianLB > H.h_1q);
+
+      // 2. Survival: The "Worst" period must clear the floor (-5% annualized tolerance)
+      const Num survivalFloor = Num("-0.05"); 
+      const bool passSurvival = (r.minLB > survivalFloor);
+
+      r.pass = (passConsistency && passSurvival);
+
+      if (!r.pass)
+	{
+	  os << "      [Slices] ✗ FAIL (median slice LB ≤ hurdle or worst slice < -5%)\n";
+	}
+      else
+	{
+	  os << "      [Slices] ✓ PASS (median slice LB > hurdle)\n";
+	}
+
+      return r;
+    }
+
     /**
      * @brief Computes the "Required Return" thresholds.
      *
@@ -2244,71 +2558,54 @@ namespace palvalidator
       return {riskFreeHurdle, costBasedRequiredReturn, finalRequiredReturn};
     }
 
+
     /**
-     * @brief Standalone helper for BCa Max Drawdown analysis.
+     * @brief Structured BCa Max Drawdown analysis using Trade-Level (IID) resampling.
      *
      * Objective:
-     * Calculates the confidence intervals for the Maximum Drawdown statistic.
-     * Used primarily when a simple console print is needed (not part of the
-     * structured `PyramidResults` object).
-     *
-     * Arguments:
-     * metaReturns:  Return series.
-     * numTrades:    Trade count (sample size $n$).
-     * blockLength:  Block length $L$.
-     * outputStream: Logging stream.
+     * Calculates the confidence intervals for the Maximum Drawdown statistic by
+     * resampling discrete, full trades rather than arbitrary blocks of bars.
+     * This ensures the simulation accurately represents peak-to-trough equity 
+     * curves formed by actual trade sequences.
      */
-    void MetaStrategyAnalyzer::performDrawdownAnalysis(
-        const std::vector<Num>& metaReturns,
-        uint32_t numTrades,
-        size_t blockLength,
-        std::ostream& outputStream) const
+    DrawdownResults MetaStrategyAnalyzer::performDrawdownAnalysisForPyramid(
+        const std::vector<mkc_timeseries::Trade<Num>>& tradeReturns,
+        uint32_t numTrades) const
     {
-      if (numTrades > 0)
+      using mkc_timeseries::DecimalConstants;
+
+      if (numTrades == 0 || tradeReturns.empty())
         {
-          try
-            {
-              using BoundedDrawdowns = mkc_timeseries::BoundedDrawdowns<Num, concurrency::ThreadPoolExecutor<>>;
-       
-              // Create thread pool executor for parallel processing
-              concurrency::ThreadPoolExecutor<> executor;
-       
-              // Calculate drawdown bounds using BCa bootstrap with parallel execution
-              // Parameters: metaReturns, mNumResamples, mConfidenceLevel, numTrades, 5000, mConfidenceLevel, blockLength
-              auto drawdownResult = BoundedDrawdowns::bcaBoundsForDrawdownFractile(metaReturns,
-										   mNumResamples,
-										   mConfidenceLevel.getAsDouble(),
-										   static_cast<int>(numTrades),
-										   5000,
-										   mConfidenceLevel.getAsDouble(),
-										   blockLength,
-										   executor,
-										   IntervalType::ONE_SIDED_UPPER);
-
-              const Num qPct  = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;  // the dd percentile you targeted
-              const Num ciPct = mConfidenceLevel * DecimalConstants<Num>::DecimalOneHundred;  // the CI level
-
-	      outputStream << std::endl;
-              outputStream << "      Drawdown Analysis (BCa on q=" << qPct
-                           << "% percentile of max drawdown over " << numTrades << " trades):\n";
-              outputStream << "        Point estimate (q=" << qPct << "%ile): "
-                           << (drawdownResult.statistic * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-              outputStream << "        Two-sided " << ciPct << "% CI for that percentile: ["
-                           << (drawdownResult.lowerBound * DecimalConstants<Num>::DecimalOneHundred) << "%, "
-                           << (drawdownResult.upperBound * DecimalConstants<Num>::DecimalOneHundred) << "%]\n";
-              outputStream << "        " << ciPct << "% one-sided upper bound: "
-                           << (drawdownResult.upperBound * DecimalConstants<Num>::DecimalOneHundred)
-                           << "%  (i.e., with " << ciPct << "% confidence, the q=" << qPct
-                           << "%ile drawdown does not exceed this value)\n";
-            }
-          catch (const std::exception& e)
-            {
-              outputStream << "      Drawdown Analysis: Failed - " << e.what() << "\n";
-            }
+          return DrawdownResults(false, DecimalConstants<Num>::DecimalZero,
+                               DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
+                               "Skipped (no trades available)");
         }
-      else
+
+      try
         {
-          outputStream << "      Drawdown Analysis: Skipped (no trades available)\n";
+          using BoundedDrawdowns = mkc_timeseries::BoundedDrawdowns<Num, concurrency::ThreadPoolExecutor<>>;
+          concurrency::ThreadPoolExecutor<> executor;
+          
+          // Calculate drawdown bounds using BCa bootstrap with parallel execution
+          // Parameters: trades, numResamples, confidenceLevel, nTrades, nReps, ddConf, executor, intervalType
+          auto drawdownResult = BoundedDrawdowns::bcaBoundsForDrawdownFractile(
+              tradeReturns,
+              mNumResamples,
+              mConfidenceLevel.getAsDouble(),
+              static_cast<int>(numTrades),
+              1000,
+              mConfidenceLevel.getAsDouble(),
+              executor,
+              IntervalType::ONE_SIDED_UPPER
+              );
+
+          return DrawdownResults(true, drawdownResult.statistic, drawdownResult.lowerBound, drawdownResult.upperBound);
+        }
+      catch (const std::exception& e)
+        {
+          return DrawdownResults(false, DecimalConstants<Num>::DecimalZero,
+                               DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
+                               std::string("Failed - ") + e.what());
         }
     }
 
@@ -2385,7 +2682,7 @@ namespace palvalidator
               metaReturns,
               mNumResamples,
               mConfidenceLevel.getAsDouble(),
-              static_cast<int>(numTrades),
+              static_cast<int>(metaReturns.size()),
               5000,
               mConfidenceLevel.getAsDouble(),
               blockLength,

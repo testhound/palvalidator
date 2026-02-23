@@ -372,7 +372,34 @@ namespace mkc_timeseries
 
       return all;
     }
-    
+
+    /**
+     * @brief Extracts all closed Trade objects for bootstrap analysis.
+     * 
+     * Returns only closed positions. Open positions are excluded because:
+     *   1. They lack the terminal exit return that carries the strategy's edge
+     *   2. They are systematically shorter than their eventual duration
+     *   3. Including them contaminates trade-level statistics like win rate
+     *      and profit factor with incomplete outcomes
+     *
+     * For real-time exposure monitoring or current drawdown calculation, 
+     * use a separate method that includes open positions.
+     *
+     * @param strat Strategy pointer to extract closed trades from
+     * @return Vector of Trade objects, closed positions only
+     */
+    std::vector<Trade<Decimal>> 
+    getClosedTradeLevelReturns(StrategyPtr strat,
+			       bool applyCosts = false,
+			       Decimal costPerSide = DecimalConstants<Decimal>::DefaultEquitySlippage,
+			       bool exemptLimitExits = false) const 
+    {
+      // Extract only closed trades from position history
+      return strat->getStrategyBroker()
+	.getClosedPositionHistory()
+	.getTradeLevelReturns(applyCosts, costPerSide, exemptLimitExits);
+    }
+
     std::vector<ExpandedBarMetrics<Decimal>> getExpandedHighResReturns(StrategyPtr strat) const
     {
       std::vector<ExpandedBarMetrics<Decimal>> allMetrics;

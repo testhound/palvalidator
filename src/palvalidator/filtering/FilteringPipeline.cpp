@@ -100,9 +100,10 @@ namespace palvalidator::filtering
                                         bool applyFragileAdvice,
                                         FilteringSummary& summary,
                                         BootstrapFactory& bootstrapFactory,
-                                        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer)
+                                        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer,
+                                        bool tradeLevelBootstrapping)
     : mBacktestingStage()
-    , mBootstrapStage(confidenceLevel, numResamples, bootstrapFactory)
+    , mBootstrapStage(confidenceLevel, numResamples, bootstrapFactory, tradeLevelBootstrapping)
     , mHurdleStage(hurdleCalc)
     , mRobustnessStage(robustnessConfig, summary, bootstrapFactory)
     , mLSensitivityStage(lSensitivityConfig, numResamples, confidenceLevel, bootstrapFactory)
@@ -123,7 +124,7 @@ namespace palvalidator::filtering
   FilterDecision FilteringPipeline::executeForStrategy(StrategyAnalysisContext& ctx,
 						       std::ostream& os)
   {
-    using mkc_timeseries::DecimalConstants;
+using mkc_timeseries::DecimalConstants;
     using Num = palvalidator::filtering::Num;
 
     bool runAdvisoryStages = false;
@@ -165,10 +166,22 @@ namespace palvalidator::filtering
 	  tempFile.close();
 	}
     }
+
+    // Check if we should skip bootstrap analysis for insufficient trades in trade-level mode
+    constexpr std::size_t minTradesForBootstrap = 9;
+    if (mBootstrapStage.isTradeLevelBootStrapping() && ctx.tradeLevelReturns.size() < minTradesForBootstrap)
+    {
+      std::ostringstream reason;
+      reason << "Insufficient trades for trade-level bootstrapping: "
+             << ctx.tradeLevelReturns.size()
+             << " trades (minimum " << minTradesForBootstrap << " required)";
+      os << "✗ Strategy filtered out: " << reason.str() << "\n";
+      return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, reason.str());
+    }
     
     // Stage 2: Bootstrap Analysis
     auto bootstrap = mBootstrapStage.execute(ctx, os);
-    
+
     if (!bootstrap.computationSucceeded)
       {
 	std::string reason = bootstrap.failureReason.empty()
@@ -193,143 +206,58 @@ namespace palvalidator::filtering
       const Num lbAnnGeo  = bootstrap.annualizedLowerBoundGeo;
       const Num hurdleAnn = hurdle.finalRequiredReturn;
 
-      bootstrap.gateLBGeo       = lbAnnGeo;
+      bootstrap.gateLBGeo        = lbAnnGeo;
       bootstrap.gatePassedHurdle = (lbAnnGeo >= hurdleAnn);
       bootstrap.gatePolicy       = "AutoCI GeoLB >= hurdle";
     }
 
     // ============================================================================
-    // ADAPTIVE PROFIT FACTOR HURDLE - FDR CONTROL MECHANISM
+    // Stage 4: Centralized Validation
+    //   Gate 1: Annualized geometric mean lower bound > 0  (economic viability)
+    //   Gate 2: Profit factor lower bound >= 1.0           (BCa 95% LB, log-space bootstrap)
+    //   Gate 3: Profit factor median >= 1.10               (central tendency check)
+    //
+    // Rationale for PF hurdle = 1.0:
+    // The bootstrap is conducted in log-space (logPF). The BCa lower bound already
+    // adapts to uncertainty — wider bootstrap distributions push the bound lower,
+    // so noisy/sparse strategies are naturally penalised without any additional
+    // SE-scaled hurdle. A floor of exp(0) = 1.0 means we require 95% confidence
+    // that logPF > 0, i.e., the strategy is profitable.
+    //
+    // A secondary k*SE hurdle is intentionally not applied here because:
+    //   (a) the BCa LB already provides uncertainty-scaled conservatism, and
+    //       adding k*SE would double-penalise noisy strategies (once via a lower
+    //       LB, and again via a higher hurdle); and
+    //   (b) trade-level bootstrapping and slippage embedded in trade returns
+    //       make the overall pipeline conservative enough without a second penalty.
+    //
+    // The median PF >= 1.10 check (Gate 3) provides an independent central-tendency
+    // guard that does not interact with the LB's uncertainty scaling.
     // ============================================================================
-    //
-    // OVERVIEW:
-    // The profit factor (PF) hurdle is calculated as: PF_hurdle = exp(k * se_boot)
-    // where k is a "skepticism factor" that adapts based on sample size.
-    //
-    // WHY ADAPTIVE k?
-    // Larger sample sizes reduce bootstrap instability, making false positives
-    // appear more consistent. To maintain FDR <0.1% across all sample sizes,
-    // we increase k (raising the hurdle) as n increases.
-    //
-    // MECHANISM:
-    // The hurdle is set in log-space as: log(PF) must exceed k * se_boot
-    // This means the strategy must be at least k standard errors above breakeven.
-    //
-    // Example with n=27, se_boot=0.20, k=0.5:
-    //   Hurdle = exp(0.5 × 0.20) = exp(0.10) = 1.105
-    //   Strategy needs PF > 1.105 (10.5% above breakeven)
-    //
-    // Example with n=100, se_boot=0.104, k=1.0:
-    //   Hurdle = exp(1.0 × 0.104) = exp(0.104) = 1.110
-    //   Strategy needs PF > 1.110 (11% above breakeven)
-    //
-    // SKEPTICISM FACTOR SCHEDULE:
-    //   n ≤ 60:  k = 0.5  (mild - instability provides control)
-    //   n ≤ 80:  k = 0.75 (moderate - compensating for stability)
-    //   n ≤ 100: k = 1.0  (standard - requires 1 SE above breakeven)
-    //   n > 100: k = 1.5  (strict - strong FDR control needed)
-    //
-    // INTERACTION WITH GEOMETRIC MEAN:
-    // Both metrics must pass in ALL 10/10 bootstrap trials:
-    //   1. Geometric mean lower bound > 0 (economic viability)
-    //   2. Profit factor > exp(k * se_boot) (statistical significance)
-    //
-    // For a false positive (no real edge):
-    //   P(GM > 0 in single trial) ≈ 60-85% (depending on n)
-    //   P(PF > hurdle in single trial) ≈ 30-60% (depending on n and k)
-    //   P(both pass in single trial) ≈ 25-50%
-    //   P(both pass 10/10 trials) ≈ 0.0006-0.3% (depending on n)
-    //
-    // EMPIRICAL VALIDATION:
-    // With mixed sample size distribution (median n=27):
-    //   - Expected false positives in 112 survivors: ~0.1-0.15 strategies
-    //   - Overall FDR: ~0.1% (essentially zero false positives)
-    //
-    // This has been empirically validated (e.g., EWZ ticker analysis):
-    //   - 112/116 survivors (96.6%) passed at 100% rate (10/10)
-    //   - Only 4 survivors (3.4%) passed at 90% rate (9/10)
-    //   - Bimodal distribution confirms excellent signal/noise separation
-    //
-    // FUTURE MAINTAINERS:
-    // - The k schedule in getSkepticismFactor() is calibrated for FDR <0.1%
-    // - Reducing k will increase FDR (more false positives)
-    // - Increasing k will decrease power (reject more true positives)
-    // - The current schedule is empirically validated - change with caution
-    // - If you modify, re-run FDR simulations to validate
-    //
-    // ============================================================================
-    // Stage 4: Centralized Validation (Gate: LB Geo > 0 AND Strict PF Validation)
     ValidationPolicy policy(hurdle.finalRequiredReturn);
 
-    // Define skepticism factor k based on sample size
-    const double k = getSkepticismFactor(ctx.highResReturns.size());
-    const double se = bootstrap.pfAutoCIChosenSeBoot;
+    const Num pfHurdle            = DecimalConstants<Num>::createDecimal("1.0");
+    const Num requiredPFMedianHurdle = DecimalConstants<Num>::createDecimal("1.10");
 
-    /**
-     * @section PROFIT_FACTOR_VALIDATION Rationale for Dynamic Volatility Hurdle
-     *
-     * The Profit Factor (PF) validation stage uses a dynamic hurdle rather than a 
-     * static 1.10 floor to account for "Estimation Risk" inherent in daily 
-     * mark-to-market (MTM) returns.
-     *
-     * 1. Log-Space Bootstrap Mechanics:
-     * Our bootstrap engine (LogProfitFactorFromLogBarsStat_LogPF) operates in 
-     * logarithmic space: log(PF) = log(GrossWins) - log(GrossLosses)[cite: 6]. 
-     * In this space, a breakeven strategy has a mean of 0.0[cite: 6].
-     *
-     * 2. The Standard Error (SE) as a Risk Metric:
-     * The 'se_boot' captured from the bootstrap tournament is the standard 
-     * deviation of the bootstrap replicates. It represents the 
-     * uncertainty of the Profit Factor estimate given the sample size (n) and 
-     * the volatility of the daily returns.
-     *
-     * 3. Why a Dynamic Hurdle?
-     * A fixed 1.10 hurdle is "blind" to volatility. A strategy with 
-     * high daily MTM noise will have a wide bootstrap distribution (high SE). 
-     * The dynamic hurdle requires the Lower Bound (LB) to be at least 'k' 
-     * standard errors above the breakeven line.
-     *
-     * Hurdle Formula: exp(k * se_boot)
-     *
-     * - If se_boot is low (consistent returns): The hurdle stays near 1.10.
-     * - If se_boot is high (noisy/lumpy returns): The hurdle rises (e.g., to 1.30+), 
-     * forcing a higher margin of safety to compensate for fragility.
-     *
-     * 4. Implementation Details:
-     * - Skepticism Factor (k = 0.5): A balanced multiplier that ensures the 
-     * strategy's edge is statistically significant relative to its noise.
-     * - Hard Floor (1.10): Prevents the filter from accepting "smooth" strategies 
-     * with paper-thin margins that might be eaten by slippage.
-     *
-     * This dual-gate approach (max(1.10, exp(k*se))) ensures that we only discover 
-     * strategies that are both profitable and robust against the specific path of 
-     * daily returns observed in the backtest.
-     */
-
-    // 1. Calculate the dynamic hurdle based on bootstrap volatility
-    const double dynamicHurdleVal = std::exp(k * se);
-
-    // 2. Set a hard minimum floor to ensure we don't accept 'smooth' marginals
-    const Num minRequiredFloor = DecimalConstants<Num>::createDecimal("1.10");
-  
-    // The dynamic hurdle is the linear equivalent of being k sigmas above breakeven (0) in log-space
-    const Num dynamicPFHurdle = Num(std::max(num::to_double(minRequiredFloor), dynamicHurdleVal));
-
-    {
-      os << "Sample size: " << ctx.highResReturns.size()
-	 << ", Skepticism factor k: " << k
-       << ", Bootstrap SE: " << se
-	 << ", Dynamic hurdle: " << dynamicHurdleVal << "\n";
-    }
+    if (mBootstrapStage.isTradeLevelBootStrapping())
+      {
+	os << "Number of trades: " << ctx.tradeLevelReturns.size()
+	   << ", PF hurdle: " << pfHurdle << "\n";
+      }
+    else
+      {
+	os << "Sample size: " << ctx.highResReturns.size()
+	   << ", PF hurdle: " << pfHurdle << "\n";
+      }
 
     // --- Helper Lambda for Consistent Logging ---
     auto logGateMetrics = [&](const std::string& status) {
       os << "   [" << status << "] Gate Validation Metrics:\n"
          << "      1. Annualized Geo LB: " << (bootstrap.annualizedLowerBoundGeo * 100).getAsDouble() << "%\n";
-      
+
       if (bootstrap.lbProfitFactor.has_value()) {
-          os << "      2. Profit Factor LB:  " << *bootstrap.lbProfitFactor 
-             << " (Hurdle: " << dynamicPFHurdle << ")\n";
+          os << "      2. Profit Factor LB:  " << *bootstrap.lbProfitFactor
+             << " (Hurdle: " << pfHurdle << ")\n";
       } else {
           os << "      2. Profit Factor LB:  N/A\n";
       }
@@ -354,28 +282,24 @@ namespace palvalidator::filtering
       {
          os << "✗ Strategy filtered out: Profit Factor statistics are unavailable.\n"
             << "   ↳ Validation strictly requires Profit Factor metrics (likely insufficient trade count).\n";
-         
+
          logGateMetrics("FAIL");
          return FilterDecision::Fail(FilterDecisionType::FailInsufficientData,
                                      "Profit Factor statistics unavailable");
       }
 
     // --- Hurdle 3: Profit Factor Thresholds ---
-    //const Num requiredPFHurdle       = DecimalConstants<Num>::createDecimal("0.995");
-    const Num requiredPFMedianHurdle = DecimalConstants<Num>::createDecimal("1.10");
-
     const Num lbPF = *bootstrap.lbProfitFactor;
-    
+
     // Check A: Lower Bound
     if (lbPF <= DecimalConstants<Num>::DecimalZero)
       {
-        os << "   [HurdleAnalysis] Warning: PF Lower Bound (" << lbPF 
+        os << "   [HurdleAnalysis] Warning: PF Lower Bound (" << lbPF
            << ") is non-positive.\n";
       }
 
-    //const bool isProfitFactorStrong = (lbPF >= requiredPFHurdle);
-    const bool isProfitFactorStrong = (lbPF >= dynamicPFHurdle);
-    
+    const bool isProfitFactorStrong = (lbPF >= pfHurdle);
+
     // Check B: Median
     bool isMedianPFStrong = false;
     if (bootstrap.medianProfitFactor.has_value())
@@ -385,10 +309,10 @@ namespace palvalidator::filtering
     if (!isProfitFactorStrong || !isMedianPFStrong)
       {
 	os << "✗ Strategy filtered out: Profit Factor validation failed.\n";
-  
+
 	if (!isProfitFactorStrong)
-          os << "   ↳ Failure: PF Lower Bound " << lbPF << " < Volatility Hurdle " << dynamicPFHurdle << "\n";
-      
+          os << "   ↳ Failure: PF Lower Bound " << lbPF << " < Hurdle " << pfHurdle << "\n";
+
 	if (!isMedianPFStrong && bootstrap.medianProfitFactor.has_value())
           os << "   ↳ Failure: PF Median " << *bootstrap.medianProfitFactor << " < " << requiredPFMedianHurdle << "\n";
 

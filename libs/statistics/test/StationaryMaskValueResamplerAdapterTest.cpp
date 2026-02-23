@@ -6,10 +6,12 @@
 #include <cmath>
 #include <cstddef>
 
-#include "StationaryMaskResamplers.h"  // contains StationaryMaskValueResampler and the Adapter
+#include "StationaryMaskResamplers.h" 
 #include "number.h"
 #include "randutils.hpp"
+#include "TradeResampling.h"
 
+using mkc_timeseries::Trade;
 using palvalidator::resampling::StationaryMaskValueResampler;
 using palvalidator::resampling::StationaryMaskIndexResampler;
 
@@ -222,4 +224,414 @@ TEST_CASE("StationaryMaskValueResamplerAdapter: L=1 yields IID-like no-continuat
     const double sd = std::sqrt(N * p * (1.0 - p));
     // 6σ is very generous and should be plenty stable across platforms/seeds.
     REQUIRE(std::abs(static_cast<double>(continuations) - mu) <= 6.0 * sd);
+}
+
+TEST_CASE("StationaryMaskValueResamplerAdapter::operator() works with Trade<Decimal>",
+          "[Resampler][Adapter][Trade][operator()]")
+{
+    using D = num::DefaultNumber;
+    
+    // Create a sample of 50 trades with varying durations (1-5 bars each)
+    std::vector<Trade<D>> trades;
+    trades.reserve(50);
+    
+    for (std::size_t i = 0; i < 50; ++i) {
+        std::size_t duration = 1 + (i % 5);  // 1-5 bars
+        std::vector<D> returns;
+        for (std::size_t j = 0; j < duration; ++j) {
+            returns.push_back(D(0.01 + 0.001 * static_cast<int>(i)));
+        }
+        trades.emplace_back(std::move(returns));
+    }
+    
+    const std::size_t m = 50;  // Resample to same size
+    const std::size_t L = 3;
+    
+    randutils::seed_seq_fe128 seed{2025u, 12u, 1u, 42u};
+    randutils::mt19937_rng rng(seed);
+    
+    // Create adapter for Trade<D> — this tests template instantiation
+    MaskValueResamplerAdapter<Trade<D>> adapter(L);
+    
+    // Resample
+    std::vector<Trade<D>> resampled = adapter(trades, m, rng);
+    
+    REQUIRE(resampled.size() == m);
+    
+    // Verify all resampled trades are valid (non-empty returns)
+    for (const auto& trade : resampled) {
+        REQUIRE(trade.getDuration() > 0);
+        REQUIRE(!trade.getDailyReturns().empty());
+    }
+}
+
+TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife with Trade->Decimal statistic",
+          "[Resampler][Adapter][Trade][Jackknife]")
+{
+    using D = num::DefaultNumber;
+    
+    // Create constant-return trades: every trade has identical returns.
+    // This allows us to predict the jackknife output precisely, similar to
+    // the constant-series test for bar-level bootstrap.
+    const std::size_t n = 60;
+    std::vector<Trade<D>> trades;
+    trades.reserve(n);
+    
+    const D constantReturn = D(0.05);
+    for (std::size_t i = 0; i < n; ++i) {
+        // Each trade: 2 bars, both with return = 0.05
+        std::vector<D> returns = {constantReturn, constantReturn};
+        trades.emplace_back(std::move(returns));
+    }
+    
+    MaskValueResamplerAdapter<Trade<D>> adapter(/*L=*/3);
+    
+    // Statistic: mean of flattened returns (Trade<D> -> D)
+    // This tests the GENERIC jackknife overload, not the traditional one,
+    // because the return type (D) differs from the sample type (Trade<D>).
+    auto meanFlattenedStat = [](const std::vector<Trade<D>>& sampledTrades) -> D {
+        std::vector<D> flatReturns;
+        for (const auto& trade : sampledTrades) {
+            const auto& returns = trade.getDailyReturns();
+            flatReturns.insert(flatReturns.end(), returns.begin(), returns.end());
+        }
+        
+        if (flatReturns.empty()) return D(0);
+        
+        double sum = 0.0;
+        for (const auto& r : flatReturns) {
+            sum += num::to_double(r);
+        }
+        return D(sum / flatReturns.size());
+    };
+    
+    const std::vector<D> jk = adapter.jackknife(trades, meanFlattenedStat);
+    
+    // Non-overlapping Künsch jackknife: numBlocks = floor(n / L_eff)
+    // n=60, L=3 → L_eff = min(3, 60-2) = 3 → numBlocks = floor(60/3) = 20
+    const std::size_t minKeep = 2;
+    const std::size_t L_eff = std::min<std::size_t>(adapter.getL(), n - minKeep);
+    const std::size_t numBlocks = n / L_eff;
+    
+    REQUIRE(jk.size() == numBlocks);
+    REQUIRE(jk.size() == 20);
+    
+    // Every pseudo-value should equal the constant (0.05) because deleting
+    // any block of constant-return trades still leaves all-constant returns
+    for (const auto& v : jk) {
+        REQUIRE(num::to_double(v) == Catch::Approx(0.05).epsilon(1e-12));
+    }
+}
+
+TEST_CASE("StationaryMaskValueResamplerAdapter::jackknife shows variation on heterogeneous trades",
+          "[Resampler][Adapter][Trade][Jackknife][Variation]")
+{
+    using D = num::DefaultNumber;
+    
+    // Create trades with increasing returns: early trades have low returns,
+    // later trades have high returns. Deleting different blocks should
+    // produce different jackknife statistics — analogous to the monotone-series
+    // test for bar-level bootstrap.
+    const std::size_t n = 90;
+    std::vector<Trade<D>> trades;
+    trades.reserve(n);
+    
+    for (std::size_t i = 0; i < n; ++i) {
+        // Return increases with trade index
+        D tradeReturn = D(0.001 * static_cast<int>(i));
+        std::vector<D> returns = {tradeReturn, tradeReturn};
+        trades.emplace_back(std::move(returns));
+    }
+    
+    MaskValueResamplerAdapter<Trade<D>> adapter(/*L=*/6);
+    
+    // Statistic: mean of flattened returns
+    auto meanStat = [](const std::vector<Trade<D>>& sampledTrades) -> D {
+        std::vector<D> flatReturns;
+        for (const auto& trade : sampledTrades) {
+            const auto& returns = trade.getDailyReturns();
+            flatReturns.insert(flatReturns.end(), returns.begin(), returns.end());
+        }
+        
+        if (flatReturns.empty()) return D(0);
+        
+        double sum = 0.0;
+        for (const auto& r : flatReturns) sum += num::to_double(r);
+        return D(sum / flatReturns.size());
+    };
+    
+    const std::vector<D> jk = adapter.jackknife(trades, meanStat);
+    
+    // n=90, L=6 → L_eff = min(6, 90-2) = 6 → numBlocks = floor(90/6) = 15
+    const std::size_t expectedBlocks = 15;
+    REQUIRE(jk.size() == expectedBlocks);
+    
+    // Find min and max pseudo-values
+    double minv = +std::numeric_limits<double>::infinity();
+    double maxv = -std::numeric_limits<double>::infinity();
+    
+    for (const auto& v : jk) {
+        double d = num::to_double(v);
+        REQUIRE(std::isfinite(d));
+        minv = std::min(minv, d);
+        maxv = std::max(maxv, d);
+    }
+    
+    // Variation: deleting early blocks (low returns) should produce higher
+    // jackknife stats than deleting later blocks (high returns)
+    REQUIRE(maxv > minv);
+}
+
+TEST_CASE("StationaryMaskValueResamplerAdapter::Trade type preserves trade structure",
+          "[Resampler][Adapter][Trade][Structure]")
+{
+    using D = num::DefaultNumber;
+    
+    // Create distinctive trades so we can verify structure preservation.
+    // Each resampled trade should match one of the originals exactly —
+    // no partial trades or corrupted structures.
+    std::vector<Trade<D>> trades;
+    
+    // Trade 0: 3-bar winner
+    trades.emplace_back(std::vector<D>{D(0.02), D(0.03), D(0.01)});
+    
+    // Trade 1: 2-bar loser
+    trades.emplace_back(std::vector<D>{D(-0.01), D(-0.02)});
+    
+    // Trade 2: 1-bar winner
+    trades.emplace_back(std::vector<D>{D(0.05)});
+    
+    // Trade 3: 4-bar mixed
+    trades.emplace_back(std::vector<D>{D(0.01), D(-0.01), D(0.02), D(-0.01)});
+    
+    MaskValueResamplerAdapter<Trade<D>> adapter(/*L=*/2);
+    
+    randutils::seed_seq_fe128 seed{2025u, 12u, 2u, 1u};
+    randutils::mt19937_rng rng(seed);
+    
+    // Resample
+    std::vector<Trade<D>> resampled = adapter(trades, 10, rng);
+    
+    REQUIRE(resampled.size() == 10);
+    
+    // Each resampled trade should match one of the original trades exactly.
+    // Trade-level resampling preserves complete trade structure (frozen path).
+    for (const auto& resampledTrade : resampled) {
+        bool matchesOriginal = false;
+        
+        for (const auto& originalTrade : trades) {
+            if (resampledTrade == originalTrade) {
+                matchesOriginal = true;
+                break;
+            }
+        }
+        
+        REQUIRE(matchesOriginal);
+    }
+}
+
+TEST_CASE("StationaryMaskValueResamplerAdapter::Trade jackknife with small sample",
+          "[Resampler][Adapter][Trade][Jackknife][SmallSample]")
+{
+    using D = num::DefaultNumber;
+    
+    // Small sample: n=20 (minimum realistic size per specification).
+    // Must not crash or produce degenerate results.
+    const std::size_t n = 20;
+    std::vector<Trade<D>> trades;
+    trades.reserve(n);
+    
+    for (std::size_t i = 0; i < n; ++i) {
+        std::vector<D> returns = {D(0.02)};
+        trades.emplace_back(std::move(returns));
+    }
+    
+    MaskValueResamplerAdapter<Trade<D>> adapter(/*L=*/3);
+    
+    auto countTradesStat = [](const std::vector<Trade<D>>& sampledTrades) -> D {
+        return D(static_cast<double>(sampledTrades.size()));
+    };
+    
+    const std::vector<D> jk = adapter.jackknife(trades, countTradesStat);
+    
+    // n=20, L=3 → L_eff = min(3, 20-2) = 3 → numBlocks = floor(20/3) = 6
+    REQUIRE(jk.size() == 6);
+    
+    // Each pseudo-value should be n - L_eff = 20 - 3 = 17
+    for (const auto& v : jk) {
+        REQUIRE(num::to_double(v) == Catch::Approx(17.0).epsilon(1e-12));
+    }
+}
+
+TEST_CASE("StationaryMaskValueResamplerAdapter::Trade with large L clamps to n-minKeep",
+          "[Resampler][Adapter][Trade][Jackknife][Edge]")
+{
+    using D = num::DefaultNumber;
+    
+    // n=10, L=1000 → L_eff = min(1000, 10-2) = 8
+    // This mirrors the bar-level test but with trades.
+    std::vector<Trade<D>> trades;
+    for (std::size_t i = 0; i < 10; ++i) {
+        trades.emplace_back(std::vector<D>{D(static_cast<double>(i))});
+    }
+    
+    MaskValueResamplerAdapter<Trade<D>> adapter(/*L=*/1000);
+    
+    auto sumStat = [](const std::vector<Trade<D>>& t) -> D {
+        double sum = 0.0;
+        for (const auto& trade : t) {
+            for (const auto& r : trade.getDailyReturns()) {
+                sum += num::to_double(r);
+            }
+        }
+        return D(sum);
+    };
+    
+    auto jk = adapter.jackknife(trades, sumStat);
+    
+    // n=10, L_eff=8 → numBlocks = floor(10/8) = 1
+    REQUIRE(jk.size() == 1);
+    
+    // The one pseudo-value deletes trades [0,1,2,3,4,5,6,7]
+    // Keeps trades [8,9]
+    // Sum = 8.0 + 9.0 = 17.0
+    REQUIRE(num::to_double(jk[0]) == Catch::Approx(17.0).epsilon(1e-12));
+}
+
+TEST_CASE("StationaryMaskValueResamplerAdapter: Trade L=1 yields IID-like no-continuation",
+          "[Resampler][Adapter][Trade][L=1][IID]")
+{
+    using D = num::DefaultNumber;
+    
+    // Create distinctive trades with unique signatures so we can detect
+    // block continuation vs. independent draws.
+    std::vector<Trade<D>> trades;
+    for (std::size_t i = 0; i < 100; ++i) {
+        D uniqueReturn = D(static_cast<double>(i));
+        trades.emplace_back(std::vector<D>{uniqueReturn});
+    }
+    
+    MaskValueResamplerAdapter<Trade<D>> adapter(/*L=*/1);
+    
+    randutils::seed_seq_fe128 seed{2025u, 12u, 3u, 1u};
+    randutils::mt19937_rng rng(seed);
+    
+    // Generate long replicate to get good signal
+    std::vector<Trade<D>> resampled = adapter(trades, 5000, rng);
+    
+    REQUIRE(resampled.size() == 5000);
+    
+    // With L=1, each position is an independent random draw.
+    // Count sequential duplicates (same trade appears twice in a row).
+    std::size_t consecutiveDuplicates = 0;
+    for (std::size_t i = 1; i < resampled.size(); ++i) {
+        if (resampled[i] == resampled[i-1]) {
+            ++consecutiveDuplicates;
+        }
+    }
+    
+    // Expected: p = 1/100 (chance of drawing same trade by coincidence)
+    // Binomial(4999, 1/100) → mean ≈ 50, sd ≈ 7
+    const double p = 1.0 / 100.0;
+    const double N = 4999.0;
+    const double mu = N * p;
+    const double sd = std::sqrt(N * p * (1.0 - p));
+    
+    // 6σ band, same as bar-level L=1 test
+    REQUIRE(std::abs(static_cast<double>(consecutiveDuplicates) - mu) <= 6.0 * sd);
+}
+
+TEST_CASE("StationaryMaskValueResamplerAdapter::Trade jackknife delegates to generic overload",
+          "[Resampler][Adapter][Trade][Jackknife][Overload]")
+{
+    using D = num::DefaultNumber;
+    
+    // This test explicitly verifies that the GENERIC jackknife overload
+    // (the template<class StatFunc> version) is selected when the statistic
+    // returns a different type than the sample type.
+    
+    std::vector<Trade<D>> trades;
+    for (std::size_t i = 0; i < 30; ++i) {
+        trades.emplace_back(std::vector<D>{D(0.01), D(0.02)});
+    }
+    
+    MaskValueResamplerAdapter<Trade<D>> adapter(/*L=*/3);
+    
+    // Lambda: Trade<D> -> D (different return type)
+    // This MUST call the generic overload, not the traditional one.
+    auto lambda = [](const std::vector<Trade<D>>& t) -> D {
+        return D(static_cast<double>(t.size()));
+    };
+    
+    // This should compile and call the generic overload via SFINAE
+    auto jk = adapter.jackknife(trades, lambda);
+    
+    // Verify result type is std::vector<D>, not std::vector<Trade<D>>
+    static_assert(std::is_same<decltype(jk), std::vector<D>>::value,
+                  "Jackknife should return std::vector<D> for Trade->D statistic");
+    
+    // n=30, L=3 → numBlocks = 10
+    REQUIRE(jk.size() == 10);
+    
+    // Each pseudo-value should be 30 - 3 = 27
+    for (const auto& v : jk) {
+        REQUIRE(num::to_double(v) == Catch::Approx(27.0).epsilon(1e-12));
+    }
+}
+
+TEST_CASE("StationaryMaskValueResamplerAdapter::Trade simulates computeFromTrades pattern",
+          "[Resampler][Adapter][Trade][Integration]")
+{
+    using D = num::DefaultNumber;
+    
+    // Simulate the real-world pattern where a statistic class has both
+    // operator()(const vector<D>&) and computeFromTrades(const vector<Trade<D>>&).
+    // This is how production code will use trade-level bootstrap.
+    
+    struct MockLogProfitFactorStat
+    {
+        D operator()(const std::vector<D>& flatReturns) const
+        {
+            // Simplified: just compute mean of returns
+            if (flatReturns.empty()) return D(0);
+            double sum = 0.0;
+            for (const auto& r : flatReturns) sum += num::to_double(r);
+            return D(sum / flatReturns.size());
+        }
+        
+        D computeFromTrades(const std::vector<Trade<D>>& trades) const
+        {
+            std::vector<D> flatReturns;
+            for (const auto& trade : trades) {
+                const auto& returns = trade.getDailyReturns();
+                flatReturns.insert(flatReturns.end(), returns.begin(), returns.end());
+            }
+            return (*this)(flatReturns);  // Delegate to operator()
+        }
+    };
+    
+    // Create sample trades
+    std::vector<Trade<D>> trades;
+    for (std::size_t i = 0; i < 27; ++i) {
+        std::vector<D> returns = {D(0.02), D(0.03)};
+        trades.emplace_back(std::move(returns));
+    }
+    
+    MockLogProfitFactorStat stat;
+    MaskValueResamplerAdapter<Trade<D>> adapter(/*L=*/3);
+    
+    // Lambda wrapping computeFromTrades (real-world pattern)
+    auto tradeStat = [&stat](const std::vector<Trade<D>>& t) -> D {
+        return stat.computeFromTrades(t);
+    };
+    
+    auto jk = adapter.jackknife(trades, tradeStat);
+    
+    // n=27, L=3 → numBlocks = 9
+    REQUIRE(jk.size() == 9);
+    
+    // All pseudo-values should be (0.02 + 0.03) / 2 = 0.025
+    for (const auto& v : jk) {
+        REQUIRE(num::to_double(v) == Catch::Approx(0.025).epsilon(1e-12));
+    }
 }

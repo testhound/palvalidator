@@ -5,6 +5,7 @@
 #include "analysis/StatisticalTypes.h"
 #include "DateRange.h"
 #include "TimeFrame.h"
+#include "TradeResampling.h"
 #include <memory>
 #include <vector>
 #include <optional>
@@ -29,6 +30,8 @@ namespace palvalidator
     using mkc_timeseries::Portfolio;
     using mkc_timeseries::Security;
     using mkc_timeseries::PalStrategy;
+    using mkc_timeseries::Trade;
+    
     using Num = num::DefaultNumber;
     using RiskParameters = palvalidator::utils::RiskParameters;
     using RobustnessChecksConfig = palvalidator::analysis::RobustnessChecksConfig<Num>;
@@ -251,7 +254,8 @@ namespace palvalidator
       std::shared_ptr<PalStrategy<Num>> clonedStrategy;
       std::shared_ptr<BackTester<Num>> backtester;
       std::vector<Num> highResReturns;
-
+      std::vector<Trade<Num>> tradeLevelReturns;
+      
       // Analysis parameters / outputs
       size_t blockLength{0};
       double annualizationFactor{0.0};

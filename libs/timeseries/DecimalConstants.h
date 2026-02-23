@@ -33,6 +33,7 @@ namespace mkc_timeseries
       static Decimal TwoThirds;
       static Decimal TenPercent;
       static Decimal TwentyPercent;
+      static Decimal DefaultEquitySlippage;
       
       static Decimal createDecimal (const std::string& valueString)
       {
@@ -63,11 +64,14 @@ namespace mkc_timeseries
   template <class Decimal> Decimal 
     DecimalConstants<Decimal>::DecimalMinusThree(DecimalConstants<Decimal>::createDecimal("-3.0"));
 
-  template <class Decimal> Decimal DecimalConstants<Decimal>::DecimalOne(1.0);
+  template <class Decimal> Decimal DecimalConstants<Decimal>::DecimalOne(DecimalConstants<Decimal>::createDecimal("1.0"));
   template <class Decimal> Decimal 
     DecimalConstants<Decimal>::DecimalMinusOne(DecimalConstants<Decimal>::createDecimal("-1.0"));
   template <class Decimal> Decimal 
     DecimalConstants<Decimal>::DecimalOnePointFive(DecimalConstants<Decimal>::createDecimal("1.5"));
+
+    template <class Decimal> Decimal 
+    DecimalConstants<Decimal>::DefaultEquitySlippage(DecimalConstants<Decimal>::createDecimal("0.001"));
 
     template <class Decimal> Decimal 
     DecimalConstants<Decimal>::DecimalOnePointSevenFive(DecimalConstants<Decimal>::createDecimal("1.75"));

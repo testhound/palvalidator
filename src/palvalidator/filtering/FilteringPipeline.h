@@ -61,7 +61,8 @@ namespace palvalidator::filtering
                            bool applyFragileAdvice,
                            FilteringSummary& summary,
                            BootstrapFactory& bootstrapFactory,
-                           std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer);
+                           std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer,
+                           bool tradeLevelBootstrapping = false);
 
     /**
      * @brief Execute complete filtering pipeline for a single strategy

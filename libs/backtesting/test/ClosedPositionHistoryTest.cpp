@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp> // For Catch::Approx
 #include <catch2/matchers/catch_matchers_string.hpp>  // For string matching in exceptions
+#include "TradingVolume.h"
 #include "TimeSeriesCsvReader.h"
 #include "ClosedPositionHistory.h"
 #include "TimeSeriesIndicators.h"
@@ -12,7 +14,10 @@ using boost::posix_time::ptime;
 using boost::posix_time::time_from_string;
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
+using boost::posix_time::hours;
+using boost::posix_time::minutes;
 
+using D = DecimalType;
 const static std::string myCornSymbol("C2");
 
 
@@ -153,6 +158,145 @@ DecimalType getLnReturn(const DecimalType& entryPrice, const DecimalType exitPri
   double lnOfReturn = std::log(lnArg.getAsDouble());
   return DecimalType(lnOfReturn);
 }
+
+// Helper to create a mock long position with bar history for testing
+namespace
+{
+  std::shared_ptr<TradingPosition<D>> 
+  createMockLongPosition(const std::string& symbol,
+			 const ptime& entryTime,
+			 D entryPrice,
+			 D exitPrice,
+			 const std::vector<D>& barCloses)
+  {
+    // Entry happens at open. The entry bar's close is the first MTM point.
+    D entryBarClose = barCloses.empty() ? entryPrice : barCloses[0];
+    
+    // Create entry bar - ensure OHLC constraints are met
+    D high = entryPrice > entryBarClose ? entryPrice : entryBarClose;
+    D low = entryPrice < entryBarClose ? entryPrice : entryBarClose;
+    
+    OHLCTimeSeriesEntry<D> entryBar(
+        entryTime.date(),
+        entryPrice,              // open
+        high,                    // high (must be >= open and close)
+        low,                     // low (must be <= open and close)
+        entryBarClose,          // close
+        D(100.0),                // volume as Decimal
+        TimeFrame::DAILY
+        );
+    
+    auto pos = std::make_shared<TradingPositionLong<D>>(
+    			symbol,
+    			entryPrice,
+    			entryBar,
+    			TradingVolume(1, TradingVolume::SHARES)
+    			);
+    
+    // Add bar history - each subsequent bar except the last one
+    ptime currentTime = entryTime;
+    for (size_t i = 1; i < barCloses.size(); ++i) {  // Start from 1, not 0
+      currentTime += boost::posix_time::hours(24);
+      OHLCTimeSeriesEntry<D> bar(currentTime.date(),
+     barCloses[i],    // open (not used in return calc)
+     barCloses[i],    // high
+     barCloses[i],    // low
+     barCloses[i],    // close
+     D(100.0),        // volume as Decimal
+     TimeFrame::DAILY);
+      
+      pos->addBar(bar);
+    }
+    
+    // Close the position on the last bar's date
+    currentTime += boost::posix_time::hours(24);
+    pos->ClosePosition(currentTime.date(), exitPrice);
+    
+    return pos;
+  }
+
+  std::shared_ptr<TradingPosition<D>>
+  createMockShortPosition(const std::string& symbol,
+			  const ptime& entryTime,
+			  D entryPrice,
+			  D exitPrice,
+			  const std::vector<D>& barCloses)
+  {
+    D entryBarClose = barCloses.empty() ? entryPrice : barCloses[0];
+    
+    // Ensure OHLC constraints are met
+    D high = entryPrice > entryBarClose ? entryPrice : entryBarClose;
+    D low = entryPrice < entryBarClose ? entryPrice : entryBarClose;
+    
+    OHLCTimeSeriesEntry<D> entryBar(entryTime.date(),
+        entryPrice,              // open
+        high,                    // high
+        low,                     // low
+        entryBarClose,          // close
+        D(100.0),                // volume as Decimal
+        TimeFrame::DAILY);
+    
+    auto pos = std::make_shared<TradingPositionShort<D>>(
+    			 symbol,
+    			 entryPrice,
+    			 entryBar,
+    			 TradingVolume(1, TradingVolume::SHARES)
+    			 );
+    
+    ptime currentTime = entryTime;
+    for (size_t i = 1; i < barCloses.size(); ++i) {  // Start from 1, not 0
+      currentTime += boost::posix_time::hours(24);
+      OHLCTimeSeriesEntry<D> bar(currentTime,
+     barCloses[i],
+     barCloses[i],
+     barCloses[i],
+     barCloses[i],
+     D(100.0),        // volume as Decimal
+     TimeFrame::DAILY);
+      
+      pos->addBar(bar);
+    }
+    
+    currentTime += boost::posix_time::hours(24);
+    pos->ClosePosition(currentTime.date(), exitPrice);
+    
+    return pos;
+  }
+
+  std::shared_ptr<TradingPosition<D>>
+  createSameBarPosition(const std::string& symbol,
+			const ptime& entryTime,
+			D entryPrice,
+			D exitPrice)
+  {
+    // Ensure OHLC constraints for same-bar position
+    D high = entryPrice > exitPrice ? entryPrice : exitPrice;
+    D low = entryPrice < exitPrice ? entryPrice : exitPrice;
+    
+    OHLCTimeSeriesEntry<D> entryBar(
+        entryTime,  // Use full timestamp instead of just date
+        entryPrice,
+        high,
+        low,
+        entryPrice,  // Close at entry price initially
+        D(static_cast<double>(TradingVolume(100, TradingVolume::SHARES).getTradingVolume())),
+        TimeFrame::INTRADAY
+        );
+    
+    auto pos = std::make_shared<TradingPositionLong<D>>(
+  					symbol,
+  					entryPrice,
+  					entryBar,
+  					TradingVolume(1, TradingVolume::SHARES)
+  					);
+    
+    // Close same-bar: use same date but later time
+    ptime exitTime = ptime(entryTime.date(), entryTime.time_of_day() + hours(1));
+    pos->ClosePosition(exitTime, exitPrice);
+    
+    return pos;
+  }
+} // anonymous namespace
 
 TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
 {
@@ -2464,5 +2608,868 @@ TEST_CASE("ClosedPositionHistory - Move Semantics in Containers", "[ClosedPositi
         histories[0].addClosedPosition(pos);
         
         REQUIRE(histories[0].getNumPositions() == 1);
+    }
+}
+
+//
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - empty history",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.empty());
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - single long position",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    // Create a 2-bar position:
+    // Entry at 100.0 (open), entry bar closes at 102.0
+    // Bar 1 closes at 104.0 (but we use exit price, not this close)
+    // Exit at 106.0 (limit/stop/open - happens before bar 1's close)
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    auto pos = createMockLongPosition(
+        "@C",
+        entryTime,
+        D("100.0"),      // entry
+        D("106.0"),      // exit (happens before last bar's close)
+        {D("102.0"), D("104.0")}  // bar closes (104 is NOT used, exit happens first)
+    );
+    
+    history.addClosedPosition(pos);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 1);
+    
+    const auto& trade = trades[0];
+    REQUIRE(trade.getDuration() == 2);  // 2 bars in history
+    
+    const auto& returns = trade.getDailyReturns();
+    REQUIRE(returns.size() == 2);  // 2 returns (one per bar)
+    
+    // Bar 0 (entry bar): (entry bar close - entry price) / entry price
+    // Entry bar close = 102.0
+    // Return = (102-100)/100 = 0.02
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.02).epsilon(1e-9));
+    
+    // Bar 1 (last bar): Exit happens at 106.0, skipping bar's close of 104.0
+    // Return = (106 - 102) / 102 ≈ 0.03921569
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.03921569).epsilon(1e-6));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - single short position",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    // Short entry at 100.0, entry bar closes at 98.0
+    // Bar 1 closes at 96.0 (but exit happens at 94.0, before this close)
+    // Exit at 94.0 (profit for short - price fell)
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    auto pos = createMockShortPosition(
+        "@C",
+        entryTime,
+        D("100.0"),      // entry
+        D("94.0"),       // exit (profit for short)
+        {D("98.0"), D("96.0")}
+    );
+    
+    history.addClosedPosition(pos);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 1);
+    
+    const auto& returns = trades[0].getDailyReturns();
+    REQUIRE(returns.size() == 2);
+    
+    // Short: returns are inverted
+    // Bar 0 (entry): -((98 - 100) / 100) = -(-0.02) = +0.02
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.02).epsilon(1e-9));
+    
+    // Bar 1 (exit at 94, skipping bar close of 96): -((94 - 98) / 98) = +0.04081632
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.04081633).epsilon(1e-6));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - multiple positions",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    ptime time1(date(2024, 1, 10), hours(9) + minutes(30));
+    ptime time2(date(2024, 1, 15), hours(9) + minutes(30));
+    ptime time3(date(2024, 1, 20), hours(9) + minutes(30));
+    
+    // Trade 1: 1-bar winner (entry bar only, exit next day)
+    auto pos1 = createMockLongPosition(
+        "@C", time1, D("100.0"), D("105.0"), {D("103.0")}
+    );
+    
+    // Trade 2: 2-bar loser
+    auto pos2 = createMockLongPosition(
+        "@C", time2, D("100.0"), D("95.0"), {D("98.0"), D("97.0")}
+    );
+    
+    // Trade 3: same-day trade
+    auto pos3 = createSameBarPosition("@C", time3, D("50.0"), D("51.0"));
+    
+    history.addClosedPosition(pos1);
+    history.addClosedPosition(pos2);
+    history.addClosedPosition(pos3);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 3);
+    
+    // Verify trade 1: 1 bar, 1 return
+    REQUIRE(trades[0].getDuration() == 1);
+    // Bar 0: (105-100)/100 = 0.05 (exit, skipping bar close of 103)
+    REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == 
+            Catch::Approx(0.05).epsilon(1e-9));
+    
+    // Verify trade 2: 2 bars, 2 returns
+    REQUIRE(trades[1].getDuration() == 2);
+    // Bar 0: (98-100)/100 = -0.02
+    REQUIRE(num::to_double(trades[1].getDailyReturns()[0]) == 
+            Catch::Approx(-0.02).epsilon(1e-9));
+    // Bar 1: (95-98)/98 = -0.03061224
+    REQUIRE(num::to_double(trades[1].getDailyReturns()[1]) == 
+            Catch::Approx(-0.03061224).epsilon(1e-6));
+    
+    // Verify trade 3: same-day, 1 return
+    REQUIRE(trades[2].getDuration() == 1);
+    REQUIRE(num::to_double(trades[2].getDailyReturns()[0]) == 
+            Catch::Approx(0.02).epsilon(1e-9));  // (51-50)/50
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - same bar entry/exit",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    SECTION("Same-bar winner") {
+        auto pos = createSameBarPosition("@C", entryTime, D("100.0"), D("102.0"));
+        history.addClosedPosition(pos);
+        
+        auto trades = history.getTradeLevelReturns();
+        
+        REQUIRE(trades.size() == 1);
+        REQUIRE(trades[0].getDuration() == 1);
+        
+        // Single return: (102 - 100) / 100 = 0.02
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == 
+                Catch::Approx(0.02).epsilon(1e-9));
+    }
+    
+    SECTION("Same-bar loser") {
+        auto pos = createSameBarPosition("@C", entryTime, D("100.0"), D("98.0"));
+        history.addClosedPosition(pos);
+        
+        auto trades = history.getTradeLevelReturns();
+        
+        REQUIRE(trades.size() == 1);
+        REQUIRE(trades[0].getDuration() == 1);
+        
+        // Single return: (98 - 100) / 100 = -0.02
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == 
+                Catch::Approx(-0.02).epsilon(1e-9));
+    }
+    
+    SECTION("Same-bar breakeven (zero return)") {
+        auto pos = createSameBarPosition("@C", entryTime, D("100.0"), D("100.0"));
+        history.addClosedPosition(pos);
+        
+        auto trades = history.getTradeLevelReturns();
+        
+        // Zero-return trades should be included (legitimate outcome)
+        REQUIRE(trades.size() == 1);
+        REQUIRE(trades[0].getDuration() == 1);
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == 
+                Catch::Approx(0.0).epsilon(1e-12));
+    }
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - zero intermediate return",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    // Position where one bar has zero MTM return (close equals previous)
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    auto pos = createMockLongPosition(
+        "@C",
+        entryTime,
+        D("100.0"),      // entry
+        D("102.0"),      // exit
+        {D("101.0"), D("101.0")}  // bar 1 closes same as bar 0
+    );
+    
+    history.addClosedPosition(pos);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 1);
+    REQUIRE(trades[0].getDuration() == 2);
+    
+    const auto& returns = trades[0].getDailyReturns();
+    REQUIRE(returns.size() == 2);
+    
+    // Bar 0: (101 - 100) / 100 = 0.01
+    REQUIRE(num::to_double(returns[0]) == Catch::Approx(0.01).epsilon(1e-9));
+    
+    // Bar 1 (last): (102 - 101) / 101 ≈ 0.00990099 (exit, skipping bar close of 101)
+    REQUIRE(num::to_double(returns[1]) == Catch::Approx(0.00990099).epsilon(1e-6));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - chronological ordering",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    // Add positions in non-chronological order
+    ptime time3(date(2024, 1, 20), hours(9) + minutes(30));
+    ptime time1(date(2024, 1, 10), hours(9) + minutes(30));
+    ptime time2(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    auto pos3 = createMockLongPosition("@C", time3, D("50.0"), D("52.0"), {D("51.0")});
+    auto pos1 = createMockLongPosition("@C", time1, D("100.0"), D("105.0"), {D("103.0")});
+    auto pos2 = createMockLongPosition("@C", time2, D("100.0"), D("98.0"), {D("99.0")});
+    
+    history.addClosedPosition(pos3);  // Latest first
+    history.addClosedPosition(pos1);  // Earliest
+    history.addClosedPosition(pos2);  // Middle
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 3);
+    
+    // getTradeLevelReturns iterates mPositions, which is a multimap keyed by ptime
+    // multimap orders by key, so trades should be chronological
+    // Trade 1 (earliest): entered at time1, 1 bar
+    REQUIRE(trades[0].getDuration() == 1);
+    // Exit at 105, skipping bar close of 103: (105-100)/100 = 0.05
+    REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == 
+            Catch::Approx(0.05).epsilon(1e-9));
+    
+    // Trade 2 (middle): entered at time2, 1 bar
+    REQUIRE(trades[1].getDuration() == 1);
+    // Exit at 98, skipping bar close of 99: (98-100)/100 = -0.02
+    REQUIRE(num::to_double(trades[1].getDailyReturns()[0]) == 
+            Catch::Approx(-0.02).epsilon(1e-9));
+    
+    // Trade 3 (latest): entered at time3, 1 bar
+    REQUIRE(trades[2].getDuration() == 1);
+    // Exit at 52, skipping bar close of 51: (52-50)/50 = 0.04
+    REQUIRE(num::to_double(trades[2].getDailyReturns()[0]) == 
+            Catch::Approx(0.04).epsilon(1e-9));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - Trade equality operator",
+          "[ClosedPositionHistory][getTradeLevelReturns][Trade]")
+{
+    ClosedPositionHistory<D> history;
+    
+    ptime time1(date(2024, 1, 10), hours(9) + minutes(30));
+    ptime time2(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    // Two identical positions (same entry, exit, bar closes)
+    auto pos1 = createMockLongPosition("@C", time1, D("100.0"), D("105.0"), {D("103.0")});
+    auto pos2 = createMockLongPosition("@C", time2, D("100.0"), D("105.0"), {D("103.0")});
+    
+    history.addClosedPosition(pos1);
+    history.addClosedPosition(pos2);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 2);
+    
+    // Trades with identical return sequences should be equal (for BCa degenerate check)
+    REQUIRE(trades[0] == trades[1]);
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - maximum duration",
+          "[ClosedPositionHistory][getTradeLevelReturns]")
+{
+    ClosedPositionHistory<D> history;
+    
+    // Create a trade at the maximum duration of 8 bars
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    std::vector<D> barCloses = {
+        D("101.0"), D("102.0"), D("103.0"), D("104.0"),
+        D("105.0"), D("106.0"), D("107.0")
+    };
+    
+    auto pos = createMockLongPosition(
+        "@C",
+        entryTime,
+        D("100.0"),
+        D("108.0"),
+        barCloses
+    );
+    
+    history.addClosedPosition(pos);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    REQUIRE(trades.size() == 1);
+    REQUIRE(trades[0].getDuration() == 7);  // 7 bars in history
+    
+    // Verify all 7 returns are present and positive (monotone rising)
+    const auto& returns = trades[0].getDailyReturns();
+    REQUIRE(returns.size() == 7);
+    
+    // Note: Last return uses exit price 108, not bar close 107
+    for (size_t i = 0; i < 7; ++i) {
+        REQUIRE(num::to_double(returns[i]) > 0.0);
+    }
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - flattened compatibility",
+          "[ClosedPositionHistory][getTradeLevelReturns][Integration]")
+{
+    // Integration test: verify flattened returns match what would be computed
+    // from the original flat vector approach
+    
+    ClosedPositionHistory<D> history;
+    
+    ptime time1(date(2024, 1, 10), hours(9) + minutes(30));
+    ptime time2(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    auto pos1 = createMockLongPosition("@C", time1, D("100.0"), D("104.0"), {D("102.0")});
+    auto pos2 = createMockLongPosition("@C", time2, D("50.0"), D("48.0"), {D("49.0")});
+    
+    history.addClosedPosition(pos1);
+    history.addClosedPosition(pos2);
+    
+    auto trades = history.getTradeLevelReturns();
+    
+    // Flatten trades manually
+    std::vector<D> flatReturns;
+    for (const auto& trade : trades) {
+        const auto& returns = trade.getDailyReturns();
+        flatReturns.insert(flatReturns.end(), returns.begin(), returns.end());
+    }
+    
+    // Should have 2 total returns (1 per trade)
+    REQUIRE(flatReturns.size() == 2);
+    
+    // Verify flattened sequence matches expected concatenation
+    // pos1: exit at 104, skipping bar close 102: (104-100)/100 = 0.04
+    REQUIRE(num::to_double(flatReturns[0]) == Catch::Approx(0.04).epsilon(1e-9));
+    // pos2: exit at 48, skipping bar close 49: (48-50)/50 = -0.04
+    REQUIRE(num::to_double(flatReturns[1]) == Catch::Approx(-0.04).epsilon(1e-9));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - invalid costPerSide throws",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts]")
+{
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+
+    auto pos = createMockLongPosition("@C", t, D("100.0"), D("105.0"), {D("102.0")});
+    history.addClosedPosition(pos);
+
+    // Negative cost must throw
+    REQUIRE_THROWS_AS(
+        history.getTradeLevelReturns(true, D("-0.001")),
+        std::domain_error);
+
+    // Cost equal to 1.0 must throw (the valid range is [0, 1))
+    REQUIRE_THROWS_AS(
+        history.getTradeLevelReturns(true, D("1.0")),
+        std::domain_error);
+
+    // Cost greater than 1.0 must throw
+    REQUIRE_THROWS_AS(
+        history.getTradeLevelReturns(true, D("1.5")),
+        std::domain_error);
+
+    // Cost of 0.0 is valid — must NOT throw
+    REQUIRE_NOTHROW(history.getTradeLevelReturns(true, D("0.0")));
+
+    // Cost just under 1.0 is valid — must NOT throw
+    REQUIRE_NOTHROW(history.getTradeLevelReturns(true, D("0.999")));
+}
+
+// ---------------------------------------------------------------------------
+// applyCosts=false (the default) is unchanged by the new parameter
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - applyCosts=false matches no-arg call",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts]")
+{
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+
+    auto pos = createMockLongPosition("@C", t, D("100.0"), D("106.0"), {D("103.0")});
+    history.addClosedPosition(pos);
+
+    auto defaultCall   = history.getTradeLevelReturns();
+    auto explicitFalse = history.getTradeLevelReturns(false);
+
+    REQUIRE(defaultCall.size()   == explicitFalse.size());
+    REQUIRE(defaultCall[0]       == explicitFalse[0]);
+}
+
+// ---------------------------------------------------------------------------
+// Zero-cost: applyCosts=true with costPerSide=0 must equal no-cost result
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - zero cost leaves returns unchanged",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts]")
+{
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+
+    // Multi-bar long position
+    auto pos = createMockLongPosition("@C", t, D("100.0"), D("106.0"), {D("103.0")});
+    history.addClosedPosition(pos);
+
+    auto noCost   = history.getTradeLevelReturns(false);
+    auto zeroCost = history.getTradeLevelReturns(true, D("0.0"));
+
+    REQUIRE(noCost.size() == zeroCost.size());
+    REQUIRE(noCost[0]     == zeroCost[0]);
+}
+
+// ---------------------------------------------------------------------------
+// Same-bar long position with costs
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - same-bar long with costs",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts]")
+{
+    // entry = 100, exit = 102, costPerSide = 0.001 (0.1%)
+    //
+    // effectiveEntry = 100 * (1 + 0.001) = 100.1   (long pays more to buy)
+    // effectiveExit  = 102 * (1 - 0.001) = 101.898 (long receives less on sell)
+    // r = (101.898 - 100.1) / 100.1 = 1.798 / 100.1 ≈ 0.017962037...
+
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+
+    auto pos = createSameBarPosition("@C", t, D("100.0"), D("102.0"));
+    history.addClosedPosition(pos);
+
+    auto trades = history.getTradeLevelReturns(true, D("0.001"));
+
+    REQUIRE(trades.size() == 1);
+    REQUIRE(trades[0].getDuration() == 1);
+
+    const double expected = (102.0 * 0.999 - 100.0 * 1.001) / (100.0 * 1.001);
+    REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) ==
+            Catch::Approx(expected).epsilon(1e-6));
+
+    // Costs must reduce the raw winner return (0.02 without costs → less with costs)
+    auto noCostTrades = history.getTradeLevelReturns(false);
+    REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) <
+            num::to_double(noCostTrades[0].getDailyReturns()[0]));
+}
+
+// ---------------------------------------------------------------------------
+// Same-bar long position: borderline winner becomes loser after costs
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - costs turn marginal winner into loser",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts]")
+{
+    // entry = 100, exit = 100.1 (0.1% raw gain)
+    // costPerSide = 0.001  →  round-trip cost ≈ 0.2%
+    //
+    // effectiveEntry = 100   * 1.001 = 100.1
+    // effectiveExit  = 100.1 * 0.999 = 100.0999
+    // r = (100.0999 - 100.1) / 100.1  <  0
+
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+
+    auto pos = createSameBarPosition("@C", t, D("100.0"), D("100.1"));
+    history.addClosedPosition(pos);
+
+    // Without costs: small positive return
+    auto noCost = history.getTradeLevelReturns(false);
+    REQUIRE(num::to_double(noCost[0].getDailyReturns()[0]) > 0.0);
+
+    // With costs: same trade is now a small loss
+    auto withCost = history.getTradeLevelReturns(true, D("0.001"));
+    REQUIRE(num::to_double(withCost[0].getDailyReturns()[0]) < 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// Same-bar short position with costs
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - same-bar short with costs",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts]")
+{
+    // Short: entry = 100, exit = 96 (winner — price fell)
+    // costPerSide = 0.001
+    //
+    // Short entry: receive less on the opening sell => effectiveEntry = 100 * (1 - 0.001) = 99.9
+    // Short exit : pay more to buy-to-cover         => effectiveExit  = 96  * (1 + 0.001) = 96.096
+    //
+    // price-based r = (96.096 - 99.9) / 99.9 = -3.804 / 99.9 ≈ -0.038078...
+    // P&L return for short  = r * -1              ≈ +0.038078...
+    //
+    // Without costs: (96-100)/100 * -1 = +0.04 (larger winner)
+    // → costs shrink the gain.
+
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+
+    // createSameBarPosition creates a LONG; use createMockShortPosition instead
+    auto pos = createMockShortPosition("@C", t, D("100.0"), D("96.0"), {D("98.0")});
+    history.addClosedPosition(pos);
+
+    const D cost("0.001");
+    auto trades   = history.getTradeLevelReturns(true, cost);
+    auto noCostTr = history.getTradeLevelReturns(false);
+
+    REQUIRE(trades.size() == 1);
+
+    // Still a winner after costs
+    REQUIRE(num::to_double(trades[0].getDailyReturns().back()) > 0.0);
+
+    // But smaller gain than without costs
+    const double withCostReturn   = num::to_double(trades[0].getDailyReturns().back());
+    const double withoutCostReturn = num::to_double(noCostTr[0].getDailyReturns().back());
+    REQUIRE(withCostReturn < withoutCostReturn);
+
+    // Verify the exact last-bar value.
+    // With barCloses={98}, index-0 is the entry bar's close; no extra bars are
+    // added by createMockShortPosition (its loop starts at i=1).  So the single
+    // bar in history IS the last bar and prevRef stays at effectiveEntryPrice.
+    //
+    // prevRef        = 100 * (1 - 0.001) = 99.9   (effectiveEntryPrice for short)
+    // effectiveExit  = 96  * (1 + 0.001) = 96.096
+    // price r        = (96.096 - 99.9) / 99.9 ≈ -0.038078...
+    // P&L for short  = r * -1            ≈ +0.038078...
+    const double effectiveEntry = 100.0 * (1.0 - 0.001);
+    const double effectiveExit  =  96.0 * (1.0 + 0.001);
+    const double expectedLast   = -(effectiveExit - effectiveEntry) / effectiveEntry;
+    REQUIRE(withCostReturn == Catch::Approx(expectedLast).epsilon(1e-6));
+}
+
+// ---------------------------------------------------------------------------
+// Multi-bar long: costs affect only entry and exit, NOT intermediate bars
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - multi-bar long, costs only on entry/exit",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts]")
+{
+    // entry=100, barCloses=[101, 102, 103], exit=104, costPerSide=0.001
+    //
+    // createMockLongPosition: barCloses[0] is the entry bar's close;
+    // indices 1..N-1 become additional bars; exit is added after all of them.
+    //
+    // effectiveEntry = 100 * 1.001 = 100.1   (entry bar close = 101)
+    //
+    // Bar 0 (not last): close=101, prevRef=100.1
+    //   r0 = (101 - 100.1) / 100.1 = 0.9 / 100.1 ≈ 0.008991...
+    //   prevRef becomes 101
+    //
+    // Bar 1 (not last): close=102, prevRef=101
+    //   r1 = (102 - 101) / 101 = 1/101 ≈ 0.009900...
+    //   prevRef becomes 102
+    //
+    // Bar 2 (last): effectiveExit = 104 * 0.999 = 103.896
+    //   r2 = (103.896 - 102) / 102 = 1.896/102 ≈ 0.018588...
+
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+
+    auto pos = createMockLongPosition("@C", t,
+                                      D("100.0"), D("104.0"),
+                                      {D("101.0"), D("102.0"), D("103.0")});  // 3 closes → duration 3
+    history.addClosedPosition(pos);
+
+    const D cost("0.001");
+    auto trades = history.getTradeLevelReturns(true, cost);
+
+    REQUIRE(trades.size() == 1);
+    REQUIRE(trades[0].getDuration() == 3);
+
+    const auto& r = trades[0].getDailyReturns();
+    REQUIRE(r.size() == 3);
+
+    // Bar 0
+    const double r0_expected = (101.0 - 100.0 * 1.001) / (100.0 * 1.001);
+    REQUIRE(num::to_double(r[0]) == Catch::Approx(r0_expected).epsilon(1e-6));
+
+    // Bar 1 — intermediate bar, no cost adjustment; prevRef is raw close=101
+    const double r1_expected = (102.0 - 101.0) / 101.0;
+    REQUIRE(num::to_double(r[1]) == Catch::Approx(r1_expected).epsilon(1e-6));
+
+    // Bar 2 (last): prevRef=102 (bar 1's close), effectiveExit=104*0.999
+    const double r2_expected = (104.0 * 0.999 - 102.0) / 102.0;
+    REQUIRE(num::to_double(r[2]) == Catch::Approx(r2_expected).epsilon(1e-6));
+
+    // Sanity: without-cost intermediate return must be identical
+    auto noCost = history.getTradeLevelReturns(false);
+    REQUIRE(num::to_double(r[1]) ==
+            Catch::Approx(num::to_double(noCost[0].getDailyReturns()[1])).epsilon(1e-6));
+}
+
+// ---------------------------------------------------------------------------
+// Multi-bar short: costs affect only entry and exit, NOT intermediate bars
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - multi-bar short, costs only on entry/exit",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts]")
+{
+    // Short: entry=100, barCloses=[99, 98, 97], exit=96, costPerSide=0.001
+    //
+    // createMockShortPosition: barCloses[0] is the entry bar's close;
+    // indices 1..N-1 become additional bars; exit is added after all of them.
+    //
+    // effectiveEntry = 100 * (1 - 0.001) = 99.9   (entry bar close = 99)
+    //
+    // Bar 0 (not last): close=99, prevRef=99.9
+    //   price r = (99 - 99.9) / 99.9 = -0.9/99.9 ≈ -0.009009...
+    //   P&L for short = +0.009009...   prevRef → 99
+    //
+    // Bar 1 (not last): close=98, prevRef=99
+    //   price r = (98 - 99) / 99 = -1/99 ≈ -0.010101...
+    //   P&L for short ≈ +0.010101...   prevRef → 98
+    //
+    // Bar 2 (last): effectiveExit = 96 * (1 + 0.001) = 96.096, prevRef=97
+    //   price r = (96.096 - 97) / 97 = -0.904/97 ≈ -0.009320...
+    //   P&L for short ≈ +0.009320...
+
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+
+    auto pos = createMockShortPosition("@C", t,
+                                       D("100.0"), D("96.0"),
+                                       {D("99.0"), D("98.0"), D("97.0")});  // 3 closes → duration 3
+    history.addClosedPosition(pos);
+
+    const D cost("0.001");
+    auto trades = history.getTradeLevelReturns(true, cost);
+    auto noCost = history.getTradeLevelReturns(false);
+
+    REQUIRE(trades.size() == 1);
+    REQUIRE(trades[0].getDuration() == 3);
+
+    const auto& r   = trades[0].getDailyReturns();
+    const auto& rNc = noCost[0].getDailyReturns();
+
+    REQUIRE(r.size() == 3);
+
+    // All bars are gains (short in falling market)
+    for (const auto& ret : r)
+        REQUIRE(num::to_double(ret) > 0.0);
+
+    // First bar: costs reduce the gain vs no-cost
+    REQUIRE(num::to_double(r[0]) < num::to_double(rNc[0]));
+
+    // Middle bar: costs don't touch intermediate bars
+    REQUIRE(num::to_double(r[1]) ==
+            Catch::Approx(num::to_double(rNc[1])).epsilon(1e-6));
+
+    // Last bar: prevRef=97 (bar 1's close), effectiveExit=96*1.001
+    const double r2_expected = -(96.0 * 1.001 - 98.0) / 98.0;
+    REQUIRE(num::to_double(r[2]) == Catch::Approx(r2_expected).epsilon(1e-6));
+}
+
+// ---------------------------------------------------------------------------
+// Mixed portfolio: long + short positions, both with costs
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - mixed long/short portfolio with costs",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts]")
+{
+    ClosedPositionHistory<D> history;
+    ptime t1(date(2024, 1, 10), hours(9) + minutes(30));
+    ptime t2(date(2024, 1, 15), hours(9) + minutes(30));
+
+    // createMockLongPosition/Short: barCloses[0] is the entry bar's close;
+    // only indices 1..N-1 become additional bars.  We need 2 closes so that
+    // closes[1] becomes an intermediate bar whose close is prevRef on the last bar.
+
+    // Long: entry=100, barCloses=[101,102], exit=105
+    //   prevRef for last bar = 102 (intermediate bar close)
+    auto longPos  = createMockLongPosition ("@C", t1,
+                                            D("100.0"), D("105.0"),
+                                            {D("101.0"), D("102.0")});
+
+    // Short: entry=200, barCloses=[196,195], exit=190
+    //   prevRef for last bar = 195 (intermediate bar close)
+    auto shortPos = createMockShortPosition("@C", t2,
+                                            D("200.0"), D("190.0"),
+                                            {D("196.0"), D("195.0")});
+
+    history.addClosedPosition(longPos);
+    history.addClosedPosition(shortPos);
+
+    const D cost("0.002");  // 0.2% per side
+    auto withCosts = history.getTradeLevelReturns(true, cost);
+    auto noCosts   = history.getTradeLevelReturns(false);
+
+    REQUIRE(withCosts.size() == 2);
+
+    // Both still winners after costs, but smaller
+    for (size_t i = 0; i < 2; ++i) {
+        const double wc = num::to_double(withCosts[i].getDailyReturns().back());
+        const double nc = num::to_double(noCosts[i].getDailyReturns().back());
+        REQUIRE(wc > 0.0);   // still profitable
+        REQUIRE(wc < nc);    // but reduced by costs
+    }
+
+    // Long trade last-bar: effectiveExit = 105*0.998
+    // prevRef = barCloses[0]=101, NOT barCloses[1]=102,
+    // because the last bar's close is discarded in favour of effectiveExitPrice.
+    const double longExpected = (105.0 * 0.998 - 101.0) / 101.0;
+    REQUIRE(num::to_double(withCosts[0].getDailyReturns().back()) ==
+            Catch::Approx(longExpected).epsilon(1e-6));
+
+    // Short trade last-bar: effectiveExit = 190*1.002
+    // prevRef = barCloses[0]=196, NOT barCloses[1]=195, same reason.
+    const double shortExpected = -(190.0 * 1.002 - 196.0) / 196.0;
+    REQUIRE(num::to_double(withCosts[1].getDailyReturns().back()) ==
+            Catch::Approx(shortExpected).epsilon(1e-6));
+}
+
+// ---------------------------------------------------------------------------
+// Large cost: result approaches -1 for very large (but valid) cost
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - large cost severely penalises return",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts]")
+{
+    // entry=100, exit=110, costPerSide=0.1 (10% per side — extreme but valid)
+    //
+    // effectiveEntry = 100 * 1.1 = 110
+    // effectiveExit  = 110 * 0.9 = 99
+    // r = (99 - 110) / 110 = -11/110 = -0.1
+    //
+    // Without costs this is a +10% winner; with 10% cost each side it becomes -10%.
+
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+
+    auto pos = createSameBarPosition("@C", t, D("100.0"), D("110.0"));
+    history.addClosedPosition(pos);
+
+    auto trades = history.getTradeLevelReturns(true, D("0.1"));
+
+    REQUIRE(trades.size() == 1);
+
+    const double expected = (110.0 * 0.9 - 100.0 * 1.1) / (100.0 * 1.1);
+    REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) ==
+            Catch::Approx(expected).epsilon(1e-9));
+
+    // Must now be a loss
+    REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) < 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// Tests for exemptLimitExits parameter in getTradeLevelReturns
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - exemptLimitExits logic",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts][exemptLimitExits]")
+{
+    ClosedPositionHistory<D> history;
+    ptime t(date(2024, 1, 15), hours(9) + minutes(30));
+    
+    // We'll use a 1% cost for straightforward mental math
+    const D cost("0.01");
+
+    SECTION("applyCosts=false completely ignores exemptLimitExits")
+    {
+        auto pos = createSameBarPosition("@C", t, D("100.0"), D("110.0"));
+        pos->setExitOrderType(OrderType::SELL_AT_LIMIT); 
+        history.addClosedPosition(pos);
+
+        // Call with: applyCosts = false, cost = 0.01, exemptLimitExits = true
+        auto trades = history.getTradeLevelReturns(false, cost, true);
+        
+        REQUIRE(trades.size() == 1);
+        
+        // Expected return with NO costs: (110 - 100) / 100 = 0.10
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == Catch::Approx(0.10).epsilon(1e-6));
+    }
+
+    SECTION("Long position with SELL_AT_LIMIT exempts exit cost")
+    {
+        auto pos = createSameBarPosition("@C", t, D("100.0"), D("110.0"));
+        pos->setExitOrderType(OrderType::SELL_AT_LIMIT);
+        history.addClosedPosition(pos);
+
+        auto trades = history.getTradeLevelReturns(true, cost, true);
+        
+        // Effective entry: pays slippage = 100 * 1.01 = 101.0
+        // Effective exit: EXEMPT from slippage = 110.0
+        // Return = (110.0 - 101.0) / 101.0 = 9 / 101 ≈ 0.08910891
+        const double expected = (110.0 - 101.0) / 101.0;
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == Catch::Approx(expected).epsilon(1e-6));
+    }
+
+    SECTION("Long position with market/stop exit applies normal round-trip costs")
+    {
+        auto pos = createSameBarPosition("@C", t, D("100.0"), D("110.0"));
+        // Use any order type that ISN'T a limit exemption (using MARKET_ON_OPEN_SELL)
+        pos->setExitOrderType(OrderType::MARKET_ON_OPEN_SELL); 
+        history.addClosedPosition(pos);
+
+        auto trades = history.getTradeLevelReturns(true, cost, true);
+        
+        // Effective entry: pays slippage = 100 * 1.01 = 101.0
+        // Effective exit: pays slippage = 110 * 0.99 = 108.9
+        // Return = (108.9 - 101.0) / 101.0 = 7.9 / 101 ≈ 0.07821782
+        const double expected = (110.0 * 0.99 - 100.0 * 1.01) / (100.0 * 1.01);
+        REQUIRE(num::to_double(trades[0].getDailyReturns()[0]) == Catch::Approx(expected).epsilon(1e-6));
+    }
+
+    SECTION("Short position with COVER_AT_LIMIT exempts exit cost")
+    {
+        // Use multi-bar mock short position
+        auto pos = createMockShortPosition("@C", t, D("100.0"), D("90.0"), {D("95.0")});
+        pos->setExitOrderType(OrderType::COVER_AT_LIMIT);
+        history.addClosedPosition(pos);
+
+        auto trades = history.getTradeLevelReturns(true, cost, true);
+        
+        // Short effective entry: receives less = 100 * 0.99 = 99.0
+        // Short effective exit: EXEMPT from paying more = 90.0
+        // Price return = (90.0 - 99.0) / 99.0 = -9.0 / 99.0
+        // Short P&L return = -Price return = +9.0 / 99.0 ≈ 0.09090909
+        const double effectiveEntry = 100.0 * 0.99;
+        const double effectiveExit = 90.0; // Exempt
+        const double expected = -(effectiveExit - effectiveEntry) / effectiveEntry;
+        
+        REQUIRE(num::to_double(trades[0].getDailyReturns().back()) == Catch::Approx(expected).epsilon(1e-6));
+    }
+
+    SECTION("Short position with market/stop exit applies normal round-trip costs")
+    {
+        auto pos = createMockShortPosition("@C", t, D("100.0"), D("90.0"), {D("95.0")});
+        // Use any order type that ISN'T a limit exemption (using MARKET_ON_OPEN_COVER)
+        pos->setExitOrderType(OrderType::MARKET_ON_OPEN_COVER); 
+        history.addClosedPosition(pos);
+
+        auto trades = history.getTradeLevelReturns(true, cost, true);
+        
+        // Short effective entry: receives less = 100 * 0.99 = 99.0
+        // Short effective exit: pays more to cover = 90 * 1.01 = 90.9
+        // Expected P&L return = -(90.9 - 99.0) / 99.0 = 8.1 / 99.0 ≈ 0.08181818
+        const double effectiveEntry = 100.0 * 0.99;
+        const double effectiveExit = 90.0 * 1.01;
+        const double expected = -(effectiveExit - effectiveEntry) / effectiveEntry;
+        
+        REQUIRE(num::to_double(trades[0].getDailyReturns().back()) == Catch::Approx(expected).epsilon(1e-6));
     }
 }

@@ -13,6 +13,7 @@
 #include "DecimalConstants.h"
 #include "BootstrapTypes.h"
 #include "BiasCorrectedBootstrap.h" // for mkc_timeseries::BCaBootStrap and StationaryBlockResampler
+#include "TradeResampling.h"
 
 // Stationary (block) resampling for path simulation inside drawdownFractile
 #include "StationaryMaskResamplers.h" // palvalidator::resampling::StationaryMaskValueResampler
@@ -84,6 +85,73 @@ namespace mkc_timeseries
 	      }
 	    }
 	}
+      return maxDD;
+    }
+
+    /**
+     * @brief Compute maximum drawdown *magnitude* from a sequence of Trade pointers.
+     */
+    static Decimal maxDrawdown(const std::vector<const mkc_timeseries::Trade<Decimal>*>& trades)
+    {
+      if (trades.empty())
+        return DecimalConstants<Decimal>::DecimalZero;
+
+      Decimal maxDD = DecimalConstants<Decimal>::DecimalZero; 
+      Decimal peak = DecimalConstants<Decimal>::DecimalOne;
+      Decimal equity = DecimalConstants<Decimal>::DecimalOne;
+
+      for (const auto* tradePtr : trades) // Now iterating over pointers
+      {
+        for (const auto& change : tradePtr->getDailyReturns())
+        {
+          equity *= (DecimalConstants<Decimal>::DecimalOne + change);
+          if (equity > peak) {
+            peak = equity;
+          }
+          else
+          {
+            const Decimal dd = (peak - equity) / peak;
+            if (dd > maxDD) {
+              maxDD = dd;
+            }
+          }
+        }
+      }
+      return maxDD;
+    }
+
+    /**
+     * @brief Compute maximum drawdown *magnitude* from a sequence of Trades.
+     * Evaluates the true intra-trade peak-to-trough drawdown by expanding
+     * the underlying bar returns of each trade.
+     */
+    static Decimal maxDrawdown(const std::vector<mkc_timeseries::Trade<Decimal>>& trades)
+    {
+      if (trades.empty())
+        return DecimalConstants<Decimal>::DecimalZero;
+
+      Decimal maxDD = DecimalConstants<Decimal>::DecimalZero; 
+      Decimal peak = DecimalConstants<Decimal>::DecimalOne;
+      Decimal equity = DecimalConstants<Decimal>::DecimalOne;
+
+      for (const auto& trade : trades)
+      {
+        // Iterate through the actual bar returns of the trade to catch intra-trade dips
+        for (const auto& change : trade.getDailyReturns())
+        {
+          equity *= (DecimalConstants<Decimal>::DecimalOne + change);
+          if (equity > peak) {
+            peak = equity;
+          }
+          else
+          {
+            const Decimal dd = (peak - equity) / peak; // >= 0
+            if (dd > maxDD) {
+              maxDD = dd;
+            }
+          }
+        }
+      }
       return maxDD;
     }
 
@@ -191,6 +259,61 @@ namespace mkc_timeseries
       });
 
       // O(n) selection for the desired fractile
+      const int idx = unbiasedIndex(ddConf, static_cast<unsigned int>(nReps));
+      std::nth_element(ddSamples.begin(), ddSamples.begin() + idx, ddSamples.end());
+      return ddSamples[static_cast<size_t>(idx)];
+    }
+
+    /**
+     * @brief Monte-Carlo estimate of the drawdown-magnitude fractile using IID trade sampling.
+     *
+     * Pre-flattens each trade's daily returns into a cache before the parallel loop,
+     * eliminating repeated pointer dereferences and heap traversal inside the hot path.
+     * The cache is read-only and shared across all threads safely.
+     */
+    static Decimal drawdownFractile(const std::vector<mkc_timeseries::Trade<Decimal>>& trades,
+				    int nTrades,
+				    int nReps,
+				    double ddConf,
+				    Executor& exec)
+    {
+      if (trades.empty()) {
+	throw std::invalid_argument("drawdownFractile: trades must be non-empty.");
+      }
+      if (nTrades <= 0 || nReps <= 0) {
+	throw std::invalid_argument("drawdownFractile: nTrades and nReps must be positive.");
+      }
+      if (!(ddConf >= 0.0 && ddConf <= 1.0)) {
+	throw std::invalid_argument("drawdownFractile: ddConf must be in [0,1].");
+      }
+
+      // --- Pre-flatten daily returns into a read-only cache ---
+      // Built once here, shared across all threads as a read-only structure.
+      // Eliminates getDailyReturns() pointer chasing inside the hot parallel loop.
+      const size_t m = trades.size();
+      std::vector<std::vector<Decimal>> returnCache(m);
+      for (std::size_t i = 0; i < m; ++i)
+	returnCache[i] = trades[i].getDailyReturns();
+
+      std::vector<Decimal> ddSamples(static_cast<size_t>(nReps));
+
+      concurrency::parallel_for(static_cast<uint32_t>(nReps), exec, [&](uint32_t rep)
+      {
+	// Thread-local flat buffer accumulates all daily returns for the sampled
+	// trade sequence. Reused across reps to avoid per-rep heap allocation.
+	thread_local std::vector<Decimal> flatReturns;
+	thread_local randutils::mt19937_rng rng;
+
+	flatReturns.clear();
+	for (int i = 0; i < nTrades; ++i) {
+	  const size_t k = rng.uniform(size_t(0), m - 1);
+	  const auto& daily = returnCache[k]; // cache hit: contiguous read-only memory
+	  flatReturns.insert(flatReturns.end(), daily.begin(), daily.end());
+	}
+
+	ddSamples[rep] = maxDrawdown(flatReturns);
+      });
+
       const int idx = unbiasedIndex(ddConf, static_cast<unsigned int>(nReps));
       std::nth_element(ddSamples.begin(), ddSamples.begin() + idx, ddSamples.end());
       return ddSamples[static_cast<size_t>(idx)];
@@ -365,6 +488,39 @@ namespace mkc_timeseries
 							 statFn,
 							 Sampler(meanBlockLength),
 							 intervalType);
+
+      Result r;
+      r.statistic  = bca.getStatistic();
+      r.lowerBound = bca.getLowerBound();
+      r.upperBound = bca.getUpperBound();
+      return r;
+    }
+
+    /**
+     * @brief BCa bootstrap confidence bounds for the drawdown-magnitude fractile using Trade objects.
+     * Uses IID sampling, as individual trades are assumed to be independent events.
+     */
+    static Result bcaBoundsForDrawdownFractile(const std::vector<mkc_timeseries::Trade<Decimal>>& trades,
+                                               unsigned int numResamples,
+                                               double confidenceLevel,
+                                               int nTrades,
+                                               int nReps,
+                                               double ddConf,
+                                               Executor& exec,
+                                               IntervalType intervalType = IntervalType::TWO_SIDED)
+    {
+      using TradeType = mkc_timeseries::Trade<Decimal>;
+      using Sampler = IIDResampler<TradeType>;
+
+      // Statistic computed with parallel Monte-Carlo on synthetic trade sequences
+      typename mkc_timeseries::BCaBootStrap<Decimal, Sampler, randutils::mt19937_rng, void, TradeType>::StatFn statFn =
+        [=, &exec](const std::vector<TradeType>& sample) -> Decimal {
+          return drawdownFractile(sample, nTrades, nReps, ddConf, exec);
+        };
+
+      // Instantiate BCa with TradeType overrides
+      mkc_timeseries::BCaBootStrap<Decimal, Sampler, randutils::mt19937_rng, void, TradeType> 
+          bca(trades, numResamples, confidenceLevel, statFn, Sampler(), intervalType);
 
       Result r;
       r.statistic  = bca.getStatistic();

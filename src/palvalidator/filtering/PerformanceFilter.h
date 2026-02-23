@@ -74,7 +74,8 @@ namespace palvalidator
        * @param masterSeed A seed for the random number generator.
        */
       PerformanceFilter(const Num& confidenceLevel, unsigned int numResamples, uint64_t masterSeed,
-                        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer = nullptr);
+                        std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer = nullptr,
+                        bool tradeLevelBootstrapping = false);
 
       PerformanceFilter(const Num& confidenceLevel, unsigned int numResamples);
 
@@ -155,6 +156,7 @@ namespace palvalidator
       LSensitivityConfig mLSensitivity;
       std::unique_ptr<BootstrapFactory> mBootstrapFactory;
       std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> mObserver;
+      bool mTradeLevelBootstrapping;                 ///< Whether to use trade-level bootstrapping
     };
 
   } // namespace filtering

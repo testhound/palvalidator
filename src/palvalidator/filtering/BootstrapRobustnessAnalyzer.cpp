@@ -49,7 +49,7 @@ namespace palvalidator::analysis {
     // Using NullBootstrapCollector to suppress per-seed diagnostics
     auto nullCollector = std::make_shared<palvalidator::diagnostics::NullBootstrapCollector>();
     
-    PerformanceFilter filter(confidenceLevel, numResamples, testSeed, nullCollector);
+    PerformanceFilter filter(confidenceLevel, numResamples, testSeed, nullCollector, mConfig.getTradeLevelBootstrapping());
     
     // Call filterByPerformance - completely black box!
     // PerformanceFilter has no idea it's being called multiple times

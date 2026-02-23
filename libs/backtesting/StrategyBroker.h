@@ -21,6 +21,7 @@
 #include "SecurityAttributes.h"
 #include "SecurityAttributesFactory.h"
 #include "PatternPositionRegistry.h"
+#include "OrderType.h"  // NEW: For order type tracking in positions
 // Ensure ptime and getDefaultBarTime are available
 #include "TimeSeriesEntry.h" // For OHLCTimeSeriesEntry, ptime, getDefaultBarTime
 
@@ -1698,11 +1699,24 @@ namespace mkc_timeseries
                                const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
                                const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
     {
+      // Extract order type using runtime polymorphism
+      OrderType entryOrderType = OrderType::UNKNOWN;
+      
+      // Check order type at runtime and extract accordingly
+      if (auto* marketLongOrder = dynamic_cast<MarketOnOpenLongOrder<Decimal>*>(order)) {
+        entryOrderType = extractOrderType(marketLongOrder);
+      } else {
+        // For other order types, try to determine the type
+        entryOrderType = OrderType::UNKNOWN; // Safe fallback for backward compatibility
+      }
+      
+      // Use enhanced constructor with order type
       auto position = std::make_shared<TradingPositionLong<Decimal>>(order->getTradingSymbol(),
                                                                      order->getFillPrice(),
                                                                      getEntryBar(order->getTradingSymbol(),
                                                                                  order->getFillDateTime()),
-                                                                     order->getUnitsInOrder());
+                                                                     order->getUnitsInOrder(),
+                                                                     entryOrderType);
       
       // Transfer pattern mapping from order to position EXTERNALLY
       PatternPositionRegistry::getInstance().transferOrderToPosition(
@@ -1727,12 +1741,25 @@ namespace mkc_timeseries
                                 const Decimal& stopLoss = DecimalConstants<Decimal>::DecimalZero,
                                 const Decimal& profitTarget = DecimalConstants<Decimal>::DecimalZero)
     {
+      // Extract order type using runtime polymorphism
+      OrderType entryOrderType = OrderType::UNKNOWN;
+      
+      // Check order type at runtime and extract accordingly
+      if (auto* marketShortOrder = dynamic_cast<MarketOnOpenShortOrder<Decimal>*>(order)) {
+        entryOrderType = extractOrderType(marketShortOrder);
+      } else {
+        // For other order types, try to determine the type
+        entryOrderType = OrderType::UNKNOWN; // Safe fallback for backward compatibility
+      }
+      
+      // Use enhanced constructor with order type
       auto position =
         std::make_shared<TradingPositionShort<Decimal>>(order->getTradingSymbol(),
                                                         order->getFillPrice(),
                                                         getEntryBar(order->getTradingSymbol(),
                                                                     order->getFillDateTime()),
-                                                        order->getUnitsInOrder());
+                                                        order->getUnitsInOrder(),
+                                                        entryOrderType);
       
       // Transfer pattern mapping from order to position EXTERNALLY
       PatternPositionRegistry::getInstance().transferOrderToPosition(
@@ -1769,7 +1796,7 @@ namespace mkc_timeseries
      * @throws StrategyBrokerException if the strategy transaction for the closing position cannot be found.
      */
     template <typename T>
-    void ExitUnitOrderExecutedCommon (T *order, uint32_t positionId)
+    void ExitUnitOrderExecutedCommon (T *order, uint32_t positionId, OrderType exitOrderType)
     {
       const InstrumentPosition<Decimal>& instrumentPosition =
         mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
@@ -1800,6 +1827,10 @@ namespace mkc_timeseries
         auto exitOrder = std::make_shared<T>(*order);
         aTransaction->completeTransaction (exitOrder);
         
+        // Set exit order type on position before closing (NEW: for order type tracking)
+        auto nonConstPos = std::const_pointer_cast<TradingPosition<Decimal>>(pos);
+        nonConstPos->setExitOrderType(exitOrderType);
+        
         // Clean up tracking for this position - complementary orders were already canceled
         // in the OrderExecuted callback before this method was called
         auto positionOrdersIt = mPositionToOrders.find(positionId);
@@ -1817,7 +1848,7 @@ namespace mkc_timeseries
                                     std::to_string(positionId) + " of symbol: " + order->getTradingSymbol());
       }
 
-      // Close only the specific unit
+      // Close only the specific unit (existing mechanism)
       mInstrumentPositionManager.closeUnitPosition (order->getTradingSymbol(),
                                                    order->getFillDateTime(),
                                                    order->getFillPrice(),
@@ -1835,43 +1866,50 @@ namespace mkc_timeseries
     template <typename T>
     void ExitOrderExecutedCommon (T *order)
     {
+      // Extract exit order type for tracking
+      OrderType exitOrderType = extractOrderType(order);
+      
       // Check if this order is tracked as an individual unit exit
       auto it = mUnitExitOrders.find(order->getOrderID());
       if (it != mUnitExitOrders.end())
-	{
-	  // This is an individual unit exit order
-	  uint32_t positionId = it->second;
+ {
+   // This is an individual unit exit order
+   uint32_t positionId = it->second;
 
-	  mUnitExitOrders.erase(it); // Remove from tracking map
-	  ExitUnitOrderExecutedCommon(order, positionId);
-	}
+   mUnitExitOrders.erase(it); // Remove from tracking map
+   ExitUnitOrderExecutedCommon(order, positionId, exitOrderType);
+ }
       else
-	{
-	  // This is a full exit order - close all positions (original behavior)
-	  InstrumentPosition<Decimal> instrumentPosition =
-	    mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
-	  typename InstrumentPosition<Decimal>::ConstInstrumentPositionIterator positionIterator =
-	    instrumentPosition.beginInstrumentPosition();
-	  typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator transactionIterator;
-	  std::shared_ptr<StrategyTransaction<Decimal>> aTransaction;
-	  std::shared_ptr<TradingPosition<Decimal>> pos;
-	  auto exitOrder = std::make_shared<T>(*order);
+ {
+   // This is a full exit order - close all positions (original behavior)
+   InstrumentPosition<Decimal> instrumentPosition =
+     mInstrumentPositionManager.getInstrumentPosition (order->getTradingSymbol());
+   typename InstrumentPosition<Decimal>::ConstInstrumentPositionIterator positionIterator =
+     instrumentPosition.beginInstrumentPosition();
+   typename StrategyTransactionManager<Decimal>::StrategyTransactionIterator transactionIterator;
+   std::shared_ptr<StrategyTransaction<Decimal>> aTransaction;
+   std::shared_ptr<TradingPosition<Decimal>> pos;
+   auto exitOrder = std::make_shared<T>(*order);
 
         for (; positionIterator != instrumentPosition.endInstrumentPosition(); positionIterator++)
-	  {
-	    pos = *positionIterator;
-	    transactionIterator = mStrategyTrades.findStrategyTransaction (pos->getPositionID());
-	    if (transactionIterator != mStrategyTrades.endStrategyTransaction())
-	      {
-		aTransaction = transactionIterator->second;
-		aTransaction->completeTransaction (exitOrder);
-	      }
-	    else
-	      {
-		throw StrategyBrokerException("Unable to find StrategyTransaction for symbol: " + order->getTradingSymbol());
-	      }
-	  }
+   {
+     pos = *positionIterator;
+     transactionIterator = mStrategyTrades.findStrategyTransaction (pos->getPositionID());
+     if (transactionIterator != mStrategyTrades.endStrategyTransaction())
+       {
+  aTransaction = transactionIterator->second;
+  aTransaction->completeTransaction (exitOrder);
+  
+  // Set exit order type on position (NEW: for order type tracking)
+  pos->setExitOrderType(exitOrderType);
+       }
+     else
+       {
+  throw StrategyBrokerException("Unable to find StrategyTransaction for symbol: " + order->getTradingSymbol());
+       }
+   }
 
+        // Exit order types set above, now close all positions using existing mechanism
         mInstrumentPositionManager.closeAllPositions (order->getTradingSymbol(),
                                                       order->getFillDateTime(), // Use ptime
                                                       order->getFillPrice());
@@ -2088,6 +2126,38 @@ namespace mkc_timeseries
         throw StrategyBrokerException("StrategyBroker constructor: portfolio cannot be null");
       }
       return portfolio;
+    }
+
+    /**
+     * @brief Extracts the OrderType from a TradingOrder template instance
+     * @tparam OrderT The specific TradingOrder derived type
+     * @param order Pointer to the order (unused in function, type determined at compile time)
+     * @return OrderType corresponding to the template type
+     * @note Uses compile-time type checking to determine order type safely
+     */
+    template<typename OrderT>
+    OrderType extractOrderType(const OrderT* /* order */) const
+    {
+      // Use compile-time type checking to map order types
+      if constexpr (std::is_same_v<OrderT, MarketOnOpenLongOrder<Decimal>>) {
+        return OrderType::MARKET_ON_OPEN_LONG;
+      } else if constexpr (std::is_same_v<OrderT, MarketOnOpenShortOrder<Decimal>>) {
+        return OrderType::MARKET_ON_OPEN_SHORT;
+      } else if constexpr (std::is_same_v<OrderT, MarketOnOpenSellOrder<Decimal>>) {
+        return OrderType::MARKET_ON_OPEN_SELL;
+      } else if constexpr (std::is_same_v<OrderT, MarketOnOpenCoverOrder<Decimal>>) {
+        return OrderType::MARKET_ON_OPEN_COVER;
+      } else if constexpr (std::is_same_v<OrderT, SellAtLimitOrder<Decimal>>) {
+        return OrderType::SELL_AT_LIMIT;
+      } else if constexpr (std::is_same_v<OrderT, CoverAtLimitOrder<Decimal>>) {
+        return OrderType::COVER_AT_LIMIT;
+      } else if constexpr (std::is_same_v<OrderT, SellAtStopOrder<Decimal>>) {
+        return OrderType::SELL_AT_STOP;
+      } else if constexpr (std::is_same_v<OrderT, CoverAtStopOrder<Decimal>>) {
+        return OrderType::COVER_AT_STOP;
+      } else {
+        return OrderType::UNKNOWN;
+      }
     }
 
     TradingOrderManager<Decimal>       mOrderManager;

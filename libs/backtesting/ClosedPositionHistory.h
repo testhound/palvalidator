@@ -20,6 +20,7 @@
 #include "StatUtils.h"
 #include "TimeSeriesIndicators.h"
 #include "PatternPositionRegistry.h"
+#include "TradeResampling.h"
 
 namespace mkc_timeseries
 {
@@ -451,6 +452,145 @@ namespace mkc_timeseries
         return allReturns;
     }
 
+    /**
+     * @brief Extracts returns as a vector of Trade objects.
+     * 
+     * Each Trade contains the contiguous mark-to-market daily returns for one 
+     * closed position. Open positions are excluded.
+     *
+     * ENTRY CONVENTION: This implementation assumes entry occurs at the open 
+     * of the bar following the signal. The first bar return is computed as:
+     *   (first_bar_close - entry_open) / entry_open
+     * This correctly captures the full intrabar price movement from entry to 
+     * first close, with no inflation of duration.
+     *
+     * EXIT CONVENTION: The last bar return is computed using the actual exit 
+     * price (limit fill, stop fill, or next-open market exit) rather than 
+     * the bar close, ensuring the trade's terminal return is accurate.
+     *
+     * @return Vector of Trade objects, one per closed position, in chronological order.
+     */
+    std::vector<Trade<Decimal>>
+    getTradeLevelReturns(bool applyCosts = false,
+			 Decimal costPerSide = DecimalConstants<Decimal>::DefaultEquitySlippage,
+			 bool exemptLimitExits = false) const
+    {
+      const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+      const Decimal one  = DecimalConstants<Decimal>::DecimalOne;
+
+      if (applyCosts)
+	{
+	  if (costPerSide < zero || costPerSide >= one)
+	    throw std::domain_error("getTradeLevelReturns: costPerSide must be in [0, 1).");
+      }
+
+      std::vector<Trade<Decimal>> tradeReturns;
+      tradeReturns.reserve(mPositions.size());
+
+      const Decimal minusOne = DecimalConstants<Decimal>::DecimalMinusOne;
+
+      // Effective execution prices that apply cost ONCE per side (entry and exit).
+      // costPerSide is a fraction (0.001 = 0.1%).
+      auto getEffectiveEntryPrice = [&](auto const& positionPtr) -> Decimal
+      {
+	const Decimal rawEntry = positionPtr->getEntryPrice();
+	if (!applyCosts)
+	  return rawEntry;
+
+	// Long: pay more on entry (worse) => entry*(1+c)
+	// Short: receive less on sell (worse) => entry*(1-c)
+	return positionPtr->isShortPosition()
+	  ? rawEntry * (one - costPerSide)
+	  : rawEntry * (one + costPerSide);
+      };
+
+      auto getEffectiveExitPrice = [&](auto const& positionPtr) -> Decimal
+      {
+	const Decimal rawExit = positionPtr->getExitPrice();
+	if (!applyCosts)
+	  return rawExit;
+	// When exemptLimitExits is true, limit-order exits (profit targets) fill
+	// at a price the market came to us — no adverse slippage on the exit side.
+	if (exemptLimitExits)
+	  {
+	    const OrderType exitType = positionPtr->getExitOrderType();
+	    if (exitType == OrderType::SELL_AT_LIMIT || exitType == OrderType::COVER_AT_LIMIT)
+	      return rawExit;
+	  }
+	// All other exits, or when exemptLimitExits is false: apply normal cost.
+	// Long: receive less on exit (worse) => exit*(1-c)
+	// Short: pay more to buy-to-cover (worse) => exit*(1+c)
+	return positionPtr->isShortPosition()
+	  ? rawExit * (one + costPerSide)
+	  : rawExit * (one - costPerSide);
+      };
+ 
+      for (auto const& [ptime, pos] : mPositions)
+	{
+	  std::vector<Decimal> dailySequence;
+
+	  const bool sameBarPosition = (pos->getEntryDateTime() == pos->getExitDateTime());
+
+	  if (sameBarPosition)
+	    {
+	      const Decimal entryRef = getEffectiveEntryPrice(pos);
+	      const Decimal exitPx   = getEffectiveExitPrice(pos);
+
+	      if (entryRef == zero)
+		throw std::domain_error("getTradeLevelReturns: effective entry price is zero.");
+
+	      Decimal r = (exitPx - entryRef) / entryRef;
+
+	      // Convert price-return to P&L-return for shorts
+	      if (pos->isShortPosition())
+		r *= minusOne;
+
+	      dailySequence.push_back(r);
+	    }
+	  else
+	    {
+	      Decimal prevRef = getEffectiveEntryPrice(pos);
+	      if (prevRef == zero)
+		throw std::domain_error("getTradeLevelReturns: effective entry price is zero.");
+
+	      for (auto bar_it = pos->beginPositionBarHistory();
+		   bar_it != pos->endPositionBarHistory();
+		   ++bar_it)
+		{
+		  Decimal r = zero;
+		  const bool isLastBar = (std::next(bar_it) == pos->endPositionBarHistory());
+
+		  if (isLastBar)
+		    {
+		      const Decimal exitPx = getEffectiveExitPrice(pos);
+		      r = (exitPx - prevRef) / prevRef;
+		    }
+		  else
+		    {
+		      const Decimal closePx = bar_it->second.getCloseValue();
+		      r = (closePx - prevRef) / prevRef;
+		      prevRef = closePx;
+
+		      if (prevRef == zero) {
+			throw std::domain_error("getTradeLevelReturns: bar close is zero.");
+		      }
+		    }
+
+		  if (pos->isShortPosition()) r *= minusOne;
+		  dailySequence.push_back(r);
+		}
+	    }
+
+	  if (!dailySequence.empty())
+	    {
+	      // Uses Trade(std::vector<Decimal>&&) — perfect for your class
+	      tradeReturns.emplace_back(std::move(dailySequence));
+	    }
+	}
+
+      return tradeReturns;
+    }
+    
     std::vector<std::pair<boost::posix_time::ptime, Decimal>>
     getHighResBarReturnsWithDates() const
     {

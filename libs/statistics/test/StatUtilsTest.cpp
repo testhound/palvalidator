@@ -5819,30 +5819,28 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF basic correctness and edge cases
         REQUIRE(num::to_double(result) > 0.0);
     }
 
-    SECTION("Neutral logBars (all zeros) handled correctly") {
-        std::vector<DecimalType> logBars = {
-            DC::DecimalZero,
-            DC::DecimalZero,
-            DC::DecimalZero
-        };
-
-        LogPF_LogBars stat(
-            /*ruin_eps=*/Stat::DefaultRuinEps,
-            /*denom_floor=*/Stat::DefaultDenomFloor,
-            /*prior_strength=*/1.0,
-            /*stop_loss_pct=*/0.05,
-            /*profit_target_pct=*/0.03
-        );
-
-        DecimalType result = stat(logBars);
-
-        // With all zeros (no wins, no losses), numerator = numer_floor,
-        // denominator = prior_loss_mag
-        REQUIRE(std::isfinite(num::to_double(result)));
-        
-        // Since numer_floor is tiny and prior is larger, log(PF) should be negative
-        REQUIRE(num::to_double(result) < 0.0);
-    }
+    SECTION("Neutral logBars (all zeros) handled correctly")
+      {
+	std::vector<DecimalType> logBars = {
+	  DC::DecimalZero,
+	  DC::DecimalZero,
+	  DC::DecimalZero
+	};
+	LogPF_LogBars stat(
+			   /*ruin_eps=*/Stat::DefaultRuinEps,
+			   /*denom_floor=*/Stat::DefaultDenomFloor,
+			   /*prior_strength=*/1.0,
+			   /*stop_loss_pct=*/0.05,
+			   /*profit_target_pct=*/0.03
+			   );
+	DecimalType result = stat(logBars);
+	// With all zeros (no wins, no losses), both numerator and denominator
+	// collapse to their respective floor values. The prior is now anchored
+	// to 5% of sum_log_wins, which is zero here, so prior_loss_mag = denom_floor.
+	// The sign of log(PF) is determined by the relative sizes of numer_floor
+	// and denom_floor and is not meaningful to assert — only finiteness matters.
+	REQUIRE(std::isfinite(num::to_double(result)));
+      }
 }
 
 // =============================================================================
@@ -6232,25 +6230,35 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF parameter handling",
     const double ruin_eps = 1e-8;
     auto logBars = Stat::makeLogGrowthSeries(returns, ruin_eps);
 
-    SECTION("Different stop_loss_pct values produce different results") {
-        LogPF_LogBars stat1(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.03, 0.02);
-        LogPF_LogBars stat2(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.05, 0.02);
-        LogPF_LogBars stat3(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.10, 0.02);
+    SECTION("Different stop_loss_pct values produce different results")
+      {
+	// stop_loss_pct only affects the numer_floor via scale (Step 4).
+	// Normal-sized wins dominate numer_floor, so we need a tiny-win fixture
+	// for the floor to activate and differences to be observable.
+	std::vector<DecimalType> tinyWinReturns = {
+	  DecimalType("0.0001"), DecimalType("-0.05"),
+	  DecimalType("-0.03"),  DecimalType("0.0002")
+	};
+	auto tinyLogBars = Stat::makeLogGrowthSeries(tinyWinReturns, ruin_eps);
 
-        DecimalType result1 = stat1(logBars);
-        DecimalType result2 = stat2(logBars);
-        DecimalType result3 = stat3(logBars);
+	LogPF_LogBars stat1(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.03, /*profit_target=*/0.0);
+	LogPF_LogBars stat2(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.05, /*profit_target=*/0.0);
+	LogPF_LogBars stat3(ruin_eps, 1e-6, 1.0, /*stop_loss=*/0.10, /*profit_target=*/0.0);
 
-        // Different stop losses should produce different results
-        REQUIRE(num::to_double(result1) != num::to_double(result2));
-        REQUIRE(num::to_double(result2) != num::to_double(result3));
-        
-        // All should be finite
-        REQUIRE(std::isfinite(num::to_double(result1)));
-        REQUIRE(std::isfinite(num::to_double(result2)));
-        REQUIRE(std::isfinite(num::to_double(result3)));
-    }
+	DecimalType result1 = stat1(tinyLogBars);
+	DecimalType result2 = stat2(tinyLogBars);
+	DecimalType result3 = stat3(tinyLogBars);
 
+	// Larger stop_loss → larger scale → larger numer_floor → higher log(PF)
+	// when wins are tiny enough for the floor to dominate the numerator.
+	REQUIRE(num::to_double(result1) < num::to_double(result2));
+	REQUIRE(num::to_double(result2) < num::to_double(result3));
+
+	REQUIRE(std::isfinite(num::to_double(result1)));
+	REQUIRE(std::isfinite(num::to_double(result2)));
+	REQUIRE(std::isfinite(num::to_double(result3)));
+      }
+ 
     SECTION("Different profit_target_pct values produce different results") {
         // Use returns with VERY SMALL wins so numer_floor becomes relevant.
         // The original test used large wins that dominated the numerator floor,
@@ -6292,24 +6300,28 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF parameter handling",
         REQUIRE(std::isfinite(num::to_double(result3)));
     }
 
-    SECTION("Different prior_strength values produce different results") {
-        LogPF_LogBars stat1(ruin_eps, 1e-6, /*prior_strength=*/0.5, 0.05, 0.03);
-        LogPF_LogBars stat2(ruin_eps, 1e-6, /*prior_strength=*/1.0, 0.05, 0.03);
-        LogPF_LogBars stat3(ruin_eps, 1e-6, /*prior_strength=*/2.0, 0.05, 0.03);
+    SECTION("Different prior_strength values produce different results")
+      {
+	// NOTE: prior_strength is no longer used in the denominator prior calculation.
+	// The prior is now anchored to 5% of sum_log_wins, making it independent of
+	// prior_strength. Varying prior_strength must produce identical results.
+	LogPF_LogBars stat1(ruin_eps, 1e-6, /*prior_strength=*/0.5, 0.05, 0.0);
+	LogPF_LogBars stat2(ruin_eps, 1e-6, /*prior_strength=*/1.0, 0.05, 0.0);
+	LogPF_LogBars stat3(ruin_eps, 1e-6, /*prior_strength=*/2.0, 0.05, 0.0);
 
-        DecimalType result1 = stat1(logBars);
-        DecimalType result2 = stat2(logBars);
-        DecimalType result3 = stat3(logBars);
+	DecimalType result1 = stat1(logBars);
+	DecimalType result2 = stat2(logBars);
+	DecimalType result3 = stat3(logBars);
 
-        // Different prior strengths should produce different results
-        REQUIRE(num::to_double(result1) != num::to_double(result2));
-        REQUIRE(num::to_double(result2) != num::to_double(result3));
-        
-        // Higher prior strength means more conservative (lower log(PF))
-        REQUIRE(num::to_double(result1) > num::to_double(result2));
-        REQUIRE(num::to_double(result2) > num::to_double(result3));
-    }
+	REQUIRE(std::isfinite(num::to_double(result1)));
+	REQUIRE(std::isfinite(num::to_double(result2)));
+	REQUIRE(std::isfinite(num::to_double(result3)));
 
+	// prior_strength is intentionally unused: all results must be identical.
+	REQUIRE(num::to_double(result1) == Catch::Approx(num::to_double(result2)).epsilon(1e-12));
+	REQUIRE(num::to_double(result2) == Catch::Approx(num::to_double(result3)).epsilon(1e-12));
+      }
+ 
     SECTION("Functor is copyable") {
         LogPF_LogBars stat1(ruin_eps, 1e-6, 1.0, 0.05, 0.03);
         

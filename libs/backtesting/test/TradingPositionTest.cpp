@@ -1575,3 +1575,559 @@ TEST_CASE("Miscellaneous edge cases", "[TradingPosition][Edge]")
     REQUIRE(pos2.getTradingUnits() == fiveContracts);  // Still the same after close
   }
 }
+
+// ============================================================================
+// TEST SUITE 13: OrderType Utility Functions
+// ============================================================================
+
+TEST_CASE("OrderType utility functions", "[OrderType][Utility]")
+{
+  SECTION("orderTypeToString returns correct strings for all values")
+  {
+    REQUIRE(orderTypeToString(OrderType::MARKET_ON_OPEN_LONG)  == "MARKET_ON_OPEN_LONG");
+    REQUIRE(orderTypeToString(OrderType::MARKET_ON_OPEN_SHORT) == "MARKET_ON_OPEN_SHORT");
+    REQUIRE(orderTypeToString(OrderType::MARKET_ON_OPEN_SELL)  == "MARKET_ON_OPEN_SELL");
+    REQUIRE(orderTypeToString(OrderType::MARKET_ON_OPEN_COVER) == "MARKET_ON_OPEN_COVER");
+    REQUIRE(orderTypeToString(OrderType::SELL_AT_LIMIT)        == "SELL_AT_LIMIT");
+    REQUIRE(orderTypeToString(OrderType::COVER_AT_LIMIT)       == "COVER_AT_LIMIT");
+    REQUIRE(orderTypeToString(OrderType::SELL_AT_STOP)         == "SELL_AT_STOP");
+    REQUIRE(orderTypeToString(OrderType::COVER_AT_STOP)        == "COVER_AT_STOP");
+    REQUIRE(orderTypeToString(OrderType::UNKNOWN)              == "UNKNOWN");
+  }
+
+  SECTION("isEntryOrderType returns true only for entry types")
+  {
+    REQUIRE(isEntryOrderType(OrderType::MARKET_ON_OPEN_LONG));
+    REQUIRE(isEntryOrderType(OrderType::MARKET_ON_OPEN_SHORT));
+
+    REQUIRE_FALSE(isEntryOrderType(OrderType::MARKET_ON_OPEN_SELL));
+    REQUIRE_FALSE(isEntryOrderType(OrderType::MARKET_ON_OPEN_COVER));
+    REQUIRE_FALSE(isEntryOrderType(OrderType::SELL_AT_LIMIT));
+    REQUIRE_FALSE(isEntryOrderType(OrderType::COVER_AT_LIMIT));
+    REQUIRE_FALSE(isEntryOrderType(OrderType::SELL_AT_STOP));
+    REQUIRE_FALSE(isEntryOrderType(OrderType::COVER_AT_STOP));
+    REQUIRE_FALSE(isEntryOrderType(OrderType::UNKNOWN));
+  }
+
+  SECTION("isExitOrderType returns true only for exit types")
+  {
+    REQUIRE(isExitOrderType(OrderType::MARKET_ON_OPEN_SELL));
+    REQUIRE(isExitOrderType(OrderType::MARKET_ON_OPEN_COVER));
+    REQUIRE(isExitOrderType(OrderType::SELL_AT_LIMIT));
+    REQUIRE(isExitOrderType(OrderType::COVER_AT_LIMIT));
+    REQUIRE(isExitOrderType(OrderType::SELL_AT_STOP));
+    REQUIRE(isExitOrderType(OrderType::COVER_AT_STOP));
+
+    REQUIRE_FALSE(isExitOrderType(OrderType::MARKET_ON_OPEN_LONG));
+    REQUIRE_FALSE(isExitOrderType(OrderType::MARKET_ON_OPEN_SHORT));
+    REQUIRE_FALSE(isExitOrderType(OrderType::UNKNOWN));
+  }
+}
+
+// ============================================================================
+// TEST SUITE 14: OrderType Default State (Legacy Constructors)
+// ============================================================================
+
+TEST_CASE("OrderType default state with legacy constructors", "[TradingPosition][OrderType][Default]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Legacy long position constructor defaults both order types to UNKNOWN")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+
+    REQUIRE(pos.getEntryOrderType() == OrderType::UNKNOWN);
+    REQUIRE(pos.getExitOrderType()  == OrderType::UNKNOWN);
+  }
+
+  SECTION("Legacy short position constructor defaults both order types to UNKNOWN")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+
+    REQUIRE(pos.getEntryOrderType() == OrderType::UNKNOWN);
+    REQUIRE(pos.getExitOrderType()  == OrderType::UNKNOWN);
+  }
+
+  SECTION("hasKnownEntryOrderType is false for legacy long position")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE_FALSE(pos.hasKnownEntryOrderType());
+  }
+
+  SECTION("hasKnownExitOrderType is false for newly opened legacy long position")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE_FALSE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("hasKnownEntryOrderType is false for legacy short position")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE_FALSE(pos.hasKnownEntryOrderType());
+  }
+
+  SECTION("Legacy ClosePosition(date, price) leaves exit order type as UNKNOWN")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.ClosePosition(date(2025, Jan, 5), createDecimal("110.0"));
+
+    REQUIRE(pos.isPositionClosed());
+    REQUIRE(pos.getExitOrderType() == OrderType::UNKNOWN);
+    REQUIRE_FALSE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Legacy ClosePosition(ptime, price) leaves exit order type as UNKNOWN")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("90.0"));
+
+    REQUIRE(pos.isPositionClosed());
+    REQUIRE(pos.getExitOrderType() == OrderType::UNKNOWN);
+    REQUIRE_FALSE(pos.hasKnownExitOrderType());
+  }
+}
+
+// ============================================================================
+// TEST SUITE 15: OrderType Enhanced Constructors
+// ============================================================================
+
+TEST_CASE("OrderType enhanced constructors", "[TradingPosition][OrderType][Constructor]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Enhanced long constructor sets entry order type correctly")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+
+    REQUIRE(pos.getEntryOrderType() == OrderType::MARKET_ON_OPEN_LONG);
+    REQUIRE(pos.hasKnownEntryOrderType());
+  }
+
+  SECTION("Enhanced long constructor leaves exit order type UNKNOWN until closed")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+
+    REQUIRE(pos.getExitOrderType() == OrderType::UNKNOWN);
+    REQUIRE_FALSE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Enhanced short constructor sets entry order type correctly")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                          OrderType::MARKET_ON_OPEN_SHORT);
+
+    REQUIRE(pos.getEntryOrderType() == OrderType::MARKET_ON_OPEN_SHORT);
+    REQUIRE(pos.hasKnownEntryOrderType());
+  }
+
+  SECTION("Enhanced short constructor leaves exit order type UNKNOWN until closed")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                          OrderType::MARKET_ON_OPEN_SHORT);
+
+    REQUIRE(pos.getExitOrderType() == OrderType::UNKNOWN);
+    REQUIRE_FALSE(pos.hasKnownExitOrderType());
+  }
+}
+
+// ============================================================================
+// TEST SUITE 16: ClosePosition with OrderType
+// ============================================================================
+
+TEST_CASE("ClosePosition with OrderType parameter", "[TradingPosition][OrderType][ClosePosition]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Long position closed with SELL_AT_LIMIT records correct exit order type")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("110.0"), OrderType::SELL_AT_LIMIT);
+
+    REQUIRE(pos.isPositionClosed());
+    REQUIRE(pos.getExitOrderType() == OrderType::SELL_AT_LIMIT);
+    REQUIRE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Long position closed with SELL_AT_STOP records correct exit order type")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("95.0"), OrderType::SELL_AT_STOP);
+
+    REQUIRE(pos.isPositionClosed());
+    REQUIRE(pos.getExitOrderType() == OrderType::SELL_AT_STOP);
+    REQUIRE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Long position closed with MARKET_ON_OPEN_SELL records correct exit order type")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("101.0"), OrderType::MARKET_ON_OPEN_SELL);
+
+    REQUIRE(pos.getExitOrderType() == OrderType::MARKET_ON_OPEN_SELL);
+    REQUIRE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Short position closed with COVER_AT_LIMIT records correct exit order type")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                          OrderType::MARKET_ON_OPEN_SHORT);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("90.0"), OrderType::COVER_AT_LIMIT);
+
+    REQUIRE(pos.isPositionClosed());
+    REQUIRE(pos.getExitOrderType() == OrderType::COVER_AT_LIMIT);
+    REQUIRE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Short position closed with COVER_AT_STOP records correct exit order type")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                          OrderType::MARKET_ON_OPEN_SHORT);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("105.0"), OrderType::COVER_AT_STOP);
+
+    REQUIRE(pos.isPositionClosed());
+    REQUIRE(pos.getExitOrderType() == OrderType::COVER_AT_STOP);
+    REQUIRE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Short position closed with MARKET_ON_OPEN_COVER records correct exit order type")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                          OrderType::MARKET_ON_OPEN_SHORT);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("99.0"), OrderType::MARKET_ON_OPEN_COVER);
+
+    REQUIRE(pos.getExitOrderType() == OrderType::MARKET_ON_OPEN_COVER);
+    REQUIRE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Entry order type is not affected by ClosePosition with order type")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("110.0"), OrderType::SELL_AT_LIMIT);
+
+    REQUIRE(pos.getEntryOrderType() == OrderType::MARKET_ON_OPEN_LONG);
+  }
+
+  SECTION("Exit price and date are still correct when using enhanced ClosePosition")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    DecimalType exitPrice = createDecimal("112.50");
+    pos.ClosePosition(exitDT, exitPrice, OrderType::SELL_AT_LIMIT);
+
+    REQUIRE(pos.getExitPrice()    == exitPrice);
+    REQUIRE(pos.getExitDateTime() == exitDT);
+    REQUIRE(pos.getExitDate()     == exitDT.date());
+  }
+
+  SECTION("Observer still fires when using ClosePosition with order type")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    TestTradingPositionObserver<DecimalType> observer;
+    pos.addObserver(observer);
+
+    REQUIRE_FALSE(observer.isPositionClosed());
+
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    DecimalType exitPrice = createDecimal("110.0");
+    pos.ClosePosition(exitDT, exitPrice, OrderType::SELL_AT_LIMIT);
+
+    REQUIRE(observer.isPositionClosed());
+    REQUIRE(observer.getExitPrice() == exitPrice);
+    REQUIRE(observer.getExitDate()  == exitDT.date());
+  }
+}
+
+// ============================================================================
+// TEST SUITE 17: setEntryOrderType and setExitOrderType direct setters
+// ============================================================================
+
+TEST_CASE("setEntryOrderType and setExitOrderType validation", "[TradingPosition][OrderType][Setters]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("setEntryOrderType accepts all valid entry types")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE_NOTHROW(pos.setEntryOrderType(OrderType::MARKET_ON_OPEN_LONG));
+    REQUIRE(pos.getEntryOrderType() == OrderType::MARKET_ON_OPEN_LONG);
+  }
+
+  SECTION("setEntryOrderType accepts UNKNOWN as reset/default without throwing")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE_NOTHROW(pos.setEntryOrderType(OrderType::UNKNOWN));
+    REQUIRE(pos.getEntryOrderType() == OrderType::UNKNOWN);
+  }
+
+  SECTION("setEntryOrderType rejects exit-type values")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE_THROWS(pos.setEntryOrderType(OrderType::SELL_AT_LIMIT));
+    REQUIRE_THROWS(pos.setEntryOrderType(OrderType::SELL_AT_STOP));
+    REQUIRE_THROWS(pos.setEntryOrderType(OrderType::MARKET_ON_OPEN_SELL));
+    REQUIRE_THROWS(pos.setEntryOrderType(OrderType::COVER_AT_LIMIT));
+    REQUIRE_THROWS(pos.setEntryOrderType(OrderType::COVER_AT_STOP));
+    REQUIRE_THROWS(pos.setEntryOrderType(OrderType::MARKET_ON_OPEN_COVER));
+  }
+
+  SECTION("setExitOrderType accepts all valid exit types on open position")
+  {
+    {
+      TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+      REQUIRE_NOTHROW(pos.setExitOrderType(OrderType::SELL_AT_LIMIT));
+      REQUIRE(pos.getExitOrderType() == OrderType::SELL_AT_LIMIT);
+    }
+    {
+      TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+      REQUIRE_NOTHROW(pos.setExitOrderType(OrderType::SELL_AT_STOP));
+      REQUIRE(pos.getExitOrderType() == OrderType::SELL_AT_STOP);
+    }
+    {
+      TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+      REQUIRE_NOTHROW(pos.setExitOrderType(OrderType::MARKET_ON_OPEN_SELL));
+      REQUIRE(pos.getExitOrderType() == OrderType::MARKET_ON_OPEN_SELL);
+    }
+    {
+      TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+      REQUIRE_NOTHROW(pos.setExitOrderType(OrderType::COVER_AT_LIMIT));
+      REQUIRE(pos.getExitOrderType() == OrderType::COVER_AT_LIMIT);
+    }
+    {
+      TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+      REQUIRE_NOTHROW(pos.setExitOrderType(OrderType::COVER_AT_STOP));
+      REQUIRE(pos.getExitOrderType() == OrderType::COVER_AT_STOP);
+    }
+    {
+      TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+      REQUIRE_NOTHROW(pos.setExitOrderType(OrderType::MARKET_ON_OPEN_COVER));
+      REQUIRE(pos.getExitOrderType() == OrderType::MARKET_ON_OPEN_COVER);
+    }
+  }
+
+  SECTION("setExitOrderType accepts UNKNOWN as no-op when already UNKNOWN")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE_NOTHROW(pos.setExitOrderType(OrderType::UNKNOWN));
+    REQUIRE(pos.getExitOrderType() == OrderType::UNKNOWN);
+  }
+
+  SECTION("setExitOrderType rejects entry-type values")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE_THROWS(pos.setExitOrderType(OrderType::MARKET_ON_OPEN_LONG));
+    REQUIRE_THROWS(pos.setExitOrderType(OrderType::MARKET_ON_OPEN_SHORT));
+  }
+
+  SECTION("setExitOrderType UNKNOWN → UNKNOWN is always a no-op")
+  {
+    // Call multiple times with UNKNOWN — should never throw
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE_NOTHROW(pos.setExitOrderType(OrderType::UNKNOWN));
+    REQUIRE_NOTHROW(pos.setExitOrderType(OrderType::UNKNOWN));
+    REQUIRE(pos.getExitOrderType() == OrderType::UNKNOWN);
+  }
+
+  SECTION("setExitOrderType KNOWN → UNKNOWN is a silent no-op (backward compat path)")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setExitOrderType(OrderType::SELL_AT_LIMIT);
+    REQUIRE(pos.getExitOrderType() == OrderType::SELL_AT_LIMIT);
+
+    // The backward-compat forwarding path always sends UNKNOWN — must not clobber
+    REQUIRE_NOTHROW(pos.setExitOrderType(OrderType::UNKNOWN));
+    REQUIRE(pos.getExitOrderType() == OrderType::SELL_AT_LIMIT); // unchanged
+  }
+
+  SECTION("setExitOrderType KNOWN → different KNOWN throws (genuine double-set)")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setExitOrderType(OrderType::SELL_AT_LIMIT);
+
+    REQUIRE_THROWS_AS(pos.setExitOrderType(OrderType::SELL_AT_STOP), TradingPositionException);
+  }
+
+  SECTION("setExitOrderType KNOWN → same KNOWN throws (idempotent set is still rejected)")
+  {
+    // The immutability rule does not make an exception for the same value —
+    // once set, it is frozen to prevent silent logic errors.
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    pos.setExitOrderType(OrderType::SELL_AT_LIMIT);
+
+    REQUIRE_THROWS_AS(pos.setExitOrderType(OrderType::SELL_AT_LIMIT), TradingPositionException);
+  }
+}
+
+// ============================================================================
+// TEST SUITE 18: String representations
+// ============================================================================
+
+TEST_CASE("OrderType string representation methods", "[TradingPosition][OrderType][Strings]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("getEntryOrderTypeString returns UNKNOWN for legacy long position")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE(pos.getEntryOrderTypeString() == "UNKNOWN");
+  }
+
+  SECTION("getExitOrderTypeString returns UNKNOWN for open position")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract);
+    REQUIRE(pos.getExitOrderTypeString() == "UNKNOWN");
+  }
+
+  SECTION("getEntryOrderTypeString reflects enhanced constructor value")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    REQUIRE(pos.getEntryOrderTypeString() == "MARKET_ON_OPEN_LONG");
+  }
+
+  SECTION("getExitOrderTypeString reflects exit type after enhanced ClosePosition")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("110.0"), OrderType::SELL_AT_LIMIT);
+
+    REQUIRE(pos.getExitOrderTypeString() == "SELL_AT_LIMIT");
+  }
+
+  SECTION("getEntryOrderTypeString for short position")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                          OrderType::MARKET_ON_OPEN_SHORT);
+    REQUIRE(pos.getEntryOrderTypeString() == "MARKET_ON_OPEN_SHORT");
+  }
+
+  SECTION("getExitOrderTypeString for short position closed with COVER_AT_LIMIT")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                          OrderType::MARKET_ON_OPEN_SHORT);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("90.0"), OrderType::COVER_AT_LIMIT);
+
+    REQUIRE(pos.getExitOrderTypeString() == "COVER_AT_LIMIT");
+  }
+}
+
+// ============================================================================
+// TEST SUITE 19: Full position lifecycle with order type tracking
+// ============================================================================
+
+TEST_CASE("Full position lifecycle with order type tracking", "[TradingPosition][OrderType][Lifecycle]")
+{
+  auto entry = createTimeSeriesEntry("20250101", "100.0", "105.0", "95.0", "102.0", "1000");
+  auto bar2   = createTimeSeriesEntry("20250102", "102.0", "112.0", "101.0", "111.0", "1000");
+  auto bar3   = createTimeSeriesEntry("20250103", "111.0", "115.0", "110.0", "114.0", "1000");
+  TradingVolume oneContract(1, TradingVolume::CONTRACTS);
+  std::string symbol("TEST");
+
+  SECTION("Multi-bar long position: entry and limit exit are both recorded correctly")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    pos.addBar(*bar2);
+    pos.addBar(*bar3);
+
+    REQUIRE(pos.isPositionOpen());
+    REQUIRE(pos.getEntryOrderType() == OrderType::MARKET_ON_OPEN_LONG);
+    REQUIRE(pos.getExitOrderType()  == OrderType::UNKNOWN);
+
+    ptime exitDT = time_from_string("2025-01-03 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("115.0"), OrderType::SELL_AT_LIMIT);
+
+    REQUIRE(pos.isPositionClosed());
+    REQUIRE(pos.getEntryOrderType() == OrderType::MARKET_ON_OPEN_LONG);
+    REQUIRE(pos.getExitOrderType()  == OrderType::SELL_AT_LIMIT);
+    REQUIRE(pos.hasKnownEntryOrderType());
+    REQUIRE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Multi-bar short position: entry and stop exit are both recorded correctly")
+  {
+    TradingPositionShort<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                          OrderType::MARKET_ON_OPEN_SHORT);
+    pos.addBar(*bar2);
+
+    REQUIRE(pos.isPositionOpen());
+    REQUIRE(pos.getEntryOrderType() == OrderType::MARKET_ON_OPEN_SHORT);
+    REQUIRE(pos.getExitOrderType()  == OrderType::UNKNOWN);
+
+    ptime exitDT = time_from_string("2025-01-02 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("103.0"), OrderType::COVER_AT_STOP);
+
+    REQUIRE(pos.isPositionClosed());
+    REQUIRE(pos.getEntryOrderType() == OrderType::MARKET_ON_OPEN_SHORT);
+    REQUIRE(pos.getExitOrderType()  == OrderType::COVER_AT_STOP);
+    REQUIRE(pos.hasKnownEntryOrderType());
+    REQUIRE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Attempting to re-close an already closed position throws regardless of order type")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    ptime firstExit = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(firstExit, createDecimal("110.0"), OrderType::SELL_AT_LIMIT);
+    REQUIRE(pos.isPositionClosed());
+
+    // Attempt to close again — should throw from the closed state's ClosePosition guard
+    ptime secondExit = time_from_string("2025-01-06 16:00:00");
+    REQUIRE_THROWS(pos.ClosePosition(secondExit, createDecimal("112.0"), OrderType::SELL_AT_STOP));
+  }
+
+  SECTION("hasKnownExitOrderType transitions correctly across position lifecycle")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+
+    // Open — exit type unknown
+    REQUIRE_FALSE(pos.hasKnownExitOrderType());
+
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("110.0"), OrderType::SELL_AT_LIMIT);
+
+    // Closed — exit type now known
+    REQUIRE(pos.hasKnownExitOrderType());
+  }
+
+  SECTION("Trade return calculation is unaffected by order type tracking")
+  {
+    TradingPositionLong<DecimalType> pos(symbol, createDecimal("100.0"), *entry, oneContract,
+                                         OrderType::MARKET_ON_OPEN_LONG);
+    ptime exitDT = time_from_string("2025-01-05 16:00:00");
+    pos.ClosePosition(exitDT, createDecimal("110.0"), OrderType::SELL_AT_LIMIT);
+
+    DecimalType expectedReturn = createDecimal("0.1"); // (110 - 100) / 100
+    REQUIRE(pos.getTradeReturn()    == expectedReturn);
+    REQUIRE(pos.getExitOrderType()  == OrderType::SELL_AT_LIMIT);
+  }
+}
