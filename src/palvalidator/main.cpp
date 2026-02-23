@@ -813,7 +813,7 @@ int main(int argc, char **argv)
     
     // Only ask for bootstrap samples if bootstrap analysis will be performed
     unsigned int numBootstrapSamples;
-    bool tradeLevelBootstrapping = false;
+    bool tradeLevelBootstrapping = true;
     if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
         pipelineMode == PipelineMode::BootstrapOnly) {
         
@@ -823,23 +823,28 @@ int main(int argc, char **argv)
         
         // Ask for bootstrapping type
         std::cout << "\nChoose bootstrapping type:" << std::endl;
-        std::cout << "  1. Bar Level Bootstrapping (default)" << std::endl;
-        std::cout << "  2. Trade Level Bootstrapping" << std::endl;
+        std::cout << "  1. Bar Level Bootstrapping" << std::endl;
+        std::cout << "  2. Trade Level Bootstrapping (default)" << std::endl;
         std::cout << "Enter choice (1 or 2): ";
         std::getline(std::cin, input);
         
-        if (input == "2") {
-            tradeLevelBootstrapping = true;
-            std::cout << "Selected: Trade Level Bootstrapping" << std::endl;
-        } else {
+        if (input == "1")
+	  {
             tradeLevelBootstrapping = false;
-            std::cout << "Selected: Bar Level Bootstrapping (default)" << std::endl;
-        }
-    } else {
+            std::cout << "Selected: Bar Level Bootstrapping" << std::endl;
+	  }
+	else
+	  {
+            tradeLevelBootstrapping = true;
+            std::cout << "Selected: Trade Level Bootstrapping (default)" << std::endl;
+	  }
+    }
+    else
+      {
         // Set default value for permutation-only mode (won't be used)
         numBootstrapSamples = 25000;
-        tradeLevelBootstrapping = false;
-    }
+        tradeLevelBootstrapping = true;
+      }
     
     // Set validation method based on pipeline mode
     ValidationMethod validationMethod;
