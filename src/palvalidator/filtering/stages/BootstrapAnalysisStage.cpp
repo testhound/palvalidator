@@ -787,12 +787,13 @@ namespace palvalidator::filtering::stages
     std::vector<Decimal> logBars =
       Stat::makeLogGrowthSeries(ctx.highResReturns, ruin_eps);
 
+    Sampler geoSampler(/*winsor_small_n=*/false);
     StrategyAutoBootstrap<Decimal, Sampler, Resampler> autoGeo(
     		       mBootstrapFactory,
     		       *ctx.clonedStrategy,
     		       cfg,
     		       algoConfig,
-    		       Sampler(),
+    		       geoSampler,
     		       IntervalType::ONE_SIDED_LOWER);
 
     os << "   [Bootstrap] AutoCI (GeoMean): running composite bootstrap engines"
@@ -918,12 +919,16 @@ namespace palvalidator::filtering::stages
 					   /*PercentileT*/ true,    // distribution-free, appropriate for IID
 					   /*BCa*/         true);   // distribution-free, appropriate for IID
 
+
+    // Disable winsorization for geometric mean statistics
+    Sampler geoSampler(false);
+    
     StrategyAutoBootstrap<Decimal, Sampler, Resampler, TradeType> autoGeo(
 				       mBootstrapFactory,
 				       *ctx.clonedStrategy,
 				       cfg,
 				       algoConfig,
-				       Sampler{},
+				       geoSampler,
 				       IntervalType::ONE_SIDED_LOWER);
 
     os << "   [Bootstrap] AutoCI trade-level (GeoMean): running bootstrap engines"
