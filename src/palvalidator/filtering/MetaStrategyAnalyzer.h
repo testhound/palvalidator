@@ -169,7 +169,8 @@ namespace palvalidator
           std::ostream& outputStream,
           ValidationMethod validationMethod,
           std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-          const DateRange& inSampleDates);
+          const DateRange& inSampleDates,
+          bool sameDayExits = false);
 
       /**
        * @brief Check if the last analyzed meta-strategy passed performance criteria
@@ -248,7 +249,8 @@ namespace palvalidator
           std::ostream& outputStream,
           ValidationMethod validationMethod,
           std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-          const DateRange& inSampleDates);
+          const DateRange& inSampleDates,
+          bool sameDayExits = false);
 
     private:
       // Pyramiding configuration class
@@ -431,18 +433,21 @@ namespace palvalidator
       // Helper methods for analyzeMetaStrategyUnified
       std::shared_ptr<PalMetaStrategy<Num>> createMetaStrategy(
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-          std::shared_ptr<Security<Num>> baseSecurity) const;
+          std::shared_ptr<Security<Num>> baseSecurity,
+          bool sameDayExits = false) const;
 
       std::shared_ptr<PalMetaStrategy<Num>> createMetaStrategy(
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
           std::shared_ptr<Security<Num>> baseSecurity,
-          const StrategyOptions& strategyOptions) const;
+          const StrategyOptions& strategyOptions,
+          bool sameDayExits = false) const;
       
       std::shared_ptr<PalMetaStrategy<Num, AdaptiveVolatilityPortfolioFilter<Num, mkc_timeseries::SimonsHLCVolatilityPolicy>>>
       createMetaStrategyWithAdaptiveFilter(
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
           std::shared_ptr<Security<Num>> baseSecurity,
-          const StrategyOptions& strategyOptions) const;
+          const StrategyOptions& strategyOptions,
+          bool sameDayExits = false) const;
       
       std::shared_ptr<BackTester<Num>> executeBacktesting(
           std::shared_ptr<PalMetaStrategy<Num>> metaStrategy,
@@ -496,7 +501,8 @@ namespace palvalidator
 			       std::shared_ptr<Security<Num>> baseSecurity,
 			       const DateRange& oosBacktestingDates,
 			       TimeFrame::Duration timeFrame,
-			       std::ostream& outputStream) const;
+			       std::ostream& outputStream,
+			       bool sameDayExits = false) const;
 
 			   PyramidGateResults runPyramidValidationGates(
 			       const std::vector<Num>& metaReturns,
@@ -534,7 +540,8 @@ namespace palvalidator
 			       TimeFrame::Duration timeFrame,
 			       std::ostream& outputStream,
 			std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-			const DateRange& inSampleDates) const;
+			const DateRange& inSampleDates,
+			bool sameDayExits = false) const;
       
       // Runs selection-aware outer bootstrap that replays meta construction.
       // Returns true if the annualized LB from the selection-aware CI exceeds the hurdle.
