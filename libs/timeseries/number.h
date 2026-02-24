@@ -104,7 +104,11 @@ namespace num
    */
   template<class N>
   inline N fromString(const std::string& s) {
-    return ::dec::fromString<N>(s);
+    if constexpr (std::is_floating_point_v<N>) {
+      return static_cast<N>(std::stod(s));
+    } else {
+      return ::dec::fromString<N>(s);
+    }
   }
 
   /**
@@ -163,7 +167,12 @@ namespace num
                             Decimal tickDiv2)
   {
     static const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
-    Decimal rem = price % tick;
+    Decimal rem;
+    if constexpr (std::is_floating_point_v<Decimal>) {
+      rem = std::fmod(price, tick);
+    } else {
+      rem = price % tick;
+    }
 
     // The core rounding logic:
     // 1. (price - rem): This effectively rounds 'price' down to the nearest multiple of 'tick'.
