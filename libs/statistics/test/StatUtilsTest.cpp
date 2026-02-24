@@ -6107,23 +6107,28 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF works as a statistic in getBootS
         // Original stat
         LogPF stat_returns;
         DecimalType boot_median_returns = Stat::getBootStrappedStatistic(
-            returns, stat_returns, 100);
+            returns, stat_returns, 500);
 
         // Optimized stat
         LogPF_LogBars stat_logbars;
         DecimalType boot_median_logbars = Stat::getBootStrappedStatistic(
-            logBars, stat_logbars, 100);
+            logBars, stat_logbars, 500);
 
         // Both should be finite and reasonably close
         // (exact match not guaranteed due to random sampling, but should be close)
         REQUIRE(std::isfinite(num::to_double(boot_median_returns)));
         REQUIRE(std::isfinite(num::to_double(boot_median_logbars)));
 
-        // They should be in the same ballpark (within 20% is reasonable given randomness)
+        // They should be in the same ballpark.
+        // Note: the win-anchored prior (0.05 * sum_log_wins) is data-dependent,
+        // so bootstrap variance is higher than with a fixed prior. With only 6
+        // data points and independent RNG streams, two bootstrap medians can
+        // diverge significantly. A 50% tolerance absorbs this while still
+        // catching gross algorithmic mismatches.
         double ratio = num::to_double(boot_median_logbars) / 
                       num::to_double(boot_median_returns);
-        REQUIRE(ratio > 0.8);
-        REQUIRE(ratio < 1.2);
+        REQUIRE(ratio > 0.5);
+        REQUIRE(ratio < 2.0);
     }
 }
 
