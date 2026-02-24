@@ -236,8 +236,9 @@ namespace mkc_timeseries
      * Must be a positive value.
      * @throw std::invalid_argument if numPermutations is zero (via base class constructor).
      */
-    explicit PALMonteCarloValidation(unsigned long numPermutations)
-      : Base(numPermutations)
+    explicit PALMonteCarloValidation(unsigned long numPermutations, bool sameDayExits = false)
+      : Base(numPermutations),
+	mSameDayExits(sameDayExits)
     {
       // Only initialize statistics collector if MCPT supports observer pattern
       if constexpr (supports_observer_pattern) {
@@ -254,7 +255,8 @@ namespace mkc_timeseries
      */
     template<typename... Args>
     explicit PALMonteCarloValidation(unsigned long numPermutations, Args&&... args)
-      : Base(numPermutations, std::forward<Args>(args)...)
+      : Base(numPermutations, std::forward<Args>(args)...),
+	mSameDayExits(false)
     {
       // Only initialize statistics collector if MCPT supports observer pattern
       if constexpr (supports_observer_pattern) {
@@ -394,7 +396,8 @@ namespace mkc_timeseries
           // Build strategy via centralized factory
           std::string name = (pattern->isLongPattern() ? longPrefix : shortPrefix)
             + std::to_string(idx + 1);
-          auto strategy = makePalStrategy<Decimal>(name, pattern, portfolio);
+
+	  auto strategy = makePalStrategy<Decimal>(name, pattern, portfolio, defaultStrategyOptions, mSameDayExits);
 
           // Use factory to get a backtester for this date range
           auto bt = BackTesterFactory<Decimal>::getBackTester(
@@ -446,20 +449,22 @@ namespace mkc_timeseries
   private:
     // Observer for collecting granular permutation statistics (only if MCPT supports observer pattern)
     std::unique_ptr<PermutationStatisticsCollector<Decimal>> mStatisticsCollector;
-    
+    bool mSameDayExits;
+
     static std::shared_ptr<PalStrategy<Decimal>> makeStrategy(
       size_t                              idx,
       const PALPatternPtr&                pattern,
       const std::shared_ptr<Portfolio<Decimal>>& portfolio,
       const std::string&                  longPrefix,
-      const std::string&                  shortPrefix)
+      const std::string&                  shortPrefix,
+      bool                                sameDayExits = false)
     {
       bool isLong = pattern->isLongPattern();
       std::string name = (isLong ? longPrefix : shortPrefix) + std::to_string(idx);
       if (isLong)
-        return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, portfolio);
+        return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, portfolio, sameDayExits);
       else
-        return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, portfolio);
+        return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, portfolio, sameDayExits);
     }
   };
 
