@@ -4,6 +4,7 @@
 
 using namespace mkc_timeseries;
 using namespace boost::gregorian;
+using namespace boost::posix_time;
 
 template <class Decimal>
 class DummyBroker : public TradingOrderObserver<Decimal>
@@ -209,6 +210,87 @@ std::shared_ptr<CoverAtStopOrder<DecimalType>>
 						 orderDate,
 						 createDecimal("200.04"));
   }
+
+// Helper: build a ptime for a date entry using the library's canonical bar time.
+static ptime entryPtime(const OHLCTimeSeriesEntry<DecimalType>& e)
+{
+  return ptime(e.getDateValue(), getDefaultBarTime());
+}
+
+namespace
+{
+  struct SameDayFixture
+  {
+    std::string symbol = "SPY";
+
+    // Bars
+    std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>> signalBar =
+      createEquityEntry("20210104", "102", "105", "95",  "102", 1000000);
+
+    std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>> fillBar =
+      createEquityEntry("20210105", "100", "110", "90",  "105", 2000000);
+
+    std::shared_ptr<OHLCTimeSeriesEntry<DecimalType>> nextBar =
+      createEquityEntry("20210106", "108", "112", "107", "110", 1500000);
+
+    std::shared_ptr<OHLCTimeSeries<DecimalType>> series;
+    std::shared_ptr<Portfolio<DecimalType>>      portfolio;
+    std::shared_ptr<TradingOrderManager<DecimalType>> manager;
+    std::shared_ptr<DummyBroker<DecimalType>>    broker;
+
+    SameDayFixture()
+    {
+      series = std::make_shared<OHLCTimeSeries<DecimalType>>(
+							     TimeFrame::DAILY, TradingVolume::SHARES);
+      series->addEntry(*signalBar);
+      series->addEntry(*fillBar);
+      series->addEntry(*nextBar);
+
+      auto equity = std::make_shared<EquitySecurity<DecimalType>>(
+								  symbol, "SPY ETF", series);
+      portfolio = std::make_shared<Portfolio<DecimalType>>("Test Portfolio");
+      portfolio->addSecurity(equity);
+
+      manager = std::make_shared<TradingOrderManager<DecimalType>>(portfolio);
+      broker  = std::make_shared<DummyBroker<DecimalType>>(portfolio);
+      broker->addInstrument(symbol);
+      manager->addObserver(*broker);
+    }
+
+    TradingVolume oneShare()
+    {
+      return TradingVolume(1, TradingVolume::SHARES);
+    }
+
+    // Simulate a long entry: submit the market order for signalBar,
+    // process on fillBar so it fills at fillBar's open.
+    void enterLong()
+    {
+      auto entry = std::make_shared<MarketOnOpenLongOrder<DecimalType>>(
+									symbol, oneShare(), signalBar->getDateValue());
+      manager->addTradingOrder(entry);
+      manager->processPendingOrders(entryPtime(*fillBar),
+				    broker->getPositionManager());
+      REQUIRE(entry->isOrderExecuted());
+      REQUIRE(broker->getPositionManager().isLongPosition(symbol));
+    }
+
+    // Simulate a short entry analogously.
+    void enterShort()
+    {
+      auto entry = std::make_shared<MarketOnOpenShortOrder<DecimalType>>(
+									 symbol, oneShare(), signalBar->getDateValue());
+      manager->addTradingOrder(entry);
+      manager->processPendingOrders(entryPtime(*fillBar),
+				    broker->getPositionManager());
+      REQUIRE(entry->isOrderExecuted());
+      REQUIRE(broker->getPositionManager().isShortPosition(symbol));
+    }
+
+    // The ptime of the fill bar — this is what same-day exit orders are stamped with.
+    ptime fillPtime() { return entryPtime(*fillBar); }
+  };
+}
 
 TEST_CASE ("TradingOrderManager Operations", "[TradingOrderManager]")
 {
@@ -1719,5 +1801,471 @@ TEST_CASE("TradingOrderManager Short/Cover Order Specific Tests", "[TradingOrder
     
     // Should be canceled (price not reached)
     REQUIRE(stopOrder->isOrderCanceled());
+  }
+}
+
+// ===========================================================================
+// TEST CASE 1 — Long side same-day stops and limits
+// ===========================================================================
+
+TEST_CASE("processSameDayExitOrders — long position",
+          "[TradingOrderManager][SameDayExit]")
+{
+  SameDayFixture f;
+
+  // -------------------------------------------------------------------------
+  SECTION("SellAtStop fires when bar Low <= stop price")
+  {
+    f.enterLong();
+
+    // Stop at 95; fillBar Low = 90, so 90 <= 95 → should fill at 95
+    auto stopOrder = std::make_shared<SellAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("95.00"));
+    f.manager->addTradingOrder(stopOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(stopOrder->isOrderExecuted());
+    REQUIRE(stopOrder->getFillPrice() == createDecimal("95.00"));
+    REQUIRE(f.broker->getPositionManager().isFlatPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("SellAtStop fills at open when bar gaps below stop price")
+  {
+    f.enterLong();
+
+    // Stop at 97; fillBar Open = 100 which is above 97, but Low = 90 <= 97.
+    // Open is above stop, so intraday the stop is hit — fill at stop price.
+    auto stopOrder = std::make_shared<SellAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("97.00"));
+    f.manager->addTradingOrder(stopOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(stopOrder->isOrderExecuted());
+    REQUIRE(stopOrder->getFillPrice() == createDecimal("97.00"));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("SellAtStop does NOT fire when bar Low > stop price; order is canceled")
+  {
+    f.enterLong();
+
+    // Stop at 85; fillBar Low = 90, so 90 > 85 → does not trigger
+    auto stopOrder = std::make_shared<SellAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("85.00"));
+    f.manager->addTradingOrder(stopOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(stopOrder->isOrderCanceled());
+    // Position must still be open — the stop did not close it
+    REQUIRE(f.broker->getPositionManager().isLongPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("SellAtLimit fires when bar High >= limit price")
+  {
+    f.enterLong();
+
+    // Limit at 105; fillBar High = 110, so 110 >= 105 → should fill at 105
+    auto limitOrder = std::make_shared<SellAtLimitOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("105.00"));
+    f.manager->addTradingOrder(limitOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(limitOrder->isOrderExecuted());
+    REQUIRE(limitOrder->getFillPrice() == createDecimal("105.00"));
+    REQUIRE(f.broker->getPositionManager().isFlatPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("SellAtLimit fills at open when bar gaps above limit price")
+  {
+    f.enterLong();
+
+    // Limit at 99; fillBar Open = 100 which already exceeds the limit.
+    // Fill should be at open (gap-up scenario for a sell limit).
+    auto limitOrder = std::make_shared<SellAtLimitOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("99.00"));
+    f.manager->addTradingOrder(limitOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(limitOrder->isOrderExecuted());
+    // Open (100) > limit (99), so fill at open
+    REQUIRE(limitOrder->getFillPrice() == f.fillBar->getOpenValue());
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("SellAtLimit does NOT fire when bar High < limit price; order is canceled")
+  {
+    f.enterLong();
+
+    // Limit at 115; fillBar High = 110, so 110 < 115 → does not trigger
+    auto limitOrder = std::make_shared<SellAtLimitOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("115.00"));
+    f.manager->addTradingOrder(limitOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(limitOrder->isOrderCanceled());
+    REQUIRE(f.broker->getPositionManager().isLongPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("Stop wins when bar range spans both stop and limit (stop before limit rule)")
+  {
+    f.enterLong();
+
+    // fillBar: O=100, H=110, L=90
+    // Stop at 95  → Low 90 <= 95 → would trigger
+    // Limit at 105 → High 110 >= 105 → would trigger
+    // Both are spanned. Stop is processed first; when it fires, position goes
+    // flat. When the limit pass runs, isFlatPosition → limit is canceled.
+    auto stopOrder = std::make_shared<SellAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("95.00"));
+    auto limitOrder = std::make_shared<SellAtLimitOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("105.00"));
+
+    f.manager->addTradingOrder(stopOrder);
+    f.manager->addTradingOrder(limitOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    // Stop must have fired
+    REQUIRE(stopOrder->isOrderExecuted());
+    REQUIRE(stopOrder->getFillPrice() == createDecimal("95.00"));
+
+    // Limit must have been canceled (position was already flat when limit pass ran)
+    REQUIRE(limitOrder->isOrderCanceled());
+
+    REQUIRE(f.broker->getPositionManager().isFlatPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("Neither stop nor limit fires — both canceled, queue is empty afterward")
+  {
+    f.enterLong();
+
+    // Stop at 85 (below Low=90), limit at 115 (above High=110): neither triggers
+    auto stopOrder = std::make_shared<SellAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("85.00"));
+    auto limitOrder = std::make_shared<SellAtLimitOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("115.00"));
+
+    f.manager->addTradingOrder(stopOrder);
+    f.manager->addTradingOrder(limitOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(stopOrder->isOrderCanceled());
+    REQUIRE(limitOrder->isOrderCanceled());
+
+    // The queue must be empty so these orders cannot be picked up by the
+    // next bar's normal processPendingOrders pass.
+    REQUIRE(f.manager->getNumStopExitOrders()  == 0);
+    REQUIRE(f.manager->getNumLimitExitOrders() == 0);
+
+    // Position is still open (neither exit triggered)
+    REQUIRE(f.broker->getPositionManager().isLongPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("Same-day exit orders do not bleed into next bar's normal processing")
+  {
+    // Verify that a non-triggering same-day order (canceled by processSameDayExitOrders)
+    // is completely absent from the queue when processPendingOrders runs on the next bar.
+    f.enterLong();
+
+    auto stopOrder = std::make_shared<SellAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("85.00"));
+
+    f.manager->addTradingOrder(stopOrder);
+
+    // Same-day pass — stop does not trigger, order is canceled and removed
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+    REQUIRE(stopOrder->isOrderCanceled());
+    REQUIRE(f.manager->getNumStopExitOrders() == 0);
+
+    // Next bar's normal processing should not re-encounter the canceled order
+    f.manager->processPendingOrders(entryPtime(*f.nextBar),
+                                    f.broker->getPositionManager());
+
+    // Position still open — the canceled stop order did not close it on the next bar
+    REQUIRE(f.broker->getPositionManager().isLongPosition(f.symbol));
+  }
+}
+
+
+// ===========================================================================
+// TEST CASE 2 — Short side same-day stops and limits
+// ===========================================================================
+
+TEST_CASE("processSameDayExitOrders — short position",
+          "[TradingOrderManager][SameDayExit]")
+{
+  SameDayFixture f;
+
+  // fillBar: O=100, H=110, L=90, C=105
+  //   CoverAtStop fires when High >= stop price   (short stop is above market)
+  //   CoverAtLimit fires when Low  <= limit price  (short target is below market)
+
+  // -------------------------------------------------------------------------
+  SECTION("CoverAtStop fires when bar High >= stop price")
+  {
+    f.enterShort();
+
+    // Stop at 105; fillBar High = 110, so 110 >= 105 → should fill at 105
+    auto stopOrder = std::make_shared<CoverAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("105.00"));
+    f.manager->addTradingOrder(stopOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(stopOrder->isOrderExecuted());
+    REQUIRE(stopOrder->getFillPrice() == createDecimal("105.00"));
+    REQUIRE(f.broker->getPositionManager().isFlatPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("CoverAtStop fills at open when bar gaps above stop price")
+  {
+    f.enterShort();
+
+    // Stop at 99; Open = 100 which already exceeds 99 (gap up past stop).
+    // Fill should be at open price.
+    auto stopOrder = std::make_shared<CoverAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("99.00"));
+    f.manager->addTradingOrder(stopOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(stopOrder->isOrderExecuted());
+    // Open (100) > stop (99), fill at open
+    REQUIRE(stopOrder->getFillPrice() == f.fillBar->getOpenValue());
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("CoverAtStop does NOT fire when bar High < stop price; order is canceled")
+  {
+    f.enterShort();
+
+    // Stop at 115; fillBar High = 110, so 110 < 115 → does not trigger
+    auto stopOrder = std::make_shared<CoverAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("115.00"));
+    f.manager->addTradingOrder(stopOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(stopOrder->isOrderCanceled());
+    REQUIRE(f.broker->getPositionManager().isShortPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("CoverAtLimit fires when bar Low <= limit price")
+  {
+    f.enterShort();
+
+    // Limit at 95; fillBar Low = 90, so 90 <= 95 → should fill at 95
+    auto limitOrder = std::make_shared<CoverAtLimitOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("95.00"));
+    f.manager->addTradingOrder(limitOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(limitOrder->isOrderExecuted());
+    REQUIRE(limitOrder->getFillPrice() == createDecimal("95.00"));
+    REQUIRE(f.broker->getPositionManager().isFlatPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("CoverAtLimit fills at open when bar gaps below limit price")
+  {
+    f.enterShort();
+
+    // Limit at 101; fillBar Open = 100 which is already below the limit (gap down).
+    // Fill should be at open.
+    auto limitOrder = std::make_shared<CoverAtLimitOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("101.00"));
+    f.manager->addTradingOrder(limitOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(limitOrder->isOrderExecuted());
+    // Open (100) < limit (101), fill at open
+    REQUIRE(limitOrder->getFillPrice() == f.fillBar->getOpenValue());
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("CoverAtLimit does NOT fire when bar Low > limit price; order is canceled")
+  {
+    f.enterShort();
+
+    // Limit at 85; fillBar Low = 90, so 90 > 85 → does not trigger
+    auto limitOrder = std::make_shared<CoverAtLimitOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("85.00"));
+    f.manager->addTradingOrder(limitOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(limitOrder->isOrderCanceled());
+    REQUIRE(f.broker->getPositionManager().isShortPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("Short stop wins when bar range spans both stop and limit")
+  {
+    f.enterShort();
+
+    // fillBar: O=100, H=110, L=90
+    // CoverAtStop at 105 → High 110 >= 105 → would trigger
+    // CoverAtLimit at 95  → Low  90  <= 95 → would trigger
+    // Stop fires first; position goes flat; limit is then canceled.
+    auto stopOrder = std::make_shared<CoverAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("105.00"));
+    auto limitOrder = std::make_shared<CoverAtLimitOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("95.00"));
+
+    f.manager->addTradingOrder(stopOrder);
+    f.manager->addTradingOrder(limitOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(stopOrder->isOrderExecuted());
+    REQUIRE(stopOrder->getFillPrice() == createDecimal("105.00"));
+    REQUIRE(limitOrder->isOrderCanceled());
+    REQUIRE(f.broker->getPositionManager().isFlatPosition(f.symbol));
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("Neither cover stop nor cover limit fires — both canceled")
+  {
+    f.enterShort();
+
+    // Stop at 115 (above High=110), limit at 85 (below Low=90): neither triggers
+    auto stopOrder = std::make_shared<CoverAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("115.00"));
+    auto limitOrder = std::make_shared<CoverAtLimitOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime(), createDecimal("85.00"));
+
+    f.manager->addTradingOrder(stopOrder);
+    f.manager->addTradingOrder(limitOrder);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    REQUIRE(stopOrder->isOrderCanceled());
+    REQUIRE(limitOrder->isOrderCanceled());
+    REQUIRE(f.manager->getNumStopExitOrders()  == 0);
+    REQUIRE(f.manager->getNumLimitExitOrders() == 0);
+    REQUIRE(f.broker->getPositionManager().isShortPosition(f.symbol));
+  }
+}
+
+
+// ===========================================================================
+// TEST CASE 3 — Ordering and isolation guarantees
+// ===========================================================================
+
+TEST_CASE("processSameDayExitOrders — ordering and isolation",
+          "[TradingOrderManager][SameDayExit]")
+{
+  SameDayFixture f;
+
+  // -------------------------------------------------------------------------
+  SECTION("Orders with a future orderDateTime are not touched by processSameDayExitOrders")
+  {
+    // A next-bar exit order (orderDateTime == nextBar) should be completely
+    // ignored by processSameDayExitOrders when called with fillBar's ptime.
+    f.enterLong();
+
+    auto nextDayStop = std::make_shared<SellAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(),
+      entryPtime(*f.nextBar),   // orderDateTime is the NEXT bar, not fillBar
+      createDecimal("95.00"));
+    f.manager->addTradingOrder(nextDayStop);
+
+    // Call same-day pass with fillBar's ptime — should not touch nextDayStop
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    // Order is still pending — processSameDayExitOrders must not have touched it
+    REQUIRE(nextDayStop->isOrderPending());
+    REQUIRE(f.manager->getNumStopExitOrders() == 1);
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("Orders with a past orderDateTime are not touched by processSameDayExitOrders")
+  {
+    // An order stamped for signalBar (the bar before fillBar) should not be
+    // processed by processSameDayExitOrders — it is a next-bar order for
+    // normal processPendingOrders to handle.
+    f.enterLong();
+
+    auto prevDayStop = std::make_shared<SellAtStopOrder<DecimalType>>(
+      f.symbol, f.oneShare(),
+      entryPtime(*f.signalBar),  // orderDateTime is an earlier bar
+      createDecimal("95.00"));
+    f.manager->addTradingOrder(prevDayStop);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    // processSameDayExitOrders only matches orderDateTime == processingDateTime
+    REQUIRE(prevDayStop->isOrderPending());
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("processSameDayExitOrders does not affect market exit orders in the queue")
+  {
+    // Market-on-open exit orders are not stop/limit orders and should be
+    // completely unaffected by processSameDayExitOrders.
+    f.enterLong();
+
+    auto marketSell = std::make_shared<MarketOnOpenSellOrder<DecimalType>>(
+      f.symbol, f.oneShare(), f.fillPtime());
+    f.manager->addTradingOrder(marketSell);
+
+    f.manager->processSameDayExitOrders(f.fillPtime(),
+                                        f.broker->getPositionManager());
+
+    // The market sell order should be untouched (still pending)
+    REQUIRE(marketSell->isOrderPending());
+    REQUIRE(f.manager->getNumMarketExitOrders() == 1);
+  }
+
+  // -------------------------------------------------------------------------
+  SECTION("processSameDayExitOrders with no same-day exit orders is a no-op")
+  {
+    // Calling processSameDayExitOrders when there are no same-day orders
+    // must not crash or corrupt state.
+    f.enterLong();
+
+    REQUIRE_NOTHROW(
+      f.manager->processSameDayExitOrders(f.fillPtime(),
+                                          f.broker->getPositionManager()));
+
+    REQUIRE(f.broker->getPositionManager().isLongPosition(f.symbol));
+    REQUIRE(f.manager->getNumStopExitOrders()  == 0);
+    REQUIRE(f.manager->getNumLimitExitOrders() == 0);
   }
 }

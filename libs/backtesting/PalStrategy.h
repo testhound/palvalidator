@@ -206,9 +206,10 @@ namespace mkc_timeseries
     using PatternEvaluator = typename PALPatternInterpreter<Decimal>::PatternEvaluator;
 
     PalMetaStrategy(const std::string& strategyName,
-      std::shared_ptr<Portfolio<Decimal>> portfolio,
-      const StrategyOptions& strategyOptions = defaultStrategyOptions)
-      : BacktesterStrategy<Decimal>(strategyName, portfolio, strategyOptions),
+		    std::shared_ptr<Portfolio<Decimal>> portfolio,
+		    const StrategyOptions& strategyOptions = defaultStrategyOptions,
+		    bool sameDayExits = false)
+      : BacktesterStrategy<Decimal>(strategyName, portfolio, strategyOptions, sameDayExits),
 	mPalPatterns(),
 	mPatternEvaluators(),
 	mMCPTAttributes(),
@@ -296,7 +297,8 @@ namespace mkc_timeseries
       // Using HEAD's more detailed clone logic that handles options
       auto cloned = std::make_shared<PalMetaStrategy<Decimal, Filter>>(this->getStrategyName(),
 								       portfolio,
-								       this->getStrategyOptions());
+								       this->getStrategyOptions(),
+								       this->isSameDayExitsEnabled());
       // Copy patterns (which updates mStrategyMaxBarsBack)
       for (const auto& pattern : mPalPatterns) {
 	cloned->addPricePattern(pattern);
@@ -316,7 +318,8 @@ namespace mkc_timeseries
       // Build with the target portfolio; copy patterns + compiled evaluators (no recompile)
       auto cloned = std::make_shared<PalMetaStrategy<Decimal, Filter>>(this->getStrategyName(),
 								       portfolio,
-								       this->getStrategyOptions());
+								       this->getStrategyOptions(),
+								       this->isSameDayExitsEnabled());
       cloned->mPalPatterns              = this->mPalPatterns;
       cloned->mPatternEvaluators        = this->mPatternEvaluators;
       cloned->mStrategyMaxBarsBack      = this->mStrategyMaxBarsBack;
@@ -334,7 +337,8 @@ namespace mkc_timeseries
     {
       auto cloned = std::make_shared<PalMetaStrategy<Decimal, Filter>>(this->getStrategyName(),
 								       this->getPortfolio(),
-								       this->getStrategyOptions());
+								       this->getStrategyOptions(),
+								       this->isSameDayExitsEnabled());
       for (const auto& pattern : mPalPatterns) {
 	cloned->addPricePattern(pattern);
       }
@@ -675,8 +679,9 @@ namespace mkc_timeseries
     PalStrategy(const std::string& strategyName,
                 std::shared_ptr<PriceActionLabPattern> pattern,
                 std::shared_ptr<Portfolio<Decimal>> portfolio,
-                const StrategyOptions& strategyOptions)
-      : BacktesterStrategy<Decimal>(strategyName, portfolio, strategyOptions),
+                const StrategyOptions& strategyOptions,
+		bool sameDayExits = false)
+      : BacktesterStrategy<Decimal>(strategyName, portfolio, strategyOptions, sameDayExits),
         mPalPattern(pattern),
         mMCPTAttributes()
     {
@@ -883,8 +888,9 @@ namespace mkc_timeseries
     PalLongStrategy(const std::string& strategyName,
                     std::shared_ptr<PriceActionLabPattern> pattern,
                     std::shared_ptr<Portfolio<Decimal>> portfolio,
-                    const StrategyOptions& strategyOptions = defaultStrategyOptions)
-      : PalStrategy<Decimal>(strategyName, pattern, portfolio, strategyOptions)
+                    const StrategyOptions& strategyOptions = defaultStrategyOptions,
+		    bool sameDayExits = false)
+      : PalStrategy<Decimal>(strategyName, pattern, portfolio, strategyOptions, sameDayExits)
     {}
 
     PalLongStrategy(const PalLongStrategy<Decimal>& rhs)
@@ -910,7 +916,8 @@ namespace mkc_timeseries
       return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
                                                         this->getPalPattern(),
                                                         portfolio,
-                                                        this->getStrategyOptions());
+                                                        this->getStrategyOptions(),
+							this->isSameDayExitsEnabled());
     }
 
     std::shared_ptr<BacktesterStrategy<Decimal>>
@@ -921,7 +928,8 @@ namespace mkc_timeseries
 							       this->getStrategyName(),
 							       this->getPalPattern(),      // same (immutable) pattern
 							       portfolio,
-							       this->getStrategyOptions());
+							       this->getStrategyOptions(),
+							       this->isSameDayExitsEnabled());
       
       // Reuse the precompiled evaluator to avoid per-permutation compilation cost.
       cloned->setPatternEvaluator(this->getPatternEvaluator());
@@ -934,7 +942,8 @@ namespace mkc_timeseries
       return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
                                                         this->getPalPattern(),
                                                         portfolio,
-                                                        this->getStrategyOptions());
+                                                        this->getStrategyOptions(),
+							this->isSameDayExitsEnabled());
     }
 
     std::shared_ptr<BacktesterStrategy<Decimal>>
@@ -943,7 +952,8 @@ namespace mkc_timeseries
       return std::make_shared<PalLongStrategy<Decimal>>(this->getStrategyName(),
                                                         this->getPalPattern(),
                                                         this->getPortfolio(),
-                                                        this->getStrategyOptions());
+                                                        this->getStrategyOptions(),
+							this->isSameDayExitsEnabled());
     }
 
     /**
@@ -1096,8 +1106,9 @@ namespace mkc_timeseries
     PalShortStrategy(const std::string& strategyName,
                      std::shared_ptr<PriceActionLabPattern> pattern,
                      std::shared_ptr<Portfolio<Decimal>> portfolio,
-                     const StrategyOptions& strategyOptions = defaultStrategyOptions)
-      : PalStrategy<Decimal>(strategyName, pattern, portfolio, strategyOptions)
+                     const StrategyOptions& strategyOptions = defaultStrategyOptions,
+		     bool sameDayExits = false)
+      : PalStrategy<Decimal>(strategyName, pattern, portfolio, strategyOptions, sameDayExits)
     {}
 
     PalShortStrategy(const PalShortStrategy<Decimal>& rhs)
@@ -1123,7 +1134,8 @@ namespace mkc_timeseries
       return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
                                                          this->getPalPattern(),
                                                          portfolio,
-                                                         this->getStrategyOptions());
+                                                         this->getStrategyOptions(),
+							 this->isSameDayExitsEnabled());
     }
 
     std::shared_ptr<BacktesterStrategy<Decimal>>
@@ -1132,7 +1144,8 @@ namespace mkc_timeseries
       auto cloned = std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
 								this->getPalPattern(),
 								portfolio,
-								this->getStrategyOptions());
+								this->getStrategyOptions(),
+								this->isSameDayExitsEnabled());
       
       cloned->setPatternEvaluator(this->getPatternEvaluator());
       return cloned;
@@ -1144,7 +1157,8 @@ namespace mkc_timeseries
       return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
                                                          this->getPalPattern(),
                                                          portfolio,
-                                                         this->getStrategyOptions());
+                                                         this->getStrategyOptions(),
+							 this->isSameDayExitsEnabled());
     }
 
     std::shared_ptr<BacktesterStrategy<Decimal>>
@@ -1153,7 +1167,8 @@ namespace mkc_timeseries
       return std::make_shared<PalShortStrategy<Decimal>>(this->getStrategyName(),
                                                          this->getPalPattern(),
                                                          this->getPortfolio(),
-                                                         this->getStrategyOptions());
+                                                         this->getStrategyOptions(),
+							 this->isSameDayExitsEnabled());
     }
 
     /**
@@ -1285,25 +1300,27 @@ namespace mkc_timeseries
   std::shared_ptr<PalStrategy<Decimal>> makePalStrategy(const std::string& name,
                                                         const std::shared_ptr<PriceActionLabPattern>& pattern,
                                                         const std::shared_ptr<Portfolio<Decimal>>& portfolio,
-                                                        const StrategyOptions& strategyOptions = defaultStrategyOptions)
+                                                        const StrategyOptions& strategyOptions = defaultStrategyOptions,
+							bool sameDayExits = false)
   {
     if (pattern->isLongPattern())
     {
-      return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, portfolio, strategyOptions);
+      return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, portfolio, strategyOptions, sameDayExits);
     }
     else
     {
-      return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, portfolio, strategyOptions);
+      return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, portfolio, strategyOptions, sameDayExits);
     }
   }
 
   template<typename Decimal>
   std::shared_ptr<PalStrategy<Decimal>> makePalStrategy(const std::string& name,
                                                         const std::shared_ptr<PriceActionLabPattern>& pattern,
-                                                        const StrategyOptions& strategyOptions = defaultStrategyOptions)
+                                                        const StrategyOptions& strategyOptions = defaultStrategyOptions,
+							bool sameDayExits = false)
   {
     auto newPortfolio = std::make_shared<Portfolio<Decimal>>(name + " Portfolio");
-    return makePalStrategy(name, pattern, newPortfolio, strategyOptions);
+    return makePalStrategy(name, pattern, newPortfolio, strategyOptions, sameDayExits);
   }
 
   // NEW OVERLOAD: Four-argument makePalStrategy to create Portfolio and add Security
@@ -1311,7 +1328,8 @@ namespace mkc_timeseries
   std::shared_ptr<PalStrategy<Decimal>> makePalStrategy(const std::string& name,
                                                         const std::shared_ptr<PriceActionLabPattern>& pattern,
                                                         const std::shared_ptr<const Security<Decimal>>& security, // New argument
-                                                        const StrategyOptions& strategyOptions = defaultStrategyOptions)
+                                                        const StrategyOptions& strategyOptions = defaultStrategyOptions,
+							bool sameDayExits = false)
   {
       auto newPortfolio = std::make_shared<Portfolio<Decimal>>(name + " Portfolio");
       // Cast const Security to non-const Security for addSecurity method
@@ -1320,11 +1338,11 @@ namespace mkc_timeseries
 
       if (pattern->isLongPattern())
       {
-          return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, newPortfolio, strategyOptions);
+	return std::make_shared<PalLongStrategy<Decimal>>(name, pattern, newPortfolio, strategyOptions, sameDayExits);
       }
       else
       {
-          return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, newPortfolio, strategyOptions);
+	return std::make_shared<PalShortStrategy<Decimal>>(name, pattern, newPortfolio, strategyOptions, sameDayExits);
       }
   }
 }

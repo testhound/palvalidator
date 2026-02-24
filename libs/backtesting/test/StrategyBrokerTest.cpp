@@ -1865,3 +1865,487 @@ TEST_CASE("StrategyBroker: multiple closed positions each carry independent orde
   REQUIRE(longCount  == 1);
   REQUIRE(shortCount == 1);
 }
+
+// ============================================================================
+// Same-day exit tests for StrategyBroker
+//
+// These tests belong at the bottom of StrategyBrokerTest.cpp, inside the
+// existing anonymous namespace that contains CornBrokerFixture and
+// SyntheticBrokerFixture.
+//
+// Design rules under test:
+//   1. isSameDayExitsEnabled() defaults to false.
+//   2. isSameDayExitsEnabled() is true when broker is constructed with true.
+//   3. With same-day exits DISABLED: entry fills but no same-day stop/limit
+//      orders are submitted or evaluated.
+//   4. With same-day exits ENABLED:
+//      a. A long stop-loss fires on the entry bar when Low <= stop price.
+//      b. A long profit target fires on the entry bar when High >= limit price.
+//      c. A long stop wins when the bar range spans both stop and target.
+//      d. When neither fires, both orders are canceled; no pending orders remain.
+//      e. (a–d) mirrored for short positions.
+//   5. Copy constructor propagates mSameDayExitsEnabled in both states.
+//   6. Non-triggering same-day orders do not bleed into the next bar's normal
+//      processPendingOrders pass (the bleed-through prevention guarantee).
+//
+// Bar layout (reused from SyntheticBrokerFixture):
+//
+//   bar1  2020-01-02  O=300  H=305  L=295  C=300   [entry order day]
+//   bar2  2020-01-03  O=300  H=305  L=295  C=300   [entry fills here;
+//                                                    same-day exits evaluated here]
+//   bar3  2020-01-06  O=300  H=305  L=295  C=300   [next bar — bleed-through check]
+//   bar4  2020-01-07  O=300  H=360  L=280  C=300   [wide range — leaked orders
+//                                                    with 5% stop (285) would fire
+//                                                    here if NOT properly canceled]
+//
+// Price arithmetic at entry open = 300, corn tick = 0.25:
+//
+//   1% long  stop    → 300 * 0.99 = 297.00  → bar2 L=295 ≤ 297 → TRIGGERS
+//   1% long  target  → 300 * 1.01 = 303.00  → bar2 H=305 ≥ 303 → TRIGGERS
+//   5% long  stop    → 300 * 0.95 = 285.00  → bar2 L=295 > 285 → does not trigger
+//   5% long  target  → 300 * 1.05 = 315.00  → bar2 H=305 < 315 → does not trigger
+//
+//   1% short stop    → 300 * 1.01 = 303.00  → bar2 H=305 ≥ 303 → TRIGGERS
+//   1% short target  → 300 * 0.99 = 297.00  → bar2 L=295 ≤ 297 → TRIGGERS
+//   5% short stop    → 300 * 1.05 = 315.00  → bar2 H=305 < 315 → does not trigger
+//   5% short target  → 300 * 0.95 = 285.00  → bar2 L=295 > 285 → does not trigger
+//
+// All values land on exact 0.25-tick boundaries, so rounding is a no-op.
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// SameDayBrokerFixture
+//
+// Drop-in replacement for SyntheticBrokerFixture when same-day exits are needed.
+// The only structural difference is that the broker is constructed with
+// sameDayExits = true and helper methods accept stop/target percentages.
+// ---------------------------------------------------------------------------
+struct SameDayBrokerFixture
+{
+  DecimalType tickValue     = createDecimal("0.25");
+  std::string futuresSymbol = "@C";
+  TradingVolume oneContract = TradingVolume(1, TradingVolume::CONTRACTS);
+
+  // Percentage constants  (passed to EnterLongOnOpen / EnterShortOnOpen)
+  const DecimalType pct1  = createDecimal("1.00"); // in-range  → triggers on bar2
+  const DecimalType pct5  = createDecimal("5.00"); // out-of-range → does NOT trigger on bar2
+  const DecimalType zero  = DecimalConstants<DecimalType>::DecimalZero;
+
+  const date bar1Date = date(2020, Jan,  2); // entry order day
+  const date bar2Date = date(2020, Jan,  3); // entry fill / same-day exit evaluation day
+  const date bar3Date = date(2020, Jan,  6); // first "next bar"
+  const date bar4Date = date(2020, Jan,  7); // wide-range bar (H=360, L=280)
+
+  std::shared_ptr<OHLCTimeSeries<DecimalType>> timeSeries;
+  std::shared_ptr<Portfolio<DecimalType>>       portfolio;
+  std::shared_ptr<StrategyBroker<DecimalType>>  broker;
+
+  SameDayBrokerFixture()
+  {
+    timeSeries = std::make_shared<OHLCTimeSeries<DecimalType>>(
+      TimeFrame::DAILY, TradingVolume::CONTRACTS);
+
+    // bar1–bar3: flat bars; bar2 range [295,305] determines same-day triggers
+    timeSeries->addEntry(*createTimeSeriesEntry("20200102","300.00","305.00","295.00","300.00","0"));
+    timeSeries->addEntry(*createTimeSeriesEntry("20200103","300.00","305.00","295.00","300.00","0"));
+    timeSeries->addEntry(*createTimeSeriesEntry("20200106","300.00","305.00","295.00","300.00","0"));
+    // bar4: extreme range — any 5% stop leaked from bar2 would fire here
+    timeSeries->addEntry(*createTimeSeriesEntry("20200107","300.00","360.00","280.00","300.00","0"));
+
+    auto security = std::make_shared<FuturesSecurity<DecimalType>>(
+      futuresSymbol, "Synthetic futures",
+      createDecimal("50.0"), tickValue, timeSeries);
+
+    portfolio = std::make_shared<Portfolio<DecimalType>>("Same-Day Portfolio");
+    portfolio->addSecurity(security);
+
+    // KEY: construct with sameDayExits = true
+    broker = std::make_shared<StrategyBroker<DecimalType>>(portfolio, /*sameDayExits=*/true);
+  }
+
+  // Submit a long entry on bar1 with given stop/target percentages, then call
+  // ProcessPendingOrders on bar2.  The entry fills at bar2's open (300) and
+  // same-day exit orders — if any — are immediately evaluated against bar2 H/L.
+  void enterLong(const DecimalType& stopPct, const DecimalType& targetPct)
+  {
+    broker->EnterLongOnOpen(futuresSymbol, bar1Date, oneContract, stopPct, targetPct);
+    broker->ProcessPendingOrders(bar2Date);
+  }
+
+  // Same for short positions.
+  void enterShort(const DecimalType& stopPct, const DecimalType& targetPct)
+  {
+    broker->EnterShortOnOpen(futuresSymbol, bar1Date, oneContract, stopPct, targetPct);
+    broker->ProcessPendingOrders(bar2Date);
+  }
+
+  std::shared_ptr<TradingPosition<DecimalType>> firstClosedPosition() const
+  {
+    auto history = broker->getClosedPositionHistory();
+    auto it = history.beginTradingPositions();
+    REQUIRE(it != history.endTradingPositions());
+    return it->second;
+  }
+
+  std::shared_ptr<TradingPosition<DecimalType>> openPosition() const
+  {
+    auto& instrPos = broker->getInstrumentPosition(futuresSymbol);
+    auto it = instrPos.getInstrumentPosition(1);
+    return *it;
+  }
+};
+
+
+// ============================================================================
+// TEST: Constructor flag
+// ============================================================================
+
+TEST_CASE("StrategyBroker isSameDayExitsEnabled defaults to false",
+          "[StrategyBroker][SameDayExit][constructor]")
+{
+  SyntheticBrokerFixture f;  // uses default constructor (sameDayExits not set)
+  REQUIRE_FALSE(f.broker->isSameDayExitsEnabled());
+}
+
+TEST_CASE("StrategyBroker isSameDayExitsEnabled is true when constructed with true",
+          "[StrategyBroker][SameDayExit][constructor]")
+{
+  SameDayBrokerFixture f;   // constructed with sameDayExits = true
+  REQUIRE(f.broker->isSameDayExitsEnabled());
+}
+
+
+// ============================================================================
+// TEST: Copy constructor propagates the flag
+// ============================================================================
+
+TEST_CASE("StrategyBroker copy constructor propagates isSameDayExitsEnabled = false",
+          "[StrategyBroker][SameDayExit][copy]")
+{
+  SyntheticBrokerFixture f;
+  REQUIRE_FALSE(f.broker->isSameDayExitsEnabled());
+
+  StrategyBroker<DecimalType> copy(*f.broker);
+  REQUIRE_FALSE(copy.isSameDayExitsEnabled());
+}
+
+TEST_CASE("StrategyBroker copy constructor propagates isSameDayExitsEnabled = true",
+          "[StrategyBroker][SameDayExit][copy]")
+{
+  SameDayBrokerFixture f;
+  REQUIRE(f.broker->isSameDayExitsEnabled());
+
+  StrategyBroker<DecimalType> copy(*f.broker);
+  REQUIRE(copy.isSameDayExitsEnabled());
+}
+
+
+// ============================================================================
+// TEST: With same-day exits DISABLED, entry fills normally but no same-day
+//       exit orders are submitted (position remains open after entry bar).
+// ============================================================================
+
+TEST_CASE("StrategyBroker with sameDayExits=false does not submit same-day exits after long entry",
+          "[StrategyBroker][SameDayExit][disabled]")
+{
+  // SyntheticBrokerFixture creates broker with sameDayExits = false (default).
+  SyntheticBrokerFixture f;
+  REQUIRE_FALSE(f.broker->isSameDayExitsEnabled());
+
+  // Entry with 1% stop/target — would trigger same-day if feature were on.
+  f.broker->EnterLongOnOpen(f.futuresSymbol, f.bar1Date, f.oneContract,
+                             createDecimal("1.00"), createDecimal("1.00"));
+  f.broker->ProcessPendingOrders(f.bar2Date);
+
+  // Position must still be open — no same-day exit was evaluated.
+  REQUIRE(f.broker->isLongPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getOpenTrades()   == 1);
+  REQUIRE(f.broker->getClosedTrades() == 0);
+
+  // No pending exit orders should have been submitted.
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+}
+
+TEST_CASE("StrategyBroker with sameDayExits=false does not submit same-day exits after short entry",
+          "[StrategyBroker][SameDayExit][disabled]")
+{
+  SyntheticBrokerFixture f;
+
+  f.broker->EnterShortOnOpen(f.futuresSymbol, f.bar1Date, f.oneContract,
+                              createDecimal("1.00"), createDecimal("1.00"));
+  f.broker->ProcessPendingOrders(f.bar2Date);
+
+  REQUIRE(f.broker->isShortPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getOpenTrades()   == 1);
+  REQUIRE(f.broker->getClosedTrades() == 0);
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+}
+
+
+// ============================================================================
+// TEST: Long same-day stop fires
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day long stop-loss fires on entry bar",
+          "[StrategyBroker][SameDayExit][long][stop]")
+{
+  SameDayBrokerFixture f;
+
+  // 1% stop → 297.00; bar2 L=295 ≤ 297 → stop fires.
+  // No profit target so the exit type is unambiguously SELL_AT_STOP.
+  f.enterLong(f.pct1, f.zero);
+
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getClosedTrades() == 1);
+  REQUIRE(f.broker->getOpenTrades()   == 0);
+
+  // No lingering orders.
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+
+  // The strategy transaction must be complete.
+  auto it = f.broker->beginStrategyTransactions();
+  REQUIRE(it != f.broker->endStrategyTransactions());
+  REQUIRE(it->second->isTransactionComplete());
+
+  // Exit order type must be SELL_AT_STOP.
+  auto closedPos = f.firstClosedPosition();
+  REQUIRE(closedPos->getExitOrderType() == OrderType::SELL_AT_STOP);
+  REQUIRE(closedPos->hasKnownExitOrderType());
+}
+
+
+// ============================================================================
+// TEST: Long same-day profit target fires
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day long profit target fires on entry bar",
+          "[StrategyBroker][SameDayExit][long][limit]")
+{
+  SameDayBrokerFixture f;
+
+  // 1% target → 303.00; bar2 H=305 ≥ 303 → limit fires.
+  // No stop so the exit type is unambiguously SELL_AT_LIMIT.
+  f.enterLong(f.zero, f.pct1);
+
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getClosedTrades() == 1);
+  REQUIRE(f.broker->getOpenTrades()   == 0);
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+
+  auto closedPos = f.firstClosedPosition();
+  REQUIRE(closedPos->getExitOrderType() == OrderType::SELL_AT_LIMIT);
+  REQUIRE(closedPos->hasKnownExitOrderType());
+}
+
+
+// ============================================================================
+// TEST: Long — stop wins when bar spans both stop and target
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day long stop wins when bar spans both stop and target",
+          "[StrategyBroker][SameDayExit][long][stop-wins]")
+{
+  SameDayBrokerFixture f;
+
+  // 1% stop → 297 (within [295,305]) and 1% target → 303 (also within [295,305]).
+  // Stop is processed before limit; once the stop fires and the position is flat,
+  // the limit pass cancels the complementary limit order.
+  f.enterLong(f.pct1, f.pct1);
+
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getClosedTrades() == 1);
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+
+  // Exit must be a stop (pessimistic outcome), not the limit.
+  auto closedPos = f.firstClosedPosition();
+  REQUIRE(closedPos->getExitOrderType() == OrderType::SELL_AT_STOP);
+}
+
+
+// ============================================================================
+// TEST: Long — neither stop nor target fires; both canceled, position open
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day long: neither stop nor target fires — both canceled",
+          "[StrategyBroker][SameDayExit][long][no-trigger]")
+{
+  SameDayBrokerFixture f;
+
+  // 5% stop → 285 (bar2 L=295 > 285) and 5% target → 315 (bar2 H=305 < 315).
+  // Neither triggers; both same-day orders must be canceled.
+  f.enterLong(f.pct5, f.pct5);
+
+  REQUIRE(f.broker->isLongPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getOpenTrades()   == 1);
+  REQUIRE(f.broker->getClosedTrades() == 0);
+
+  // No pending exit orders — same-day orders must have been erased.
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+}
+
+
+// ============================================================================
+// TEST: Short same-day stop fires
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day short stop-loss fires on entry bar",
+          "[StrategyBroker][SameDayExit][short][stop]")
+{
+  SameDayBrokerFixture f;
+
+  // 1% short stop → 303.00; bar2 H=305 ≥ 303 → CoverAtStop fires.
+  f.enterShort(f.pct1, f.zero);
+
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getClosedTrades() == 1);
+  REQUIRE(f.broker->getOpenTrades()   == 0);
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+
+  auto closedPos = f.firstClosedPosition();
+  REQUIRE(closedPos->getExitOrderType() == OrderType::COVER_AT_STOP);
+  REQUIRE(closedPos->hasKnownExitOrderType());
+}
+
+
+// ============================================================================
+// TEST: Short same-day profit target fires
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day short profit target fires on entry bar",
+          "[StrategyBroker][SameDayExit][short][limit]")
+{
+  SameDayBrokerFixture f;
+
+  // 1% short target → 297.00; bar2 L=295 ≤ 297 → CoverAtLimit fires.
+  f.enterShort(f.zero, f.pct1);
+
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getClosedTrades() == 1);
+  REQUIRE(f.broker->getOpenTrades()   == 0);
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+
+  auto closedPos = f.firstClosedPosition();
+  REQUIRE(closedPos->getExitOrderType() == OrderType::COVER_AT_LIMIT);
+  REQUIRE(closedPos->hasKnownExitOrderType());
+}
+
+
+// ============================================================================
+// TEST: Short — stop wins when bar spans both stop and target
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day short stop wins when bar spans both stop and target",
+          "[StrategyBroker][SameDayExit][short][stop-wins]")
+{
+  SameDayBrokerFixture f;
+
+  // 1% short stop → 303 (within [295,305]) and 1% short target → 297 (also within).
+  f.enterShort(f.pct1, f.pct1);
+
+  REQUIRE(f.broker->isFlatPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getClosedTrades() == 1);
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+
+  auto closedPos = f.firstClosedPosition();
+  REQUIRE(closedPos->getExitOrderType() == OrderType::COVER_AT_STOP);
+}
+
+
+// ============================================================================
+// TEST: Short — neither stop nor target fires; both canceled, position open
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day short: neither stop nor target fires — both canceled",
+          "[StrategyBroker][SameDayExit][short][no-trigger]")
+{
+  SameDayBrokerFixture f;
+
+  // 5% short stop → 315 (bar2 H=305 < 315) and 5% short target → 285 (L=295 > 285).
+  f.enterShort(f.pct5, f.pct5);
+
+  REQUIRE(f.broker->isShortPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getOpenTrades()   == 1);
+  REQUIRE(f.broker->getClosedTrades() == 0);
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+}
+
+
+// ============================================================================
+// TEST: Bleed-through prevention — long
+//
+// A non-triggering same-day stop (5%) is canceled after bar2's same-day pass.
+// bar4 has L=280 ≤ 285, so if the order were NOT canceled it would fire on bar4.
+// The position must still be open after processing bar3 and bar4, proving
+// that the canceled order is completely absent from the queue.
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day long: non-triggering stop does not bleed into subsequent bars",
+          "[StrategyBroker][SameDayExit][long][bleed-through]")
+{
+  SameDayBrokerFixture f;
+
+  // 5% stop → 285; bar2 L=295 > 285 → does not trigger; must be canceled.
+  f.enterLong(f.pct5, f.zero);
+  REQUIRE(f.broker->isLongPosition(f.futuresSymbol));
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+
+  // bar3: flat range; no manual exit orders are placed; position stays open.
+  f.broker->ProcessPendingOrders(f.bar3Date);
+  REQUIRE(f.broker->isLongPosition(f.futuresSymbol));
+
+  // bar4: L=280 ≤ 285 — if the 5% same-day stop had leaked it would fire here.
+  // No exit order has been placed, so the position must remain open.
+  f.broker->ProcessPendingOrders(f.bar4Date);
+  REQUIRE(f.broker->isLongPosition(f.futuresSymbol));
+
+  // Confirmed: same-day order was erased, not lurking in the queue.
+  REQUIRE(f.broker->getOpenTrades()   == 1);
+  REQUIRE(f.broker->getClosedTrades() == 0);
+}
+
+
+// ============================================================================
+// TEST: Bleed-through prevention — short
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day short: non-triggering stop does not bleed into subsequent bars",
+          "[StrategyBroker][SameDayExit][short][bleed-through]")
+{
+  SameDayBrokerFixture f;
+
+  // 5% short stop → 315; bar2 H=305 < 315 → does not trigger; must be canceled.
+  f.enterShort(f.pct5, f.zero);
+  REQUIRE(f.broker->isShortPosition(f.futuresSymbol));
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+
+  // bar3: position stays open.
+  f.broker->ProcessPendingOrders(f.bar3Date);
+  REQUIRE(f.broker->isShortPosition(f.futuresSymbol));
+
+  // bar4: H=360 ≥ 315 — if the same-day stop leaked it would fire here.
+  f.broker->ProcessPendingOrders(f.bar4Date);
+  REQUIRE(f.broker->isShortPosition(f.futuresSymbol));
+
+  REQUIRE(f.broker->getOpenTrades()   == 1);
+  REQUIRE(f.broker->getClosedTrades() == 0);
+}
+
+
+// ============================================================================
+// TEST: Entry with no stop or target — same-day pass is a no-op
+// ============================================================================
+
+TEST_CASE("StrategyBroker same-day: entry with zero stop and target is a no-op",
+          "[StrategyBroker][SameDayExit][no-op]")
+{
+  SameDayBrokerFixture f;
+
+  // No stop, no target → submitSameDayLongExits submits nothing.
+  f.enterLong(f.zero, f.zero);
+
+  // Position must still be open; no pending orders; no exception thrown.
+  REQUIRE(f.broker->isLongPosition(f.futuresSymbol));
+  REQUIRE(f.broker->getOpenTrades()   == 1);
+  REQUIRE(f.broker->getClosedTrades() == 0);
+  REQUIRE(f.broker->beginPendingOrders() == f.broker->endPendingOrders());
+}

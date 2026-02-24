@@ -335,6 +335,17 @@ namespace mkc_timeseries
       }
 
       /**
+       * @brief Returns true if same-day stop/limit exit evaluation is enabled.
+       * When true, stop and limit exit orders submitted at the moment of an entry
+       * fill are evaluated against that same bar's High/Low.
+       * Configured at construction time; default is false.
+       */
+      bool isSameDayExitsEnabled() const
+      {
+	return mBroker.isSameDayExitsEnabled();
+      }
+
+      /**
        * @brief Iterate all securities in the strategy’s portfolio.
        * @return Const iterator to the first security.
        */
@@ -1204,23 +1215,24 @@ namespace mkc_timeseries
        * @param strategyOptions  Risk and pyramiding config.
        */
       BacktesterStrategy (const std::string& strategyName,
-     std::shared_ptr<Portfolio<Decimal>> portfolio,
-     const StrategyOptions& strategyOptions)
- : mStrategyName(strategyName),
-   mBroker (portfolio),
-   mPortfolio (portfolio),
-   mSecuritiesProperties(),
-   mStrategyOptions(strategyOptions),
-   mInstanceId(sUuidGenerator())  // Generate unique UUID for this instance
- {
-   typename Portfolio<Decimal>::ConstPortfolioIterator it =
-     mPortfolio->beginPortfolio();
-
-   for (; it != mPortfolio->endPortfolio(); it++)
-     {
-       mSecuritiesProperties.addSecurity (it->second->getSymbol());
-     }
- }
+			  std::shared_ptr<Portfolio<Decimal>> portfolio,
+			  const StrategyOptions& strategyOptions,
+			  bool sameDayExits = false)
+	: mStrategyName(strategyName),
+	  mBroker (portfolio, sameDayExits),
+	  mPortfolio (portfolio),
+	  mSecuritiesProperties(),
+	  mStrategyOptions(strategyOptions),
+	  mInstanceId(sUuidGenerator())  // Generate unique UUID for this instance
+      {
+	typename Portfolio<Decimal>::ConstPortfolioIterator it =
+	  mPortfolio->beginPortfolio();
+	
+	for (; it != mPortfolio->endPortfolio(); it++)
+	  {
+	    mSecuritiesProperties.addSecurity (it->second->getSymbol());
+	  }
+      }
 
     private:
       std::string mStrategyName;
