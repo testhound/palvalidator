@@ -49,56 +49,62 @@ TeeStream::TeeStream(std::ostream& streamA, std::ostream& streamB)
 }
 
 std::string createBootstrapFileName(const std::string& securitySymbol,
-                                   ValidationMethod method)
+                                   ValidationMethod method,
+                                   bool sameDayExits)
 {
-    std::string methodDir = getValidationMethodString(method);
+    std::string methodDir = getValidationMethodDirectoryName(method, sameDayExits);
     std::filesystem::create_directories(methodDir);
-    return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method)
+    return methodDir + "/" + securitySymbol + "_" + getValidationMethodDirectoryName(method, sameDayExits)
         + "_Bootstrap_Results_" + getCurrentTimestamp() + ".txt";
 }
 
 std::string createSurvivingPatternsFileName(const std::string& securitySymbol,
-                                           ValidationMethod method)
+                                           ValidationMethod method,
+                                           bool sameDayExits)
 {
-    std::string methodDir = getValidationMethodString(method);
+    std::string methodDir = getValidationMethodDirectoryName(method, sameDayExits);
     std::filesystem::create_directories(methodDir);
-    return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method)
+    return methodDir + "/" + securitySymbol + "_" + getValidationMethodDirectoryName(method, sameDayExits)
         + "_SurvivingPatterns_" + getCurrentTimestamp() + ".txt";
 }
 
 std::string createDetailedSurvivingPatternsFileName(const std::string& securitySymbol,
-                                                   ValidationMethod method)
+                                                   ValidationMethod method,
+                                                   bool sameDayExits)
 {
-    std::string methodDir = getValidationMethodString(method);
+    std::string methodDir = getValidationMethodDirectoryName(method, sameDayExits);
     std::filesystem::create_directories(methodDir);
-    return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method)
+    return methodDir + "/" + securitySymbol + "_" + getValidationMethodDirectoryName(method, sameDayExits)
         + "_Detailed_SurvivingPatterns_" + getCurrentTimestamp() + ".txt";
 }
 
 std::string createDetailedRejectedPatternsFileName(const std::string& securitySymbol,
-                                                   ValidationMethod method)
+                                                   ValidationMethod method,
+                                                   bool sameDayExits)
 {
-    std::string methodDir = getValidationMethodString(method);
+    std::string methodDir = getValidationMethodDirectoryName(method, sameDayExits);
     std::filesystem::create_directories(methodDir);
-    return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method)
+    return methodDir + "/" + securitySymbol + "_" + getValidationMethodDirectoryName(method, sameDayExits)
         + "_Detailed_RejectedPatterns_" + getCurrentTimestamp() + ".txt";
 }
 
 std::string createPermutationTestSurvivorsFileName(const std::string& securitySymbol,
-                                                 ValidationMethod method)
+                                                 ValidationMethod method,
+                                                 bool sameDayExits)
 {
-    std::string methodDir = getValidationMethodString(method);
+    std::string methodDir = getValidationMethodDirectoryName(method, sameDayExits);
     std::filesystem::create_directories(methodDir);
-    return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method)
+    return methodDir + "/" + securitySymbol + "_" + getValidationMethodDirectoryName(method, sameDayExits)
         + "_PermutationTestSurvivors_" + getCurrentTimestamp() + ".txt";
 }
 
 std::string createUnifiedMetaStrategyPerformanceFileName(const std::string& securitySymbol,
-                                                        ValidationMethod method)
+                                                        ValidationMethod method,
+                                                        bool sameDayExits)
 {
-    std::string methodDir = getValidationMethodString(method);
+    std::string methodDir = getValidationMethodDirectoryName(method, sameDayExits);
     std::filesystem::create_directories(methodDir);
-    return methodDir + "/" + securitySymbol + "_" + getValidationMethodString(method)
+    return methodDir + "/" + securitySymbol + "_" + getValidationMethodDirectoryName(method, sameDayExits)
         + "_UnifiedMetaStrategy_Performance_" + getCurrentTimestamp() + ".txt";
 }
 
@@ -129,7 +135,8 @@ void writePermutationTestSurvivors(const std::vector<std::shared_ptr<PalStrategy
 template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>>
 loadPermutationTestSurvivors(const std::string& filename,
-                           std::shared_ptr<Security<Num>> security)
+                           std::shared_ptr<Security<Num>> security,
+                           bool sameDayExits)
 {
     std::vector<std::shared_ptr<PalStrategy<Num>>> strategies;
     
@@ -161,7 +168,7 @@ loadPermutationTestSurvivors(const std::string& filename,
                                       std::to_string(pattern->getIndexDate());
             
             // Use the global makePalStrategy function with security parameter
-            auto strategy = makePalStrategy<Num>(strategyName, pattern, security);
+            auto strategy = makePalStrategy<Num>(strategyName, pattern, security, defaultStrategyOptions, sameDayExits);
             strategies.push_back(strategy);
         }
         
@@ -174,7 +181,7 @@ loadPermutationTestSurvivors(const std::string& filename,
                                       std::to_string(pattern->getIndexDate());
             
             // Use the global makePalStrategy function with security parameter
-            auto strategy = makePalStrategy<Num>(strategyName, pattern, security);
+            auto strategy = makePalStrategy<Num>(strategyName, pattern, security, defaultStrategyOptions, sameDayExits);
             strategies.push_back(strategy);
         }
         
@@ -200,7 +207,8 @@ template void writePermutationTestSurvivors<num::DefaultNumber>(
 template std::vector<std::shared_ptr<PalStrategy<num::DefaultNumber>>>
 loadPermutationTestSurvivors<num::DefaultNumber>(
     const std::string& filename,
-    std::shared_ptr<Security<num::DefaultNumber>> security);
+    std::shared_ptr<Security<num::DefaultNumber>> security,
+    bool sameDayExits);
 
 } // namespace utils
 } // namespace palvalidator

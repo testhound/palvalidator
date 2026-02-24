@@ -42,7 +42,8 @@ public:
     static void writeSurvivingPatterns(
         const std::vector<std::shared_ptr<PalStrategy<Num>>>& strategies,
         const std::string& securitySymbol,
-        ValidationMethod method
+        ValidationMethod method,
+        bool sameDayExits = false
     );
 
     /**
@@ -62,7 +63,8 @@ public:
         const DateRange& backtestingDates,
         TimeFrame::Duration timeFrame,
         const std::string& policyName,
-        const ValidationParameters& params
+        const ValidationParameters& params,
+        bool sameDayExits = false
     );
 
     /**

@@ -23,6 +23,20 @@ std::string getValidationMethodString(ValidationMethod method)
     }
 }
 
+std::string getValidationMethodDirectoryName(ValidationMethod method, bool sameDayExits)
+{
+    std::string baseName = getValidationMethodString(method);
+    
+    // Only add sameDayExits suffix for Unadjusted method for now
+    // Can be extended to other methods if needed
+    if (method == ValidationMethod::Unadjusted) {
+        baseName += "_SameDayExit_";
+        baseName += sameDayExits ? "True" : "False";
+    }
+    
+    return baseName;
+}
+
 std::string getPipelineModeString(PipelineMode mode)
 {
     switch (mode)
