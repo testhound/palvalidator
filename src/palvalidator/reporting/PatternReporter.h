@@ -86,7 +86,8 @@ public:
         TimeFrame::Duration timeFrame,
         const Num& pValueThreshold,
         std::shared_ptr<Security<Num>> baseSecurity,
-        const std::vector<std::shared_ptr<PalStrategy<Num>>>& performanceFilteredStrategies = {}
+        const std::vector<std::shared_ptr<PalStrategy<Num>>>& performanceFilteredStrategies = {},
+        bool sameDayExits = false
     );
 
 private:

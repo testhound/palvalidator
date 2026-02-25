@@ -273,8 +273,9 @@ namespace palvalidator
 
 	  // 2) Persist reports (unchanged)
 	  const std::string performanceFileName =
-	    palvalidator::utils::createUnifiedMetaStrategyPerformanceFileName(
-									      baseSecurity->getSymbol(), validationMethod);
+	    palvalidator::utils::createUnifiedMetaStrategyPerformanceFileName(baseSecurity->getSymbol(),
+									      validationMethod,
+									      sameDayExits);
 
 	  writeComprehensivePerformanceReport(allResults, performanceFileName, outputStream);
 	  outputPyramidComparison(allResults, baseSecurity, outputStream);

@@ -79,9 +79,10 @@ void PatternReporter::writeRejectedPatterns(
     TimeFrame::Duration timeFrame,
     const Num& pValueThreshold,
     std::shared_ptr<Security<Num>> baseSecurity,
-    const std::vector<std::shared_ptr<PalStrategy<Num>>>& performanceFilteredStrategies)
+    const std::vector<std::shared_ptr<PalStrategy<Num>>>& performanceFilteredStrategies,
+    bool sameDayExits)
 {
-    std::string filename = palvalidator::utils::createDetailedRejectedPatternsFileName(securitySymbol, method);
+    std::string filename = palvalidator::utils::createDetailedRejectedPatternsFileName(securitySymbol, method, sameDayExits);
     std::ofstream rejectedPatternsFile(filename);
     
     // Get all strategies and identify rejected ones with their p-values

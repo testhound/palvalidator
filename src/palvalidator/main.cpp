@@ -530,8 +530,8 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
             survivingStrategies = validation->getSurvivingStrategies();
             
             // Write Monte Carlo permutation survivors to file for potential future use
-            survivorFileName = createPermutationTestSurvivorsFileName(
-                config->getSecurity()->getSymbol(), validationMethod);
+            survivorFileName = createPermutationTestSurvivorsFileName(config->getSecurity()->getSymbol(),
+								      validationMethod, sameDayExits);
             writePermutationTestSurvivors(survivingStrategies, survivorFileName);
             std::cout << "Monte Carlo permutation survivors written to: " << survivorFileName << std::endl;
             std::cout << "These can be used later for bootstrap-only analysis." << std::endl;
