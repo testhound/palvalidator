@@ -96,7 +96,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type.
    */
-  virtual PriceBarReference::ReferenceType getReferenceType() = 0;
+  virtual PriceBarReference::ReferenceType getReferenceType() const = 0;
 
   /**
    * @brief Gets the number of extra bars needed for this reference.
@@ -151,7 +151,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (OPEN).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -205,7 +205,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (HIGH).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -259,7 +259,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (LOW).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -313,7 +313,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (CLOSE).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -367,7 +367,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (VOLUME).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -421,7 +421,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (ROC1).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -475,7 +475,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (IBS1).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -529,7 +529,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (IBS2).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -583,7 +583,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (IBS3).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -637,7 +637,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (MEANDER).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -691,7 +691,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (VCHARTHIGH).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -745,7 +745,7 @@ public:
    * @brief Gets the reference type.
    * @return The reference type (VCHARTLOW).
    */
-  PriceBarReference::ReferenceType getReferenceType();
+  PriceBarReference::ReferenceType getReferenceType() const;
   /**
    * @brief Gets the number of extra bars needed for this reference.
    * @return The number of extra bars needed.
@@ -2038,6 +2038,12 @@ public:
   bool isVeryHighVolatilityPattern() const;
 
   /**
+   * @brief Gets the volatility attribute of the pattern.
+   * @return The volatility attribute.
+   */
+  VolatilityAttribute getVolatilityAttribute() const;
+
+  /**
    * @brief Checks if the pattern has a portfolio attribute.
    * @return True if it has a portfolio attribute, false otherwise.
    */
@@ -2052,6 +2058,12 @@ public:
    * @return True if it is filtered for short trades, false otherwise.
    */
   bool isFilteredShortPattern() const;
+
+  /**
+   * @brief Gets the portfolio filter attribute of the pattern.
+   * @return The portfolio filter attribute.
+   */
+  PortfolioAttribute getPortfolioAttribute() const;
 private:
   /**
    * @brief Calculates the hash for a given string.
@@ -2107,6 +2119,20 @@ private:
  * @brief Shared pointer type for PriceActionLabPattern.
  */
 typedef std::shared_ptr<PriceActionLabPattern> PALPatternPtr;
+
+/**
+ * @brief Compares two PriceActionLabPattern objects for equality.
+ * Two patterns are equal if they have the same direction, profit target,
+ * stop loss, volatility attribute, portfolio attribute, and structurally
+ * identical pattern expression trees. Filename and pattern index are
+ * intentionally excluded to support cross-file pattern comparison.
+ */
+bool operator==(const PriceActionLabPattern& lhs, const PriceActionLabPattern& rhs);
+
+/**
+ * @brief Compares two PriceActionLabPattern objects for inequality.
+ */
+bool operator!=(const PriceActionLabPattern& lhs, const PriceActionLabPattern& rhs);
 
 // When we have the smae pattern with different reward to risk or
 // different volatilities (1 standard deviation version two standard deviation)
