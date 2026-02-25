@@ -888,23 +888,23 @@ int main(int argc, char **argv)
     } else if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
                pipelineMode == PipelineMode::PermutationOnly) {
         // Permutation testing modes: ask user for validation method
-        validationMethod = ValidationMethod::Masters; // Default for permutation modes
+        validationMethod = ValidationMethod::Unadjusted; // Default for permutation modes
         
         // Ask for Validation Method
         std::cout << "\nChoose validation method:" << std::endl;
-        std::cout << "  1. Masters (default)" << std::endl;
+        std::cout << "  1. Masters" << std::endl;
         std::cout << "  2. Romano-Wolf" << std::endl;
         std::cout << "  3. Benjamini-Hochberg" << std::endl;
-        std::cout << "  4. Unadjusted" << std::endl;
+        std::cout << "  4. Unadjusted (default)" << std::endl;
         std::cout << "Enter choice (1, 2, 3, or 4): ";
         std::getline(std::cin, input);
         
-        if (input == "2") {
+        if (input == "1") {
+            validationMethod = ValidationMethod::Masters;
+        } else if (input == "2") {
             validationMethod = ValidationMethod::RomanoWolf;
         } else if (input == "3") {
             validationMethod = ValidationMethod::BenjaminiHochberg;
-        } else if (input == "4") {
-            validationMethod = ValidationMethod::Unadjusted;
         }
         
         // Conditionally ask for FDR
