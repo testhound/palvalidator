@@ -27,12 +27,11 @@ std::string getValidationMethodDirectoryName(ValidationMethod method, bool sameD
 {
     std::string baseName = getValidationMethodString(method);
     
-    // Only add sameDayExits suffix for Unadjusted method for now
-    // Can be extended to other methods if needed
-    if (method == ValidationMethod::Unadjusted) {
-        baseName += "_SameDayExit_";
-        baseName += sameDayExits ? "True" : "False";
-    }
+    // Apply sameDayExits suffix for all validation methods so that runs with
+    // different exit modes are always written to distinct directories, preventing
+    // silent overwrites regardless of which validation method was chosen.
+    baseName += "_SameDayExit_";
+    baseName += sameDayExits ? "True" : "False";
     
     return baseName;
 }
