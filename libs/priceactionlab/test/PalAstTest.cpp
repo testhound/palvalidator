@@ -44,6 +44,62 @@ public:
     // Add other visit methods as needed from PalCodeGenVisitor.h
 };
 
+namespace {
+
+// Builds a minimal long PriceActionLabPattern.
+// All parameters that distinguish patterns are exposed as arguments;
+// everything else is held constant so that only the dimension under test
+// varies between two patterns being compared.
+PALPatternPtr makeLongPattern(
+    AstFactory& factory,
+    const std::string& fileName,
+    PatternExpressionPtr expr,
+    const std::string& profitTargetStr,
+    const std::string& stopLossStr,
+    PriceActionLabPattern::VolatilityAttribute  vol  = PriceActionLabPattern::VOLATILITY_NONE,
+    PriceActionLabPattern::PortfolioAttribute   port = PriceActionLabPattern::PORTFOLIO_FILTER_NONE)
+{
+    auto pLong  = factory.getDecimalNumber(const_cast<char*>("70.0"));
+    auto pShort = factory.getDecimalNumber(const_cast<char*>("30.0"));
+    auto desc   = std::make_shared<PatternDescription>(
+                      fileName, 1u, 20230101ul, pLong, pShort, 10u, 2u);
+
+    auto entry = factory.getLongMarketEntryOnOpen();
+    auto pt    = factory.getLongProfitTarget(
+                     factory.getDecimalNumber(const_cast<char*>(profitTargetStr.c_str())));
+    auto sl    = factory.getLongStopLoss(
+                     factory.getDecimalNumber(const_cast<char*>(stopLossStr.c_str())));
+
+    return std::make_shared<PriceActionLabPattern>(
+               desc, expr, entry, pt, sl, vol, port);
+}
+
+// Same as above but for short patterns.
+PALPatternPtr makeShortPattern(
+    AstFactory& factory,
+    const std::string& fileName,
+    PatternExpressionPtr expr,
+    const std::string& profitTargetStr,
+    const std::string& stopLossStr,
+    PriceActionLabPattern::VolatilityAttribute  vol  = PriceActionLabPattern::VOLATILITY_NONE,
+    PriceActionLabPattern::PortfolioAttribute   port = PriceActionLabPattern::PORTFOLIO_FILTER_NONE)
+{
+    auto pLong  = factory.getDecimalNumber(const_cast<char*>("70.0"));
+    auto pShort = factory.getDecimalNumber(const_cast<char*>("30.0"));
+    auto desc   = std::make_shared<PatternDescription>(
+                      fileName, 1u, 20230101ul, pLong, pShort, 10u, 2u);
+
+    auto entry = factory.getShortMarketEntryOnOpen();
+    auto pt    = factory.getShortProfitTarget(
+                     factory.getDecimalNumber(const_cast<char*>(profitTargetStr.c_str())));
+    auto sl    = factory.getShortStopLoss(
+                     factory.getDecimalNumber(const_cast<char*>(stopLossStr.c_str())));
+
+    return std::make_shared<PriceActionLabPattern>(
+               desc, expr, entry, pt, sl, vol, port);
+}
+
+} // anonymous 
 
 TEST_CASE("AstFactory Basic Operations", "[AstFactory]") {
     AstFactory factory;
@@ -3146,3 +3202,677 @@ TEST_CASE("Const Cast Fix - Verification Summary", "[AstResourceManager][fix][su
         INFO("✓ Caching works correctly");
     }
 }
+
+// =============================================================================
+// getVolatilityAttribute
+// =============================================================================
+
+TEST_CASE("PriceActionLabPattern::getVolatilityAttribute",
+          "[PriceActionLabPattern][volatility]")
+{
+    AstFactory factory;
+    auto expr = std::make_shared<GreaterThanExpr>(
+                    factory.getPriceOpen(0), factory.getPriceClose(1));
+
+    SECTION("Returns VOLATILITY_NONE when no attribute is set")
+    {
+        auto p = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                 PriceActionLabPattern::VOLATILITY_NONE);
+        REQUIRE(p->getVolatilityAttribute() ==
+                PriceActionLabPattern::VOLATILITY_NONE);
+    }
+
+    SECTION("Returns VOLATILITY_LOW")
+    {
+        auto p = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                 PriceActionLabPattern::VOLATILITY_LOW);
+        REQUIRE(p->getVolatilityAttribute() ==
+                PriceActionLabPattern::VOLATILITY_LOW);
+    }
+
+    SECTION("Returns VOLATILITY_NORMAL")
+    {
+        auto p = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                 PriceActionLabPattern::VOLATILITY_NORMAL);
+        REQUIRE(p->getVolatilityAttribute() ==
+                PriceActionLabPattern::VOLATILITY_NORMAL);
+    }
+
+    SECTION("Returns VOLATILITY_HIGH")
+    {
+        auto p = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                 PriceActionLabPattern::VOLATILITY_HIGH);
+        REQUIRE(p->getVolatilityAttribute() ==
+                PriceActionLabPattern::VOLATILITY_HIGH);
+    }
+
+    SECTION("Returns VOLATILITY_VERY_HIGH")
+    {
+        auto p = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                 PriceActionLabPattern::VOLATILITY_VERY_HIGH);
+        REQUIRE(p->getVolatilityAttribute() ==
+                PriceActionLabPattern::VOLATILITY_VERY_HIGH);
+    }
+
+    SECTION("Is consistent with the isXxxVolatilityPattern helpers")
+    {
+        // Verify the new accessor and the existing boolean helpers agree on
+        // every enum value, so callers can use whichever is more readable.
+        auto pLow = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                    PriceActionLabPattern::VOLATILITY_LOW);
+        REQUIRE(pLow->getVolatilityAttribute() ==
+                PriceActionLabPattern::VOLATILITY_LOW);
+        REQUIRE(pLow->isLowVolatilityPattern());
+
+        auto pHigh = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                     PriceActionLabPattern::VOLATILITY_HIGH);
+        REQUIRE(pHigh->getVolatilityAttribute() ==
+                PriceActionLabPattern::VOLATILITY_HIGH);
+        REQUIRE(pHigh->isHighVolatilityPattern());
+
+        auto pVH = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                   PriceActionLabPattern::VOLATILITY_VERY_HIGH);
+        REQUIRE(pVH->getVolatilityAttribute() ==
+                PriceActionLabPattern::VOLATILITY_VERY_HIGH);
+        REQUIRE(pVH->isVeryHighVolatilityPattern());
+
+        auto pNormal = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                       PriceActionLabPattern::VOLATILITY_NORMAL);
+        REQUIRE(pNormal->getVolatilityAttribute() ==
+                PriceActionLabPattern::VOLATILITY_NORMAL);
+        REQUIRE(pNormal->isNormalVolatilityPattern());
+    }
+
+    SECTION("Different volatility values return different enum values")
+    {
+        // Sanity check: none of the five enum values are aliases of each other.
+        auto pNone   = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                       PriceActionLabPattern::VOLATILITY_NONE);
+        auto pLow    = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                       PriceActionLabPattern::VOLATILITY_LOW);
+        auto pNormal = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                       PriceActionLabPattern::VOLATILITY_NORMAL);
+        auto pHigh   = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                       PriceActionLabPattern::VOLATILITY_HIGH);
+        auto pVH     = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                       PriceActionLabPattern::VOLATILITY_VERY_HIGH);
+
+        REQUIRE(pNone->getVolatilityAttribute()   != pLow->getVolatilityAttribute());
+        REQUIRE(pLow->getVolatilityAttribute()    != pNormal->getVolatilityAttribute());
+        REQUIRE(pNormal->getVolatilityAttribute() != pHigh->getVolatilityAttribute());
+        REQUIRE(pHigh->getVolatilityAttribute()   != pVH->getVolatilityAttribute());
+    }
+}
+
+
+// =============================================================================
+// getPortfolioAttribute
+// =============================================================================
+
+TEST_CASE("PriceActionLabPattern::getPortfolioAttribute",
+          "[PriceActionLabPattern][portfolio]")
+{
+    AstFactory factory;
+    auto expr = std::make_shared<GreaterThanExpr>(
+                    factory.getPriceOpen(0), factory.getPriceClose(1));
+
+    SECTION("Returns PORTFOLIO_FILTER_NONE when no attribute is set")
+    {
+        auto p = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                 PriceActionLabPattern::VOLATILITY_NONE,
+                                 PriceActionLabPattern::PORTFOLIO_FILTER_NONE);
+        REQUIRE(p->getPortfolioAttribute() ==
+                PriceActionLabPattern::PORTFOLIO_FILTER_NONE);
+    }
+
+    SECTION("Returns PORTFOLIO_FILTER_LONG")
+    {
+        auto p = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                 PriceActionLabPattern::VOLATILITY_NONE,
+                                 PriceActionLabPattern::PORTFOLIO_FILTER_LONG);
+        REQUIRE(p->getPortfolioAttribute() ==
+                PriceActionLabPattern::PORTFOLIO_FILTER_LONG);
+    }
+
+    SECTION("Returns PORTFOLIO_FILTER_SHORT")
+    {
+        auto p = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                 PriceActionLabPattern::VOLATILITY_NONE,
+                                 PriceActionLabPattern::PORTFOLIO_FILTER_SHORT);
+        REQUIRE(p->getPortfolioAttribute() ==
+                PriceActionLabPattern::PORTFOLIO_FILTER_SHORT);
+    }
+
+    SECTION("Is consistent with the isFilteredXxxPattern helpers")
+    {
+        auto pLong = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                     PriceActionLabPattern::VOLATILITY_NONE,
+                                     PriceActionLabPattern::PORTFOLIO_FILTER_LONG);
+        REQUIRE(pLong->getPortfolioAttribute() ==
+                PriceActionLabPattern::PORTFOLIO_FILTER_LONG);
+        REQUIRE(pLong->isFilteredLongPattern());
+        REQUIRE_FALSE(pLong->isFilteredShortPattern());
+
+        auto pShort = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                      PriceActionLabPattern::VOLATILITY_NONE,
+                                      PriceActionLabPattern::PORTFOLIO_FILTER_SHORT);
+        REQUIRE(pShort->getPortfolioAttribute() ==
+                PriceActionLabPattern::PORTFOLIO_FILTER_SHORT);
+        REQUIRE(pShort->isFilteredShortPattern());
+        REQUIRE_FALSE(pShort->isFilteredLongPattern());
+
+        auto pNone = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                     PriceActionLabPattern::VOLATILITY_NONE,
+                                     PriceActionLabPattern::PORTFOLIO_FILTER_NONE);
+        REQUIRE(pNone->getPortfolioAttribute() ==
+                PriceActionLabPattern::PORTFOLIO_FILTER_NONE);
+        REQUIRE_FALSE(pNone->isFilteredLongPattern());
+        REQUIRE_FALSE(pNone->isFilteredShortPattern());
+    }
+
+    SECTION("Different portfolio values return different enum values")
+    {
+        auto pNone  = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                      PriceActionLabPattern::VOLATILITY_NONE,
+                                      PriceActionLabPattern::PORTFOLIO_FILTER_NONE);
+        auto pLong  = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                      PriceActionLabPattern::VOLATILITY_NONE,
+                                      PriceActionLabPattern::PORTFOLIO_FILTER_LONG);
+        auto pShort = makeLongPattern(factory, "f.txt", expr, "5.0", "2.0",
+                                      PriceActionLabPattern::VOLATILITY_NONE,
+                                      PriceActionLabPattern::PORTFOLIO_FILTER_SHORT);
+
+        REQUIRE(pNone->getPortfolioAttribute()  != pLong->getPortfolioAttribute());
+        REQUIRE(pLong->getPortfolioAttribute()  != pShort->getPortfolioAttribute());
+        REQUIRE(pNone->getPortfolioAttribute()  != pShort->getPortfolioAttribute());
+    }
+}
+
+
+// =============================================================================
+// operator== and operator!=
+// =============================================================================
+
+TEST_CASE("PriceActionLabPattern operator== : pointer identity shortcut",
+          "[PriceActionLabPattern][equality]")
+{
+    AstFactory factory;
+    auto expr = std::make_shared<GreaterThanExpr>(
+                    factory.getPriceOpen(0), factory.getPriceClose(1));
+    auto p = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0");
+
+    SECTION("A pattern compares equal to itself")
+    {
+        REQUIRE(*p == *p);
+        REQUIRE_FALSE(*p != *p);
+    }
+}
+
+TEST_CASE("PriceActionLabPattern operator== : direction",
+          "[PriceActionLabPattern][equality]")
+{
+    AstFactory factory;
+    auto expr = std::make_shared<GreaterThanExpr>(
+                    factory.getPriceOpen(0), factory.getPriceClose(1));
+
+    SECTION("Long and short patterns with otherwise identical parameters are not equal")
+    {
+        auto longPat  = makeLongPattern (factory, "file.txt", expr, "5.0", "2.0");
+        auto shortPat = makeShortPattern(factory, "file.txt", expr, "5.0", "2.0");
+
+        REQUIRE_FALSE(*longPat == *shortPat);
+        REQUIRE(*longPat != *shortPat);
+    }
+
+    SECTION("Two long patterns with the same parameters are equal")
+    {
+        auto p1 = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0");
+
+        REQUIRE(*p1 == *p2);
+        REQUIRE_FALSE(*p1 != *p2);
+    }
+
+    SECTION("Two short patterns with the same parameters are equal")
+    {
+        auto p1 = makeShortPattern(factory, "file.txt", expr, "5.0", "2.0");
+        auto p2 = makeShortPattern(factory, "file.txt", expr, "5.0", "2.0");
+
+        REQUIRE(*p1 == *p2);
+        REQUIRE_FALSE(*p1 != *p2);
+    }
+}
+
+TEST_CASE("PriceActionLabPattern operator== : profit target",
+          "[PriceActionLabPattern][equality]")
+{
+    AstFactory factory;
+    auto expr = std::make_shared<GreaterThanExpr>(
+                    factory.getPriceOpen(0), factory.getPriceClose(1));
+
+    SECTION("Different profit targets make patterns unequal")
+    {
+        auto p1 = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", expr, "6.0", "2.0");
+
+        REQUIRE_FALSE(*p1 == *p2);
+        REQUIRE(*p1 != *p2);
+    }
+
+    SECTION("Equal profit targets (same value) do not cause inequality")
+    {
+        auto p1 = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0");
+
+        REQUIRE(*p1 == *p2);
+    }
+}
+
+TEST_CASE("PriceActionLabPattern operator== : stop loss",
+          "[PriceActionLabPattern][equality]")
+{
+    AstFactory factory;
+    auto expr = std::make_shared<GreaterThanExpr>(
+                    factory.getPriceOpen(0), factory.getPriceClose(1));
+
+    SECTION("Different stop losses make patterns unequal")
+    {
+        auto p1 = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", expr, "5.0", "3.0");
+
+        REQUIRE_FALSE(*p1 == *p2);
+        REQUIRE(*p1 != *p2);
+    }
+
+    SECTION("Equal stop losses (same value) do not cause inequality")
+    {
+        auto p1 = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0");
+
+        REQUIRE(*p1 == *p2);
+    }
+}
+
+TEST_CASE("PriceActionLabPattern operator== : volatility attribute",
+          "[PriceActionLabPattern][equality]")
+{
+    AstFactory factory;
+    auto expr = std::make_shared<GreaterThanExpr>(
+                    factory.getPriceOpen(0), factory.getPriceClose(1));
+
+    SECTION("Patterns with different volatility attributes are not equal")
+    {
+        auto pLow  = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                     PriceActionLabPattern::VOLATILITY_LOW);
+        auto pHigh = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                     PriceActionLabPattern::VOLATILITY_HIGH);
+
+        REQUIRE_FALSE(*pLow == *pHigh);
+        REQUIRE(*pLow != *pHigh);
+    }
+
+    SECTION("Patterns with the same volatility attribute are equal")
+    {
+        auto p1 = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                  PriceActionLabPattern::VOLATILITY_HIGH);
+        auto p2 = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                  PriceActionLabPattern::VOLATILITY_HIGH);
+
+        REQUIRE(*p1 == *p2);
+    }
+
+    SECTION("VOLATILITY_NONE differs from any specific volatility setting")
+    {
+        auto pNone   = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                       PriceActionLabPattern::VOLATILITY_NONE);
+        auto pNormal = makeLongPattern(factory, "file.txt", expr, "5.0", "2.0",
+                                       PriceActionLabPattern::VOLATILITY_NORMAL);
+
+        REQUIRE_FALSE(*pNone == *pNormal);
+        REQUIRE(*pNone != *pNormal);
+    }
+}
+
+TEST_CASE("PriceActionLabPattern operator== : portfolio attribute",
+          "[PriceActionLabPattern][equality]")
+{
+    AstFactory factory;
+    auto expr = std::make_shared<GreaterThanExpr>(
+                    factory.getPriceOpen(0), factory.getPriceClose(1));
+
+    SECTION("Patterns with different portfolio attributes are not equal")
+    {
+        auto pFilterLong = makeLongPattern(
+            factory, "file.txt", expr, "5.0", "2.0",
+            PriceActionLabPattern::VOLATILITY_NONE,
+            PriceActionLabPattern::PORTFOLIO_FILTER_LONG);
+        auto pFilterNone = makeLongPattern(
+            factory, "file.txt", expr, "5.0", "2.0",
+            PriceActionLabPattern::VOLATILITY_NONE,
+            PriceActionLabPattern::PORTFOLIO_FILTER_NONE);
+
+        REQUIRE_FALSE(*pFilterLong == *pFilterNone);
+        REQUIRE(*pFilterLong != *pFilterNone);
+    }
+
+    SECTION("PORTFOLIO_FILTER_LONG differs from PORTFOLIO_FILTER_SHORT")
+    {
+        auto pLong  = makeLongPattern(
+            factory, "file.txt", expr, "5.0", "2.0",
+            PriceActionLabPattern::VOLATILITY_NONE,
+            PriceActionLabPattern::PORTFOLIO_FILTER_LONG);
+        auto pShort = makeLongPattern(
+            factory, "file.txt", expr, "5.0", "2.0",
+            PriceActionLabPattern::VOLATILITY_NONE,
+            PriceActionLabPattern::PORTFOLIO_FILTER_SHORT);
+
+        REQUIRE_FALSE(*pLong == *pShort);
+        REQUIRE(*pLong != *pShort);
+    }
+
+    SECTION("Patterns with the same portfolio attribute are equal")
+    {
+        auto p1 = makeLongPattern(
+            factory, "file.txt", expr, "5.0", "2.0",
+            PriceActionLabPattern::VOLATILITY_NONE,
+            PriceActionLabPattern::PORTFOLIO_FILTER_LONG);
+        auto p2 = makeLongPattern(
+            factory, "file.txt", expr, "5.0", "2.0",
+            PriceActionLabPattern::VOLATILITY_NONE,
+            PriceActionLabPattern::PORTFOLIO_FILTER_LONG);
+
+        REQUIRE(*p1 == *p2);
+    }
+}
+
+TEST_CASE("PriceActionLabPattern operator== : expression tree — single GreaterThanExpr",
+          "[PriceActionLabPattern][equality][expression]")
+{
+    AstFactory factory;
+
+    SECTION("Identical GreaterThanExpr trees are equal")
+    {
+        // Build two independent expression objects that are structurally the same
+        auto expr1 = std::make_shared<GreaterThanExpr>(
+                         factory.getPriceOpen(0), factory.getPriceClose(1));
+        auto expr2 = std::make_shared<GreaterThanExpr>(
+                         factory.getPriceOpen(0), factory.getPriceClose(1));
+
+        auto p1 = makeLongPattern(factory, "file.txt", expr1, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", expr2, "5.0", "2.0");
+
+        REQUIRE(*p1 == *p2);
+    }
+
+    SECTION("Different LHS bar type makes patterns unequal")
+    {
+        // Open[0] > Close[1]  vs  High[0] > Close[1]
+        auto exprOpen = std::make_shared<GreaterThanExpr>(
+                            factory.getPriceOpen(0), factory.getPriceClose(1));
+        auto exprHigh = std::make_shared<GreaterThanExpr>(
+                            factory.getPriceHigh(0), factory.getPriceClose(1));
+
+        auto p1 = makeLongPattern(factory, "file.txt", exprOpen, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", exprHigh, "5.0", "2.0");
+
+        REQUIRE_FALSE(*p1 == *p2);
+        REQUIRE(*p1 != *p2);
+    }
+
+    SECTION("Different RHS bar type makes patterns unequal")
+    {
+        // Open[0] > Close[1]  vs  Open[0] > Low[1]
+        auto exprClose = std::make_shared<GreaterThanExpr>(
+                             factory.getPriceOpen(0), factory.getPriceClose(1));
+        auto exprLow   = std::make_shared<GreaterThanExpr>(
+                             factory.getPriceOpen(0), factory.getPriceLow(1));
+
+        auto p1 = makeLongPattern(factory, "file.txt", exprClose, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", exprLow,   "5.0", "2.0");
+
+        REQUIRE_FALSE(*p1 == *p2);
+        REQUIRE(*p1 != *p2);
+    }
+
+    SECTION("Different LHS bar offset makes patterns unequal")
+    {
+        // Open[0] > Close[1]  vs  Open[2] > Close[1]
+        auto expr0 = std::make_shared<GreaterThanExpr>(
+                         factory.getPriceOpen(0), factory.getPriceClose(1));
+        auto expr2 = std::make_shared<GreaterThanExpr>(
+                         factory.getPriceOpen(2), factory.getPriceClose(1));
+
+        auto p1 = makeLongPattern(factory, "file.txt", expr0, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", expr2, "5.0", "2.0");
+
+        REQUIRE_FALSE(*p1 == *p2);
+        REQUIRE(*p1 != *p2);
+    }
+
+    SECTION("Different RHS bar offset makes patterns unequal")
+    {
+        // Open[0] > Close[1]  vs  Open[0] > Close[3]
+        auto expr1 = std::make_shared<GreaterThanExpr>(
+                         factory.getPriceOpen(0), factory.getPriceClose(1));
+        auto expr3 = std::make_shared<GreaterThanExpr>(
+                         factory.getPriceOpen(0), factory.getPriceClose(3));
+
+        auto p1 = makeLongPattern(factory, "file.txt", expr1, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", expr3, "5.0", "2.0");
+
+        REQUIRE_FALSE(*p1 == *p2);
+        REQUIRE(*p1 != *p2);
+    }
+}
+
+TEST_CASE("PriceActionLabPattern operator== : expression tree — AndExpr",
+          "[PriceActionLabPattern][equality][expression]")
+{
+    AstFactory factory;
+
+    SECTION("Identical AndExpr trees are equal")
+    {
+        auto gt1a = std::make_shared<GreaterThanExpr>(
+                        factory.getPriceOpen(0), factory.getPriceClose(1));
+        auto gt2a = std::make_shared<GreaterThanExpr>(
+                        factory.getPriceHigh(1), factory.getPriceLow(2));
+        auto exprA = std::make_shared<AndExpr>(gt1a, gt2a);
+
+        auto gt1b = std::make_shared<GreaterThanExpr>(
+                        factory.getPriceOpen(0), factory.getPriceClose(1));
+        auto gt2b = std::make_shared<GreaterThanExpr>(
+                        factory.getPriceHigh(1), factory.getPriceLow(2));
+        auto exprB = std::make_shared<AndExpr>(gt1b, gt2b);
+
+        auto p1 = makeLongPattern(factory, "file.txt", exprA, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", exprB, "5.0", "2.0");
+
+        REQUIRE(*p1 == *p2);
+    }
+
+    SECTION("AndExpr with one differing leaf makes patterns unequal")
+    {
+        // (Open[0] > Close[1]) AND (High[1] > Low[2])
+        // vs
+        // (Open[0] > Close[1]) AND (High[1] > Low[3])  <-- RHS offset differs
+        auto gt1a = std::make_shared<GreaterThanExpr>(
+                        factory.getPriceOpen(0), factory.getPriceClose(1));
+        auto gt2a = std::make_shared<GreaterThanExpr>(
+                        factory.getPriceHigh(1), factory.getPriceLow(2));
+        auto exprA = std::make_shared<AndExpr>(gt1a, gt2a);
+
+        auto gt1b = std::make_shared<GreaterThanExpr>(
+                        factory.getPriceOpen(0), factory.getPriceClose(1));
+        auto gt2b = std::make_shared<GreaterThanExpr>(
+                        factory.getPriceHigh(1), factory.getPriceLow(3)); // differs
+        auto exprB = std::make_shared<AndExpr>(gt1b, gt2b);
+
+        auto p1 = makeLongPattern(factory, "file.txt", exprA, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", exprB, "5.0", "2.0");
+
+        REQUIRE_FALSE(*p1 == *p2);
+        REQUIRE(*p1 != *p2);
+    }
+
+    SECTION("AndExpr is not equal to a GreaterThanExpr even when leaves overlap")
+    {
+        auto gt = std::make_shared<GreaterThanExpr>(
+                      factory.getPriceOpen(0), factory.getPriceClose(1));
+
+        auto gt2 = std::make_shared<GreaterThanExpr>(
+                       factory.getPriceHigh(1), factory.getPriceLow(2));
+        auto andExpr = std::make_shared<AndExpr>(gt, gt2);
+
+        auto pSingle = makeLongPattern(factory, "file.txt", gt,      "5.0", "2.0");
+        auto pAnd    = makeLongPattern(factory, "file.txt", andExpr, "5.0", "2.0");
+
+        REQUIRE_FALSE(*pSingle == *pAnd);
+        REQUIRE(*pSingle != *pAnd);
+    }
+
+    SECTION("Nested AndExpr — identical deep trees are equal")
+    {
+        // ( (O[0]>C[1]) AND (H[1]>L[2]) ) AND (O[2]>C[3])
+        auto makeDeepExpr = [&]() -> PatternExpressionPtr {
+            auto gt1 = std::make_shared<GreaterThanExpr>(
+                            factory.getPriceOpen(0), factory.getPriceClose(1));
+            auto gt2 = std::make_shared<GreaterThanExpr>(
+                            factory.getPriceHigh(1), factory.getPriceLow(2));
+            auto gt3 = std::make_shared<GreaterThanExpr>(
+                            factory.getPriceOpen(2), factory.getPriceClose(3));
+            auto inner = std::make_shared<AndExpr>(gt1, gt2);
+            return std::make_shared<AndExpr>(inner, gt3);
+        };
+
+        auto p1 = makeLongPattern(factory, "file.txt", makeDeepExpr(), "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", makeDeepExpr(), "5.0", "2.0");
+
+        REQUIRE(*p1 == *p2);
+    }
+
+    SECTION("Nested AndExpr — differing deep leaf makes patterns unequal")
+    {
+        auto makeExprWith = [&](unsigned int deepOffset) -> PatternExpressionPtr {
+            auto gt1 = std::make_shared<GreaterThanExpr>(
+                            factory.getPriceOpen(0), factory.getPriceClose(1));
+            auto gt2 = std::make_shared<GreaterThanExpr>(
+                            factory.getPriceHigh(1), factory.getPriceLow(2));
+            // This is the varying leaf:
+            auto gt3 = std::make_shared<GreaterThanExpr>(
+                            factory.getPriceOpen(deepOffset), factory.getPriceClose(3));
+            auto inner = std::make_shared<AndExpr>(gt1, gt2);
+            return std::make_shared<AndExpr>(inner, gt3);
+        };
+
+        auto p1 = makeLongPattern(factory, "file.txt", makeExprWith(2), "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "file.txt", makeExprWith(4), "5.0", "2.0"); // differs
+
+        REQUIRE_FALSE(*p1 == *p2);
+        REQUIRE(*p1 != *p2);
+    }
+}
+
+TEST_CASE("PriceActionLabPattern operator== : cross-file comparison",
+          "[PriceActionLabPattern][equality][cross-file]")
+{
+    // This is the primary motivating use case for the design of operator==:
+    // two patterns loaded from different files should compare as equal if
+    // their trading logic (direction, parameters, expression tree, attributes)
+    // is identical. The filename is intentionally excluded from equality.
+
+    AstFactory factory;
+    auto expr1 = std::make_shared<GreaterThanExpr>(
+                     factory.getPriceOpen(0), factory.getPriceClose(1));
+    auto expr2 = std::make_shared<GreaterThanExpr>(
+                     factory.getPriceOpen(0), factory.getPriceClose(1));
+
+    SECTION("Same logic from two different files compares equal")
+    {
+        auto p1 = makeLongPattern(factory, "fileA.txt", expr1, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "fileB.txt", expr2, "5.0", "2.0");
+
+        REQUIRE(*p1 == *p2);
+        REQUIRE_FALSE(*p1 != *p2);
+    }
+
+    SECTION("Different logic from two different files is still unequal")
+    {
+        auto exprDifferent = std::make_shared<GreaterThanExpr>(
+                                 factory.getPriceHigh(0), factory.getPriceLow(1));
+
+        auto p1 = makeLongPattern(factory, "fileA.txt", expr1,        "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "fileB.txt", exprDifferent, "5.0", "2.0");
+
+        REQUIRE_FALSE(*p1 == *p2);
+        REQUIRE(*p1 != *p2);
+    }
+
+    SECTION("Same file, same logic still compares equal (baseline check)")
+    {
+        auto p1 = makeLongPattern(factory, "fileA.txt", expr1, "5.0", "2.0");
+        auto p2 = makeLongPattern(factory, "fileA.txt", expr2, "5.0", "2.0");
+
+        REQUIRE(*p1 == *p2);
+    }
+}
+
+TEST_CASE("PriceActionLabPattern operator== : operator!= is always the negation of operator==",
+          "[PriceActionLabPattern][equality][invariant]")
+{
+    // The C++ rule is that (a != b) must equal !(a == b). This test confirms
+    // that invariant holds across a representative set of pattern pairs so
+    // that no future change breaks the delegation between the two operators.
+
+    AstFactory factory;
+
+    auto exprA = std::make_shared<GreaterThanExpr>(
+                     factory.getPriceOpen(0), factory.getPriceClose(1));
+    auto exprB = std::make_shared<GreaterThanExpr>(
+                     factory.getPriceHigh(0), factory.getPriceLow(1));
+
+    struct PatternPair {
+        PALPatternPtr p1;
+        PALPatternPtr p2;
+        const char*   description;
+    };
+
+    AstFactory f;  // alias for brevity in initialiser
+    std::vector<PatternPair> pairs = {
+        { makeLongPattern (f, "f.txt", exprA, "5.0", "2.0"),
+          makeLongPattern (f, "f.txt", exprA, "5.0", "2.0"),
+          "equal patterns" },
+        { makeLongPattern (f, "f.txt", exprA, "5.0", "2.0"),
+          makeLongPattern (f, "f.txt", exprB, "5.0", "2.0"),
+          "different expression trees" },
+        { makeLongPattern (f, "f.txt", exprA, "5.0", "2.0"),
+          makeLongPattern (f, "f.txt", exprA, "6.0", "2.0"),
+          "different profit target" },
+        { makeLongPattern (f, "f.txt", exprA, "5.0", "2.0"),
+          makeLongPattern (f, "f.txt", exprA, "5.0", "3.0"),
+          "different stop loss" },
+        { makeLongPattern (f, "f.txt", exprA, "5.0", "2.0"),
+          makeShortPattern(f, "f.txt", exprA, "5.0", "2.0"),
+          "different direction" },
+        { makeLongPattern (f, "f.txt", exprA, "5.0", "2.0",
+                           PriceActionLabPattern::VOLATILITY_LOW),
+          makeLongPattern (f, "f.txt", exprA, "5.0", "2.0",
+                           PriceActionLabPattern::VOLATILITY_HIGH),
+          "different volatility" },
+        { makeLongPattern (f, "f.txt", exprA, "5.0", "2.0",
+                           PriceActionLabPattern::VOLATILITY_NONE,
+                           PriceActionLabPattern::PORTFOLIO_FILTER_LONG),
+          makeLongPattern (f, "f.txt", exprA, "5.0", "2.0",
+                           PriceActionLabPattern::VOLATILITY_NONE,
+                           PriceActionLabPattern::PORTFOLIO_FILTER_NONE),
+          "different portfolio attribute" },
+    };
+
+    for (const auto& pair : pairs)
+    {
+        INFO("Checking invariant for: " << pair.description);
+        bool eq  = (*pair.p1 == *pair.p2);
+        bool neq = (*pair.p1 != *pair.p2);
+        REQUIRE(neq == !eq);
+    }
+}
+

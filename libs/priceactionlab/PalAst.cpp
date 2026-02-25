@@ -196,7 +196,7 @@ unsigned long long PriceBarOpen::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::OPEN for PriceBarOpen objects.
  */
-PriceBarReference::ReferenceType PriceBarOpen::getReferenceType()
+PriceBarReference::ReferenceType PriceBarOpen::getReferenceType() const
 {
   return PriceBarReference::OPEN;
 }
@@ -284,7 +284,7 @@ unsigned long long PriceBarHigh::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::HIGH for PriceBarHigh objects.
  */
-PriceBarReference::ReferenceType PriceBarHigh::getReferenceType()
+PriceBarReference::ReferenceType PriceBarHigh::getReferenceType() const
 {
   return PriceBarReference::HIGH;
 }
@@ -373,7 +373,7 @@ unsigned long long PriceBarLow::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::LOW for PriceBarLow objects.
  */
-PriceBarReference::ReferenceType PriceBarLow::getReferenceType()
+PriceBarReference::ReferenceType PriceBarLow::getReferenceType() const
 {
   return PriceBarReference::LOW;
 }
@@ -462,7 +462,7 @@ unsigned long long PriceBarClose::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::CLOSE for PriceBarClose objects.
  */
-PriceBarReference::ReferenceType PriceBarClose::getReferenceType()
+PriceBarReference::ReferenceType PriceBarClose::getReferenceType() const
 {
   return PriceBarReference::CLOSE;
 }
@@ -551,7 +551,7 @@ unsigned long long VolumeBarReference::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::VOLUME for VolumeBarReference objects.
  */
-PriceBarReference::ReferenceType VolumeBarReference::getReferenceType()
+PriceBarReference::ReferenceType VolumeBarReference::getReferenceType() const
 {
   return PriceBarReference::VOLUME;
 }
@@ -641,7 +641,7 @@ unsigned long long Roc1BarReference::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::ROC1 for Roc1BarReference objects.
  */
-PriceBarReference::ReferenceType Roc1BarReference::getReferenceType()
+PriceBarReference::ReferenceType Roc1BarReference::getReferenceType() const
 {
   return PriceBarReference::ROC1;
 }
@@ -730,7 +730,7 @@ unsigned long long MeanderBarReference::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::MEANDER for MeanderBarReference objects.
  */
-PriceBarReference::ReferenceType MeanderBarReference::getReferenceType()
+PriceBarReference::ReferenceType MeanderBarReference::getReferenceType() const
 {
   return PriceBarReference::MEANDER;
 }
@@ -818,7 +818,7 @@ unsigned long long VChartLowBarReference::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::VCHARTLOW for VChartLowBarReference objects.
  */
-PriceBarReference::ReferenceType VChartLowBarReference::getReferenceType()
+PriceBarReference::ReferenceType VChartLowBarReference::getReferenceType() const
 {
   return PriceBarReference::VCHARTLOW;
 }
@@ -906,7 +906,7 @@ unsigned long long VChartHighBarReference::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::VCHARTHIGH for VChartHighBarReference objects.
  */
-PriceBarReference::ReferenceType VChartHighBarReference::getReferenceType()
+PriceBarReference::ReferenceType VChartHighBarReference::getReferenceType() const
 {
   return PriceBarReference::VCHARTHIGH;
 }
@@ -995,7 +995,7 @@ unsigned long long IBS1BarReference::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::IBS1 for IBS1BarReference objects.
  */
-PriceBarReference::ReferenceType IBS1BarReference::getReferenceType()
+PriceBarReference::ReferenceType IBS1BarReference::getReferenceType() const
 {
   return PriceBarReference::IBS1;
 }
@@ -1084,7 +1084,7 @@ unsigned long long IBS2BarReference::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::IBS2 for IBS2BarReference objects.
  */
-PriceBarReference::ReferenceType IBS2BarReference::getReferenceType()
+PriceBarReference::ReferenceType IBS2BarReference::getReferenceType() const
 {
   return PriceBarReference::IBS2;
 }
@@ -1174,7 +1174,7 @@ unsigned long long IBS3BarReference::hashCode()
  * @brief Gets the specific type of this price bar reference.
  * @return PriceBarReference::IBS3 for IBS3BarReference objects.
  */
-PriceBarReference::ReferenceType IBS3BarReference::getReferenceType()
+PriceBarReference::ReferenceType IBS3BarReference::getReferenceType() const
 {
   return PriceBarReference::IBS3;
 }
@@ -2771,6 +2771,16 @@ PriceActionLabPattern::isVeryHighVolatilityPattern() const
 }
 
 /**
+* @brief Gets the volatility attribute of the pattern.
+* @return The volatility attribute.
+*/
+PriceActionLabPattern::VolatilityAttribute
+PriceActionLabPattern::getVolatilityAttribute() const
+{
+ return mVolatilityAttribute;
+}
+
+/**
  * @brief Checks if the pattern has any portfolio filter attribute set (Long or Short).
  * @return True if a portfolio filter attribute is set, false otherwise.
  */
@@ -2798,6 +2808,16 @@ bool
 PriceActionLabPattern::isFilteredShortPattern() const
 {
   return (mPortfolioAttribute == PriceActionLabPattern::PORTFOLIO_FILTER_SHORT);
+}
+
+/**
+* @brief Gets the portfolio filter attribute of the pattern.
+* @return The portfolio filter attribute.
+*/
+PriceActionLabPattern::PortfolioAttribute
+PriceActionLabPattern::getPortfolioAttribute() const
+{
+ return mPortfolioAttribute;
 }
 
 /**
@@ -2831,6 +2851,78 @@ PriceActionLabPattern::getStringHash (const std::string& key)
       mCachedStringHashMap.insert (std::make_pair(key, hashVal)); // Cache it
       return hashVal;
     }
+}
+
+// Returns true if two PriceBarReference nodes are structurally identical.
+// Two references are equal if they reference the same type of price data
+// at the same bar offset.
+static bool priceBarRefsEqual(const PriceBarReference& lhs,
+                               const PriceBarReference& rhs)
+{
+    return lhs.getReferenceType() == rhs.getReferenceType()
+        && lhs.getBarOffset()     == rhs.getBarOffset();
+}
+
+// Recursively compares two PatternExpression trees for structural equality.
+// Returns false immediately on any type mismatch or value mismatch.
+static bool expressionsEqual(const PatternExpression& lhs,
+                              const PatternExpression& rhs)
+{
+    // Try GreaterThanExpr on both sides
+    const auto* lhsGT = dynamic_cast<const GreaterThanExpr*>(&lhs);
+    const auto* rhsGT = dynamic_cast<const GreaterThanExpr*>(&rhs);
+    if (lhsGT && rhsGT)
+    {
+        return priceBarRefsEqual(*lhsGT->getLHS(), *rhsGT->getLHS())
+            && priceBarRefsEqual(*lhsGT->getRHS(), *rhsGT->getRHS());
+    }
+
+    // Try AndExpr on both sides — recurse into both branches
+    const auto* lhsAnd = dynamic_cast<const AndExpr*>(&lhs);
+    const auto* rhsAnd = dynamic_cast<const AndExpr*>(&rhs);
+    if (lhsAnd && rhsAnd)
+    {
+        return expressionsEqual(*lhsAnd->getLHS(), *rhsAnd->getLHS())
+            && expressionsEqual(*lhsAnd->getRHS(), *rhsAnd->getRHS());
+    }
+
+    // One is GreaterThanExpr and the other is AndExpr — structurally different
+    return false;
+}
+
+bool operator==(const PriceActionLabPattern& lhs, const PriceActionLabPattern& rhs)
+{
+    // Pointer identity shortcut
+    if (&lhs == &rhs)
+        return true;
+
+    // Direction is the most fundamental discriminator — check first
+    if (lhs.isLongPattern() != rhs.isLongPattern())
+        return false;
+
+    // Trade parameters
+    if (lhs.getProfitTargetAsDecimal() != rhs.getProfitTargetAsDecimal())
+        return false;
+
+    if (lhs.getStopLossAsDecimal() != rhs.getStopLossAsDecimal())
+        return false;
+
+    // Filter attributes — now accessed via public getters, no friend needed
+    if (lhs.getVolatilityAttribute() != rhs.getVolatilityAttribute())
+        return false;
+
+    if (lhs.getPortfolioAttribute() != rhs.getPortfolioAttribute())
+        return false;
+
+    // Structural comparison of the full expression tree — most expensive
+    // check, so it comes last after all cheap checks pass
+    return expressionsEqual(*lhs.getPatternExpression(),
+                            *rhs.getPatternExpression());
+}
+
+bool operator!=(const PriceActionLabPattern& lhs, const PriceActionLabPattern& rhs)
+{
+    return !(lhs == rhs);
 }
 
 /**
