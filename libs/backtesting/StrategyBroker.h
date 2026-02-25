@@ -290,14 +290,16 @@ namespace mkc_timeseries
      * Registers as an observer with the order manager and initializes instrument positions.
      * @param portfolio Shared pointer to the portfolio of securities.
      */
-    StrategyBroker (std::shared_ptr<Portfolio<Decimal>> portfolio)
+    StrategyBroker (std::shared_ptr<Portfolio<Decimal>> portfolio,
+		    bool sameDayExits = false)
       : TradingOrderObserver<Decimal>(),
         TradingPositionObserver<Decimal>(),
         mOrderManager(validateAndGetPortfolio(portfolio)),
         mInstrumentPositionManager(),
         mStrategyTrades(),
         mClosedTradeHistory(),
-        mPortfolio(portfolio)
+        mPortfolio(portfolio),
+	mSameDayExitsEnabled(sameDayExits)
     {
       
       mOrderManager.addObserver (*this);
@@ -319,7 +321,8 @@ namespace mkc_timeseries
 	mClosedTradeHistory(rhs.mClosedTradeHistory),
 	mPortfolio(rhs.mPortfolio),
 	mUnitExitOrders(rhs.mUnitExitOrders),
-	mPositionToOrders(rhs.mPositionToOrders)
+	mPositionToOrders(rhs.mPositionToOrders),
+	mSameDayExitsEnabled(rhs.mSameDayExitsEnabled)
     {
       // Preserve any existing non-broker observers if present, and ensure this broker is registered once.
       rewireObservers();
@@ -344,7 +347,8 @@ namespace mkc_timeseries
 	mClosedTradeHistory(std::move(rhs.mClosedTradeHistory)),
 	mPortfolio(std::move(rhs.mPortfolio)),
 	mUnitExitOrders(std::move(rhs.mUnitExitOrders)),
-	mPositionToOrders(std::move(rhs.mPositionToOrders))
+	mPositionToOrders(std::move(rhs.mPositionToOrders)),
+	mSameDayExitsEnabled(rhs.mSameDayExitsEnabled)
     {
       // Replace rhs broker observer with this broker, preserving any other observers (e.g., logging/metrics).
       rewireObserversFrom(rhs);
@@ -366,6 +370,7 @@ namespace mkc_timeseries
       mPortfolio = rhs.mPortfolio;
       mUnitExitOrders = rhs.mUnitExitOrders;
       mPositionToOrders = rhs.mPositionToOrders;
+      mSameDayExitsEnabled = rhs.mSameDayExitsEnabled;
 
       // Ensure this broker is registered once; do not wipe other observers.
       rewireObservers();
@@ -395,6 +400,7 @@ namespace mkc_timeseries
       mPortfolio = std::move(rhs.mPortfolio);
       mUnitExitOrders = std::move(rhs.mUnitExitOrders);
       mPositionToOrders = std::move(rhs.mPositionToOrders);
+      mSameDayExitsEnabled = rhs.mSameDayExitsEnabled;
       
       // Replace rhs broker observer with this broker, preserving any other observers.
       rewireObserversFrom(rhs);
@@ -510,6 +516,13 @@ namespace mkc_timeseries
      * @return True if the position is flat, false otherwise.
      */
     bool isFlatPosition (const std::string& s) const { return mInstrumentPositionManager.isFlatPosition (s); }
+
+    /**
+     * @brief Returns true if same-day stop/limit exit evaluation is enabled.
+     * When true, stop and limit exit orders submitted during an entry fill are
+     * evaluated against that same bar's High/Low via processSameDayExitOrders.
+     */
+    bool isSameDayExitsEnabled() const { return mSameDayExitsEnabled; }
 
     // ---------------------------
     // Date-based convenience APIs
@@ -1403,17 +1416,16 @@ namespace mkc_timeseries
     void ProcessPendingOrders(const date& d)
     { this->ProcessPendingOrders(ptime(d, getDefaultBarTime())); }
 
-    /**
-     * @brief Processes all pending orders for a given datetime.
-     * This method is critical in a backtesting loop. It first updates the open positions with the current datetime's bar data
-     * and then instructs the TradingOrderManager to attempt to fill any pending orders based on this new data.
-     * @param dt The datetime for which orders are to be processed.
-     */
     void ProcessPendingOrders(const ptime& dt)
     {
       // Add historical bar for this datetime before possibly closing any open positions
       mInstrumentPositionManager.addBarForOpenPosition (dt, mPortfolio.get());
       mOrderManager.processPendingOrders (dt, mInstrumentPositionManager);
+
+      // If same-day exits are enabled, evaluate any stop/limit orders that were
+      // submitted during this bar's entry fills against the same bar's High/Low.
+      if (mSameDayExitsEnabled)
+	mOrderManager.processSameDayExitOrders (dt, mInstrumentPositionManager);
     }
 
     // ----------------------------
@@ -1430,6 +1442,15 @@ namespace mkc_timeseries
       auto pOrder = std::make_shared<MarketOnOpenLongOrder<Decimal>>(*order);
       mInstrumentPositionManager.addPosition (position);
       mStrategyTrades.addStrategyTransaction (createStrategyTransaction (pOrder, position));
+
+      if (mSameDayExitsEnabled)
+	submitSameDayLongExits (order->getTradingSymbol(),
+				order->getFillDateTime(),
+				order->getFillPrice(),
+				order->getUnitsInOrder(),
+				position->getPositionID(),
+				order->getStopLoss(),
+				order->getProfitTarget());
     }
 
     /**
@@ -1443,6 +1464,15 @@ namespace mkc_timeseries
       auto pOrder = std::make_shared<MarketOnOpenShortOrder<Decimal>>(*order);
       mInstrumentPositionManager.addPosition (position);
       mStrategyTrades.addStrategyTransaction (createStrategyTransaction (pOrder, position));
+
+      if (mSameDayExitsEnabled)
+	submitSameDayShortExits (order->getTradingSymbol(),
+				 order->getFillDateTime(),
+				 order->getFillPrice(),
+				 order->getUnitsInOrder(),
+				 position->getPositionID(),
+				 order->getStopLoss(),
+				 order->getProfitTarget());
     }
 
     /**
@@ -2110,6 +2140,100 @@ namespace mkc_timeseries
       return false;
     }
 
+    /**
+     * @brief Submits same-day stop and/or limit exit orders for a newly filled long position.
+     *
+     * Called from OrderExecuted(MarketOnOpenLongOrder*) when mSameDayExitsEnabled is true.
+     * Both orders are registered in mUnitExitOrders/mPositionToOrders so that
+     * cancelComplementaryOrdersForPosition() cancels the surviving order when
+     * the other one fills.
+     *
+     * @param tradingSymbol    The instrument symbol.
+     * @param fillDateTime     ptime of the entry fill — used as orderDateTime for both exits.
+     * @param fillPrice        Entry fill price — base for percentage calculations.
+     * @param units            Position trading volume.
+     * @param positionId       Unique ID of the newly created position.
+     * @param stopLossPct      Stop-loss percentage stored on the order (0 = no stop submitted).
+     * @param profitTargetPct  Profit-target percentage stored on the order (0 = no target submitted).
+     */
+    void submitSameDayLongExits (const std::string&   tradingSymbol,
+				 const ptime&         fillDateTime,
+				 const Decimal&       fillPrice,
+				 const TradingVolume& units,
+				 uint32_t             positionId,
+				 const Decimal&       stopLossPct,
+				 const Decimal&       profitTargetPct)
+    {
+      if (stopLossPct > DecimalConstants<Decimal>::DecimalZero)
+	{
+	  PercentNumber<Decimal> stopPct =
+	    PercentNumber<Decimal>::createPercentNumber(stopLossPct);
+	  LongStopLoss<Decimal> sl(fillPrice, stopPct);
+	  Decimal stopPx = roundToExecutionTick(tradingSymbol, fillDateTime,
+						fillPrice, sl.getStopLoss());
+	  auto stopOrder = std::make_shared<SellAtStopOrder<Decimal>>(
+								      tradingSymbol, units, fillDateTime, stopPx);
+	  mUnitExitOrders[stopOrder->getOrderID()] = positionId;
+	  mPositionToOrders[positionId].insert(stopOrder->getOrderID());
+	  mOrderManager.addTradingOrder(stopOrder);
+	}
+
+      if (profitTargetPct > DecimalConstants<Decimal>::DecimalZero)
+	{
+	  PercentNumber<Decimal> targetPct =
+	    PercentNumber<Decimal>::createPercentNumber(profitTargetPct);
+	  LongProfitTarget<Decimal> pt(fillPrice, targetPct);
+	  Decimal targetPx = roundToExecutionTick(tradingSymbol, fillDateTime,
+						  fillPrice, pt.getProfitTarget());
+	  auto limitOrder = std::make_shared<SellAtLimitOrder<Decimal>>(
+									tradingSymbol, units, fillDateTime, targetPx);
+	  mUnitExitOrders[limitOrder->getOrderID()] = positionId;
+	  mPositionToOrders[positionId].insert(limitOrder->getOrderID());
+	  mOrderManager.addTradingOrder(limitOrder);
+	}
+    }
+
+    /**
+     * @brief Mirror of submitSameDayLongExits for short positions.
+     * Uses CoverAtStopOrder (stop is above entry) and CoverAtLimitOrder (target is below entry).
+     */
+    void submitSameDayShortExits (const std::string&   tradingSymbol,
+				  const ptime&         fillDateTime,
+				  const Decimal&       fillPrice,
+				  const TradingVolume& units,
+				  uint32_t             positionId,
+				  const Decimal&       stopLossPct,
+				  const Decimal&       profitTargetPct)
+    {
+      if (stopLossPct > DecimalConstants<Decimal>::DecimalZero)
+	{
+	  PercentNumber<Decimal> stopPct =
+	    PercentNumber<Decimal>::createPercentNumber(stopLossPct);
+	  ShortStopLoss<Decimal> sl(fillPrice, stopPct);
+	  Decimal stopPx = roundToExecutionTick(tradingSymbol, fillDateTime,
+						fillPrice, sl.getStopLoss());
+	  auto stopOrder = std::make_shared<CoverAtStopOrder<Decimal>>(
+								       tradingSymbol, units, fillDateTime, stopPx);
+	  mUnitExitOrders[stopOrder->getOrderID()] = positionId;
+	  mPositionToOrders[positionId].insert(stopOrder->getOrderID());
+	  mOrderManager.addTradingOrder(stopOrder);
+	}
+
+      if (profitTargetPct > DecimalConstants<Decimal>::DecimalZero)
+	{
+	  PercentNumber<Decimal> targetPct =
+	    PercentNumber<Decimal>::createPercentNumber(profitTargetPct);
+	  ShortProfitTarget<Decimal> pt(fillPrice, targetPct);
+	  Decimal targetPx = roundToExecutionTick(tradingSymbol, fillDateTime,
+						  fillPrice, pt.getProfitTarget());
+	  auto limitOrder = std::make_shared<CoverAtLimitOrder<Decimal>>(
+									 tradingSymbol, units, fillDateTime, targetPx);
+	  mUnitExitOrders[limitOrder->getOrderID()] = positionId;
+	  mPositionToOrders[positionId].insert(limitOrder->getOrderID());
+	  mOrderManager.addTradingOrder(limitOrder);
+	}
+    }
+    
   private:
     /**
      * @brief Validates that a portfolio is not null and returns it.
@@ -2171,6 +2295,7 @@ namespace mkc_timeseries
     
     // Reverse mapping to track which orders target each position ID: PositionID -> set of OrderIDs
     std::unordered_map<uint32_t, std::set<uint32_t>> mPositionToOrders;
+    bool mSameDayExitsEnabled;
   };
 } // namespace mkc_timeseries
 #endif

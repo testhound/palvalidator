@@ -58,6 +58,14 @@ struct RiskParameters
 std::string getValidationMethodString(ValidationMethod method);
 
 /**
+ * @brief Get validation method directory name with sameDayExits status
+ * @param method The validation method to convert
+ * @param sameDayExits Whether same day exits are enabled
+ * @return Directory name with SameDayExit status for applicable methods
+ */
+std::string getValidationMethodDirectoryName(ValidationMethod method, bool sameDayExits = false);
+
+/**
  * @brief Convert PipelineMode enum to string representation
  * @param mode The pipeline mode to convert
  * @return String representation of the pipeline mode

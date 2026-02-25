@@ -237,7 +237,8 @@ void filterMetaStrategy(
     ValidationMethod validationMethod,
     std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
     const DateRange& inSampleDates,
-    bool performTradeLevelBootstrapping = false)
+    bool performTradeLevelBootstrapping = false,
+    bool sameDayExits = false)
 {
     const Num confidenceLevel = Num("0.95");
     
@@ -250,9 +251,10 @@ void filterMetaStrategy(
     MetaStrategyAnalyzer analyzer(getRiskParameters(), confidenceLevel, numResamples, performTradeLevelBootstrapping);
     analyzer.analyzeMetaStrategy(survivingStrategies, baseSecurity,
      backtestingDates, theTimeFrame,
-				 os, validationMethod,
-				 oosSpreadStats,
-				 inSampleDates);
+     os, validationMethod,
+     oosSpreadStats,
+     inSampleDates,
+     sameDayExits);
     
     os << std::string(80, '=') << std::endl;
 }
@@ -276,10 +278,11 @@ void writeDetailedSurvivingPatternsFile(std::shared_ptr<Security<Num>> baseSecur
                                          const DateRange& backtestingDates,
                                          TimeFrame::Duration theTimeFrame,
                                          const std::string& policyName,
-                                         const ValidationParameters& params)
+                                         const ValidationParameters& params,
+                                         bool sameDayExits = false)
 {
     PatternReporter reporter;
-    reporter.writeDetailedSurvivingPatterns(baseSecurity, method, strategies, backtestingDates, theTimeFrame, policyName, params);
+    reporter.writeDetailedSurvivingPatterns(baseSecurity, method, strategies, backtestingDates, theTimeFrame, policyName, params, sameDayExits);
 }
 
 // Legacy function - now delegated to PatternReporter
@@ -379,7 +382,8 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
                          const ValidationParameters& params,
                          unsigned int numBootstrapSamples,
                          ValidationInterface* validation,
-                         bool tradeLevelBootstrapping = false)
+                         bool tradeLevelBootstrapping = false,
+                         bool sameDayExits = false)
 {
     // CRITICAL VALIDATION: Ensure OOS dates occur after in-sample dates
     const auto& inSampleRange = config->getInsampleDateRange();
@@ -398,7 +402,7 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
     
     // Create bootstrap log file and tee to both cout and file
     const std::string bootstrapPath = createBootstrapFileName(
-        config->getSecurity()->getSymbol(), validationMethod);
+        config->getSecurity()->getSymbol(), validationMethod, sameDayExits);
     std::ofstream bootstrapFile(bootstrapPath);
     TeeStream bootlog(std::cout, bootstrapFile);
 
@@ -440,15 +444,16 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
     if (!filteredStrategies.empty())
     {
         filterMetaStrategy<Num>(filteredStrategies,
-				config->getSecurity(),
-				config->getOosDateRange(),
-				timeFrame,
-				bootlog,
-				numBootstrapSamples,
-				validationMethod,
-				oosSpreadStats,
-				config->getInsampleDateRange(),
-				tradeLevelBootstrapping);
+    config->getSecurity(),
+    config->getOosDateRange(),
+    timeFrame,
+    bootlog,
+    numBootstrapSamples,
+    validationMethod,
+    oosSpreadStats,
+    config->getInsampleDateRange(),
+    tradeLevelBootstrapping,
+    sameDayExits);
     }
     
     bootlog << "Performance filtering results: " << filteredStrategies.size() << " passed, "
@@ -457,7 +462,7 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
     
     // Write the performance-filtered surviving patterns to the basic file
     if (!filteredStrategies.empty()) {
-        std::string fn = createSurvivingPatternsFileName(config->getSecurity()->getSymbol(), validationMethod);
+        std::string fn = createSurvivingPatternsFileName(config->getSecurity()->getSymbol(), validationMethod, sameDayExits);
         std::ofstream survivingPatternsFile(fn);
         std::cout << "Writing surviving patterns to file: " << fn << std::endl;
         
@@ -472,7 +477,7 @@ void runBootstrapAnalysis(const std::vector<std::shared_ptr<PalStrategy<Num>>>& 
         std::cout << "Writing detailed surviving patterns report for " << filteredStrategies.size()
                   << " performance-filtered strategies..." << std::endl;
         writeDetailedSurvivingPatternsFile(config->getSecurity(), validationMethod, filteredStrategies,
-                                           config->getOosDateRange(), timeFrame, policyName, params);
+                                           config->getOosDateRange(), timeFrame, policyName, params, sameDayExits);
     } else {
         std::cout << "No strategies passed performance filtering criteria. Skipping detailed report." << std::endl;
     }
@@ -498,7 +503,8 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
                          const std::string& policyName,
                          unsigned int numBootstrapSamples,
                          bool partitionByFamily = false,
-                         bool tradeLevelBootstrapping = false)
+                         bool tradeLevelBootstrapping = false,
+                         bool sameDayExits = false)
 {
     std::vector<std::shared_ptr<PalStrategy<Num>>> survivingStrategies;
     std::string survivorFileName;
@@ -550,7 +556,7 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
         }
         
         std::cout << "Loading Monte Carlo permutation survivors from: " << params.survivorInputFile << std::endl;
-        survivingStrategies = loadPermutationTestSurvivors<Num>(params.survivorInputFile, config->getSecurity());
+        survivingStrategies = loadPermutationTestSurvivors<Num>(params.survivorInputFile, config->getSecurity(), sameDayExits);
         std::cout << "Loaded " << survivingStrategies.size() << " Monte Carlo surviving strategies" << std::endl;
     }
     
@@ -561,7 +567,7 @@ void runValidationWorker(std::unique_ptr<ValidationInterface> validation,
         if (!survivingStrategies.empty())
         {
             runBootstrapAnalysis(survivingStrategies, config, validationMethod,
-                               policyName, params, numBootstrapSamples, validation.get(), tradeLevelBootstrapping);
+                               policyName, params, numBootstrapSamples, validation.get(), tradeLevelBootstrapping, sameDayExits);
         }
         else
         {
@@ -583,7 +589,8 @@ void runValidationForMasters(std::shared_ptr<ValidatorConfiguration<Num>> config
                              const std::string& policyName,
                              unsigned int numBootstrapSamples,
                              bool partitionByFamily = false,
-                             bool tradeLevelBootstrapping = false)
+                             bool tradeLevelBootstrapping = false,
+                             bool sameDayExits = false)
 {
     std::cout << "\nUsing Masters validation with " << policyName
               << " and " << params.permutations << " permutations." << std::endl;
@@ -596,7 +603,7 @@ void runValidationForMasters(std::shared_ptr<ValidatorConfiguration<Num>> config
     
     try {
         auto validation = statistics::PolicyFactory::createMastersValidation(policyName, params.permutations);
-        runValidationWorker(std::move(validation), config, params, ValidationMethod::Masters, policyName, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping);
+        runValidationWorker(std::move(validation), config, params, ValidationMethod::Masters, policyName, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping, sameDayExits);
     } catch (const std::exception& e) {
         std::cerr << "Error creating Masters validation with policy '" << policyName << "': " << e.what() << std::endl;
         throw;
@@ -609,7 +616,8 @@ void runValidationForRomanoWolf(std::shared_ptr<ValidatorConfiguration<Num>> con
                                const std::string& policyName,
                                unsigned int numBootstrapSamples,
                                bool partitionByFamily = false,
-                               bool tradeLevelBootstrapping = false)
+                               bool tradeLevelBootstrapping = false,
+                               bool sameDayExits = false)
 {
     std::cout << "\nUsing Romano-Wolf validation with " << policyName
               << " and " << params.permutations << " permutations." << std::endl;
@@ -622,7 +630,7 @@ void runValidationForRomanoWolf(std::shared_ptr<ValidatorConfiguration<Num>> con
 
     try {
         auto validation = statistics::PolicyFactory::createRomanoWolfValidation(policyName, params.permutations);
-        runValidationWorker(std::move(validation), config, params, ValidationMethod::RomanoWolf, policyName, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping);
+        runValidationWorker(std::move(validation), config, params, ValidationMethod::RomanoWolf, policyName, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping, sameDayExits);
     } catch (const std::exception& e) {
         std::cerr << "Error creating Romano-Wolf validation with policy '" << policyName << "': " << e.what() << std::endl;
         throw;
@@ -635,7 +643,8 @@ void runValidationForBenjaminiHochberg(std::shared_ptr<ValidatorConfiguration<Nu
                                        const std::string& policyName,
                                        unsigned int numBootstrapSamples,
                                        bool partitionByFamily = false,
-                                       bool tradeLevelBootstrapping = false)
+                                       bool tradeLevelBootstrapping = false,
+                                       bool sameDayExits = false)
 {
     std::cout << "\nUsing Benjamini-Hochberg validation with " << policyName
               << " and " << params.permutations << " permutations." << std::endl;
@@ -651,7 +660,7 @@ void runValidationForBenjaminiHochberg(std::shared_ptr<ValidatorConfiguration<Nu
     try {
         auto validation = statistics::PolicyFactory::createBenjaminiHochbergValidation(
             policyName, params.permutations, params.falseDiscoveryRate.getAsDouble());
-        runValidationWorker(std::move(validation), config, params, ValidationMethod::BenjaminiHochberg, policyName, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping);
+        runValidationWorker(std::move(validation), config, params, ValidationMethod::BenjaminiHochberg, policyName, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping, sameDayExits);
     } catch (const std::exception& e) {
         std::cerr << "Error creating Benjamini-Hochberg validation with policy '" << policyName << "': " << e.what() << std::endl;
         throw;
@@ -664,7 +673,8 @@ void runValidationForUnadjusted(std::shared_ptr<ValidatorConfiguration<Num>> con
                                const std::string& policyName,
                                unsigned int numBootstrapSamples,
                                bool partitionByFamily = false,
-                               bool tradeLevelBootstrapping = false)
+                               bool tradeLevelBootstrapping = false,
+                               bool sameDayExits = false)
 {
     std::cout << "\nUsing Unadjusted validation with " << policyName
               << " and " << params.permutations << " permutations." << std::endl;
@@ -676,8 +686,8 @@ void runValidationForUnadjusted(std::shared_ptr<ValidatorConfiguration<Num>> con
     }
     
     try {
-        auto validation = statistics::PolicyFactory::createUnadjustedValidation(policyName, params.permutations);
-        runValidationWorker(std::move(validation), config, params, ValidationMethod::Unadjusted, policyName, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping);
+        auto validation = statistics::PolicyFactory::createUnadjustedValidation(policyName, params.permutations, sameDayExits);
+        runValidationWorker(std::move(validation), config, params, ValidationMethod::Unadjusted, policyName, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping, sameDayExits);
     } catch (const std::exception& e) {
         std::cerr << "Error creating Unadjusted validation with policy '" << policyName << "': " << e.what() << std::endl;
         throw;
@@ -814,6 +824,7 @@ int main(int argc, char **argv)
     // Only ask for bootstrap samples if bootstrap analysis will be performed
     unsigned int numBootstrapSamples;
     bool tradeLevelBootstrapping = true;
+    bool sameDayExits = false;
     if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
         pipelineMode == PipelineMode::BootstrapOnly) {
         
@@ -838,12 +849,31 @@ int main(int argc, char **argv)
             tradeLevelBootstrapping = true;
             std::cout << "Selected: Trade Level Bootstrapping (default)" << std::endl;
 	  }
+        
+        // Ask for same day exits setting
+        std::cout << "\nEnable same day exits?" << std::endl;
+        std::cout << "  1. No (default)" << std::endl;
+        std::cout << "  2. Yes" << std::endl;
+        std::cout << "Enter choice (1 or 2): ";
+        std::getline(std::cin, input);
+        
+        if (input == "2")
+	  {
+            sameDayExits = true;
+            std::cout << "Selected: Same day exits enabled" << std::endl;
+	  }
+	else
+	  {
+            sameDayExits = false;
+            std::cout << "Selected: Same day exits disabled (default)" << std::endl;
+	  }
     }
     else
       {
         // Set default value for permutation-only mode (won't be used)
         numBootstrapSamples = 25000;
         tradeLevelBootstrapping = true;
+        sameDayExits = false;
       }
     
     // Set validation method based on pipeline mode
@@ -858,23 +888,23 @@ int main(int argc, char **argv)
     } else if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
                pipelineMode == PipelineMode::PermutationOnly) {
         // Permutation testing modes: ask user for validation method
-        validationMethod = ValidationMethod::Masters; // Default for permutation modes
+        validationMethod = ValidationMethod::Unadjusted; // Default for permutation modes
         
         // Ask for Validation Method
         std::cout << "\nChoose validation method:" << std::endl;
-        std::cout << "  1. Masters (default)" << std::endl;
+        std::cout << "  1. Masters" << std::endl;
         std::cout << "  2. Romano-Wolf" << std::endl;
         std::cout << "  3. Benjamini-Hochberg" << std::endl;
-        std::cout << "  4. Unadjusted" << std::endl;
+        std::cout << "  4. Unadjusted (default)" << std::endl;
         std::cout << "Enter choice (1, 2, 3, or 4): ";
         std::getline(std::cin, input);
         
-        if (input == "2") {
+        if (input == "1") {
+            validationMethod = ValidationMethod::Masters;
+        } else if (input == "2") {
             validationMethod = ValidationMethod::RomanoWolf;
         } else if (input == "3") {
             validationMethod = ValidationMethod::BenjaminiHochberg;
-        } else if (input == "4") {
-            validationMethod = ValidationMethod::Unadjusted;
         }
         
         // Conditionally ask for FDR
@@ -1005,16 +1035,16 @@ int main(int argc, char **argv)
         switch (validationMethod)
         {
             case ValidationMethod::Masters:
-                runValidationForMasters(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping);
+                runValidationForMasters(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping, sameDayExits);
                 break;
             case ValidationMethod::RomanoWolf:
-                runValidationForRomanoWolf(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping);
+                runValidationForRomanoWolf(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping, sameDayExits);
                 break;
             case ValidationMethod::BenjaminiHochberg:
-                runValidationForBenjaminiHochberg(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping);
+                runValidationForBenjaminiHochberg(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping, sameDayExits);
                 break;
             case ValidationMethod::Unadjusted:
-                runValidationForUnadjusted(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping);
+                runValidationForUnadjusted(config, params, selectedPolicy, numBootstrapSamples, partitionByFamily, tradeLevelBootstrapping, sameDayExits);
                 break;
         }
     } catch (const std::exception& e) {

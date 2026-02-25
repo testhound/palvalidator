@@ -19,9 +19,10 @@ namespace reporting
 void PatternReporter::writeSurvivingPatterns(
     const std::vector<std::shared_ptr<PalStrategy<Num>>>& strategies,
     const std::string& securitySymbol,
-    ValidationMethod method)
+    ValidationMethod method,
+    bool sameDayExits)
 {
-    std::string filename = palvalidator::utils::createSurvivingPatternsFileName(securitySymbol, method);
+    std::string filename = palvalidator::utils::createSurvivingPatternsFileName(securitySymbol, method, sameDayExits);
     std::ofstream survivingPatternsFile(filename);
     
     for (const auto& strategy : strategies)
@@ -37,10 +38,11 @@ void PatternReporter::writeDetailedSurvivingPatterns(
     const DateRange& backtestingDates,
     TimeFrame::Duration timeFrame,
     const std::string& policyName,
-    const ValidationParameters& params)
+    const ValidationParameters& params,
+    bool sameDayExits)
 {
     std::string filename = palvalidator::utils::createDetailedSurvivingPatternsFileName(
-        baseSecurity->getSymbol(), method);
+        baseSecurity->getSymbol(), method, sameDayExits);
     std::ofstream survivingPatternsFile(filename);
     
     writeValidationSummary(survivingPatternsFile, baseSecurity, method, policyName, 

@@ -169,7 +169,8 @@ namespace palvalidator
     		   std::ostream& outputStream,
     		   ValidationMethod validationMethod,
      std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-     const DateRange& inSampleDates)
+     const DateRange& inSampleDates,
+     bool sameDayExits)
     {
       // CRITICAL VALIDATION: Ensure oosBacktestingDates occur after inSampleDates
       // This is a fundamental requirement for proper out-of-sample validation
@@ -198,8 +199,12 @@ namespace palvalidator
       else
 	outputStream << "Performing bar level bootstrapping\n";
 
+      if (sameDayExits)
+	outputStream << "Same day exits enabled\n";
+      else
+	outputStream << "Same day exits disable\n";
       analyzeMetaStrategyUnified(survivingStrategies, baseSecurity, oosBacktestingDates,
-				 timeFrame, outputStream, validationMethod, oosSpreadStats, inSampleDates);
+     timeFrame, outputStream, validationMethod, oosSpreadStats, inSampleDates, sameDayExits);
     }
 
     /**
@@ -225,7 +230,8 @@ namespace palvalidator
     			  std::ostream& outputStream,
     			  ValidationMethod validationMethod,
     			  std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-    			  const DateRange& inSampleDates)
+    			  const DateRange& inSampleDates,
+    			  bool sameDayExits)
     {
       if (survivingStrategies.empty())
 	{
@@ -253,14 +259,15 @@ namespace palvalidator
 	  for (const auto& config : pyramidConfigs)
 	    {
 	      auto result = analyzeSinglePyramidLevel(
-						      config,
-						      survivingStrategies,
-						      baseSecurity,
-						      oosBacktestingDates,
-						      timeFrame,
-						      outputStream,
-						      oosSpreadStats,
-						      inSampleDates);
+	           config,
+	           survivingStrategies,
+	           baseSecurity,
+	           oosBacktestingDates,
+	           timeFrame,
+	           outputStream,
+	           oosSpreadStats,
+	           inSampleDates,
+	           sameDayExits);
 	      allResults.push_back(std::move(result));
 	    }
 
@@ -323,15 +330,16 @@ namespace palvalidator
      */
     std::shared_ptr<PalMetaStrategy<Num>>
     MetaStrategyAnalyzer::createMetaStrategy(
-					     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
-					     std::shared_ptr<Security<Num>> baseSecurity) const
+    	     const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
+    	     std::shared_ptr<Security<Num>> baseSecurity,
+    	     bool sameDayExits) const
     {
       // Create PalMetaStrategy
       auto metaPortfolio = std::make_shared<Portfolio<Num>>("Meta Portfolio");
       metaPortfolio->addSecurity(baseSecurity);
       
       auto metaStrategy = std::make_shared<PalMetaStrategy<Num>>(
-          "Unified Meta Strategy", metaPortfolio);
+          "Unified Meta Strategy", metaPortfolio, defaultStrategyOptions, sameDayExits);
 
       // Add all patterns from surviving strategies
       for (const auto& strategy : survivingStrategies)
@@ -364,14 +372,15 @@ namespace palvalidator
     MetaStrategyAnalyzer::createMetaStrategy(
           const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
           std::shared_ptr<Security<Num>> baseSecurity,
-          const StrategyOptions& strategyOptions) const
+          const StrategyOptions& strategyOptions,
+          bool sameDayExits) const
     {
       // Create PalMetaStrategy with custom StrategyOptions
       auto metaPortfolio = std::make_shared<Portfolio<Num>>("Meta Portfolio");
       metaPortfolio->addSecurity(baseSecurity);
       
       auto metaStrategy = std::make_shared<PalMetaStrategy<Num>>(
-          "Unified Meta Strategy", metaPortfolio, strategyOptions);
+          "Unified Meta Strategy", metaPortfolio, strategyOptions, sameDayExits);
 
       // Add all patterns from surviving strategies
       for (const auto& strategy : survivingStrategies)
@@ -407,14 +416,15 @@ namespace palvalidator
     MetaStrategyAnalyzer::createMetaStrategyWithAdaptiveFilter(
         const std::vector<std::shared_ptr<PalStrategy<Num>>>& survivingStrategies,
         std::shared_ptr<Security<Num>> baseSecurity,
-        const StrategyOptions& strategyOptions) const
+        const StrategyOptions& strategyOptions,
+        bool sameDayExits) const
     {
       // Create PalMetaStrategy with AdaptiveVolatilityPortfolioFilter
       auto metaPortfolio = std::make_shared<Portfolio<Num>>("Meta Portfolio with Adaptive Filter");
       metaPortfolio->addSecurity(baseSecurity);
       
       auto metaStrategy = std::make_shared<PalMetaStrategy<Num, AdaptiveVolatilityPortfolioFilter<Num, mkc_timeseries::SimonsHLCVolatilityPolicy>>>(
-          "Unified Meta Strategy with Adaptive Filter", metaPortfolio, strategyOptions);
+          "Unified Meta Strategy with Adaptive Filter", metaPortfolio, strategyOptions, sameDayExits);
 
       // Add all patterns from surviving strategies
       for (const auto& strategy : survivingStrategies)
@@ -1141,7 +1151,8 @@ namespace palvalidator
         std::shared_ptr<Security<Num>> baseSecurity,
         const DateRange& oosBacktestingDates,
         TimeFrame::Duration timeFrame,
-        std::ostream& outputStream) const
+        std::ostream& outputStream,
+        bool sameDayExits) const
     {
       std::shared_ptr<BackTester<Num>> bt;
       std::vector<Num> metaReturns;
@@ -1149,13 +1160,13 @@ namespace palvalidator
       if (config.getFilterType() == PyramidConfiguration::ADAPTIVE_VOLATILITY_FILTER)
       {
         auto filteredStrategy = createMetaStrategyWithAdaptiveFilter(
-            survivingStrategies, baseSecurity, config.getStrategyOptions());
+            survivingStrategies, baseSecurity, config.getStrategyOptions(), sameDayExits);
         bt = executeBacktestingWithFilter(filteredStrategy, timeFrame, oosBacktestingDates);
         metaReturns = bt->getAllHighResReturns(filteredStrategy.get());
       }
       else if (config.getFilterType() == PyramidConfiguration::BREAKEVEN_STOP)
       {
-        auto initialStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions());
+        auto initialStrategy = createMetaStrategy(survivingStrategies, baseSecurity, config.getStrategyOptions(), sameDayExits);
         auto initialBt = executeBacktesting(initialStrategy, timeFrame, oosBacktestingDates);
 
         const auto& closedPositionHistory = initialBt->getClosedPositionHistory();
@@ -1172,7 +1183,7 @@ namespace palvalidator
                         << breakevenActivationBars << "\n";
 
             auto breakevenStrategy = createMetaStrategy(
-                survivingStrategies, baseSecurity, config.getStrategyOptions());
+                survivingStrategies, baseSecurity, config.getStrategyOptions(), sameDayExits);
             breakevenStrategy->addBreakEvenStop(breakevenActivationBars);
 
             bt = executeBacktesting(breakevenStrategy, timeFrame, oosBacktestingDates);
@@ -1183,7 +1194,7 @@ namespace palvalidator
             outputStream << "      Warning: Exit policy tuning failed: " << e.what()
                         << ". Using standard strategy without breakeven stop.\n";
             auto fallback = createMetaStrategy(
-                survivingStrategies, baseSecurity, config.getStrategyOptions());
+                survivingStrategies, baseSecurity, config.getStrategyOptions(), sameDayExits);
             bt = executeBacktesting(fallback, timeFrame, oosBacktestingDates);
             metaReturns = bt->getAllHighResReturns(fallback.get());
           }
@@ -1192,7 +1203,7 @@ namespace palvalidator
         {
           outputStream << "      No closed positions available for exit policy tuning. Using standard strategy.\n";
           auto metaStrategy = createMetaStrategy(
-              survivingStrategies, baseSecurity, config.getStrategyOptions());
+              survivingStrategies, baseSecurity, config.getStrategyOptions(), sameDayExits);
           bt = executeBacktesting(metaStrategy, timeFrame, oosBacktestingDates);
           metaReturns = bt->getAllHighResReturns(metaStrategy.get());
         }
@@ -1200,7 +1211,7 @@ namespace palvalidator
       else
       {
         auto metaStrategy = createMetaStrategy(
-            survivingStrategies, baseSecurity, config.getStrategyOptions());
+            survivingStrategies, baseSecurity, config.getStrategyOptions(), sameDayExits);
         bt = executeBacktesting(metaStrategy, timeFrame, oosBacktestingDates);
         metaReturns = bt->getAllHighResReturns(metaStrategy.get());
       }
@@ -1545,7 +1556,8 @@ namespace palvalidator
         TimeFrame::Duration timeFrame,
         std::ostream& outputStream,
         std::optional<palvalidator::filtering::OOSSpreadStats> oosSpreadStats,
-        const DateRange& inSampleDates) const
+        const DateRange& inSampleDates,
+        bool sameDayExits) const
     {
       using mkc_timeseries::DecimalConstants;
 
@@ -1554,7 +1566,7 @@ namespace palvalidator
       
       // --- Step 1: Run Backtest ---
       auto btResult = runPyramidBacktest(config, survivingStrategies, baseSecurity,
-                                        oosBacktestingDates, timeFrame, outputStream);
+                                        oosBacktestingDates, timeFrame, outputStream, sameDayExits);
       
       if (btResult.getMetaReturns().size() < 2U)
       {

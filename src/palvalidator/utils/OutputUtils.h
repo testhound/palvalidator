@@ -82,52 +82,63 @@ private:
  * @return Formatted filename with timestamp
  */
 std::string createBootstrapFileName(const std::string& securitySymbol,
-                                   ValidationMethod method);
+                                   ValidationMethod method,
+                                   bool sameDayExits = false);
 
 /**
  * @brief Create a surviving patterns filename for the given security and method
  * @param securitySymbol Symbol of the security being validated
  * @param method Validation method being used
+ * @param sameDayExits Whether same day exits are enabled
  * @return Formatted filename with timestamp
  */
 std::string createSurvivingPatternsFileName(const std::string& securitySymbol,
-                                           ValidationMethod method);
+                                           ValidationMethod method,
+                                           bool sameDayExits = false);
 
 /**
  * @brief Create a detailed surviving patterns filename for the given security and method
  * @param securitySymbol Symbol of the security being validated
  * @param method Validation method being used
+ * @param sameDayExits Whether same day exits are enabled
  * @return Formatted filename with timestamp
  */
 std::string createDetailedSurvivingPatternsFileName(const std::string& securitySymbol,
-                                                   ValidationMethod method);
+                                                   ValidationMethod method,
+                                                   bool sameDayExits = false);
 
 /**
  * @brief Create a detailed rejected patterns filename for the given security and method
  * @param securitySymbol Symbol of the security being validated
  * @param method Validation method being used
+ * @param sameDayExits Whether same day exits are enabled
  * @return Formatted filename with timestamp
  */
 std::string createDetailedRejectedPatternsFileName(const std::string& securitySymbol,
-                                                   ValidationMethod method);
+                                                   ValidationMethod method,
+                                                   bool sameDayExits = false);
 
 /**
  * @brief Create a permutation test survivors filename for intermediate storage
  * @param securitySymbol Symbol of the security being validated
  * @param method Validation method being used
+ * @param sameDayExits Whether same day exits are enabled
  * @return Formatted filename with timestamp for permutation test survivors
  */
 std::string createPermutationTestSurvivorsFileName(const std::string& securitySymbol,
-                                                  ValidationMethod method);
+                                                  ValidationMethod method,
+                                                  bool sameDayExits = false);
 
 /**
  * @brief Create a unified meta-strategy performance filename for the given security and method
  * @param securitySymbol Symbol of the security being validated
  * @param method Validation method being used
+ * @param sameDayExits Whether same day exits are enabled
  * @return Formatted filename with timestamp for unified meta-strategy performance report
  */
 std::string createUnifiedMetaStrategyPerformanceFileName(const std::string& securitySymbol,
-                                                        ValidationMethod method);
+                                                        ValidationMethod method,
+                                                        bool sameDayExits = false);
 
 /**
  * @brief Write Monte Carlo permutation test survivors to file using LogPalPattern
@@ -147,7 +158,8 @@ void writePermutationTestSurvivors(const std::vector<std::shared_ptr<PalStrategy
 template<typename Num>
 std::vector<std::shared_ptr<PalStrategy<Num>>>
 loadPermutationTestSurvivors(const std::string& filename,
-                           std::shared_ptr<Security<Num>> security);
+                           std::shared_ptr<Security<Num>> security,
+                           bool sameDayExits = false);
 
 /**
  * @brief Check if survivor file exists and is readable

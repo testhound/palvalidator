@@ -167,6 +167,7 @@ static void backTestLoop(std::shared_ptr<Security<DecimalType>> security,
   }
 }
 
+
 // Compute mean holding time in calendar days over closed transactions
 template<class Decimal, template<class> class FractionPolicy, template<class, bool> class SubPennyPolicy, bool PricesAreSplitAdjusted>
 static double meanHoldingDays(const StrategyBroker<Decimal, FractionPolicy, SubPennyPolicy, PricesAreSplitAdjusted>& broker)
@@ -257,6 +258,78 @@ static void runTinyLoop(std::shared_ptr<mkc_timeseries::Security<DecimalType>> s
   backTestLoop(std::static_pointer_cast<mkc_timeseries::Security<DecimalType>>(sec),
                strat, start, end);
 }
+
+namespace
+{  // translation-unit private
+
+  static std::shared_ptr<OHLCTimeSeries<DecimalType>>
+  metaSameDayLongSeries()
+  {
+    auto ts = std::make_shared<OHLCTimeSeries<DecimalType>>(
+							    TimeFrame::DAILY, TradingVolume::CONTRACTS);
+    ts->addEntry(*createTimeSeriesEntry("20200102","100","101","99", "100","1000"));
+    ts->addEntry(*createTimeSeriesEntry("20200103","100","101","99", "100","1000"));
+    ts->addEntry(*createTimeSeriesEntry("20200106","100","105","99", "104","1000")); // BULLISH
+    ts->addEntry(*createTimeSeriesEntry("20200107","104","107","103","104","1000")); // eval day
+    ts->addEntry(*createTimeSeriesEntry("20200108","300","305","295","302","1000")); // fill day
+    ts->addEntry(*createTimeSeriesEntry("20200109","300","305","295","300","1000")); // extra
+    return ts;
+  }
+
+  static std::shared_ptr<OHLCTimeSeries<DecimalType>>
+  metaSameDayShortSeries()
+  {
+    auto ts = std::make_shared<OHLCTimeSeries<DecimalType>>(
+							    TimeFrame::DAILY, TradingVolume::CONTRACTS);
+    ts->addEntry(*createTimeSeriesEntry("20200102","100","101","99", "100","1000"));
+    ts->addEntry(*createTimeSeriesEntry("20200103","100","101","99", "100","1000"));
+    ts->addEntry(*createTimeSeriesEntry("20200106","104","105","99", "100","1000")); // BEARISH
+    ts->addEntry(*createTimeSeriesEntry("20200107","100","107","99", "100","1000")); // eval day
+    ts->addEntry(*createTimeSeriesEntry("20200108","300","305","295","298","1000")); // fill day
+    ts->addEntry(*createTimeSeriesEntry("20200109","300","305","295","300","1000")); // extra
+    return ts;
+  }
+
+  static std::shared_ptr<PriceActionLabPattern>
+  metaMakeLongC1gtO1(const std::string& stopPct, const std::string& targetPct)
+  {
+    auto pLong  = std::make_shared<DecimalType>(createDecimal("90.00"));
+    auto pShort = std::make_shared<DecimalType>(createDecimal("10.00"));
+    auto desc   = std::make_shared<PatternDescription>(
+						       "META_SAMEDAY_LONG.txt", 1, 20200107, pLong, pShort, 1, 1);
+    auto c1   = std::make_shared<PriceBarClose>(1);
+    auto o1   = std::make_shared<PriceBarOpen>(1);
+    auto expr = std::make_shared<GreaterThanExpr>(c1, o1);
+    return std::make_shared<PriceActionLabPattern>(
+						   desc, expr, createLongOnOpen(),
+						   createLongProfitTarget(targetPct), createLongStopLoss(stopPct));
+  }
+
+  static std::shared_ptr<PriceActionLabPattern>
+  metaMakeShortO1gtC1(const std::string& stopPct, const std::string& targetPct)
+  {
+    auto pLong  = std::make_shared<DecimalType>(createDecimal("10.00"));
+    auto pShort = std::make_shared<DecimalType>(createDecimal("90.00"));
+    auto desc   = std::make_shared<PatternDescription>(
+						       "META_SAMEDAY_SHORT.txt", 1, 20200107, pLong, pShort, 1, 1);
+    auto o1   = std::make_shared<PriceBarOpen>(1);
+    auto c1   = std::make_shared<PriceBarClose>(1);
+    auto expr = std::make_shared<GreaterThanExpr>(o1, c1);
+    return std::make_shared<PriceActionLabPattern>(
+						   desc, expr, createShortOnOpen(),
+						   createShortProfitTarget(targetPct), createShortStopLoss(stopPct));
+  }
+
+  static std::shared_ptr<BackTester<DecimalType>>
+  runMetaSameDayBacktest(const std::shared_ptr<BacktesterStrategy<DecimalType>>& strategy,
+			 const std::string& endDateStr)
+  {
+    DateRange range(createDate("20200102"), createDate(endDateStr));
+    return BackTesterFactory<DecimalType>::backTestStrategy(
+							    strategy, TimeFrame::DAILY, range);
+  }
+
+} // anonymous namespace
 
 // -----------------------------------------------------------------------------
 // Tests
@@ -904,4 +977,515 @@ TEST_CASE("PalMetaStrategy Exit Priority: maxHoldingPeriod supersedes other exit
     // Verify target was not hit
     DecimalType targetPrice = pos->getEntryPrice() * createDecimal("1.02"); // 106 * 1.02 = 108.12
     REQUIRE(pos->getExitPrice() < targetPrice);
+}
+
+// ============================================================================
+// Constructor flag
+// ============================================================================
+
+TEST_CASE("PalMetaStrategy::isSameDayExitsEnabled defaults to false",
+          "[PalMetaStrategy][SameDayExit][constructor]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>("MetaDefault", port);
+  meta->addPricePattern(metaMakeLongC1gtO1("1.00","1.00"));
+  REQUIRE_FALSE(meta->isSameDayExitsEnabled());
+}
+
+TEST_CASE("PalMetaStrategy::isSameDayExitsEnabled is true when constructed with true",
+          "[PalMetaStrategy][SameDayExit][constructor]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaSameDay", port, opts, /*sameDayExits=*/true);
+  meta->addPricePattern(metaMakeLongC1gtO1("1.00","1.00"));
+  REQUIRE(meta->isSameDayExitsEnabled());
+}
+
+
+// ============================================================================
+// Behavioral — long patterns
+// ============================================================================
+
+TEST_CASE("PalMetaStrategy same-day stop-loss fires on entry bar (long)",
+          "[PalMetaStrategy][SameDayExit][long][stop]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaLongStop", port, opts, true);
+  meta->addPricePattern(metaMakeLongC1gtO1("1.00","50.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isFlatPosition(kCornSymbol));
+  REQUIRE(broker.getClosedTrades() == 1);
+  REQUIRE(broker.getOpenTrades()   == 0);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+
+  auto pos = broker.beginClosedPositions()->second;
+  REQUIRE(pos->getEntryDate() == createDate("20200108"));
+  REQUIRE(pos->getExitDate()  == createDate("20200108"));
+  REQUIRE(pos->getExitOrderType() == OrderType::SELL_AT_STOP);
+}
+
+TEST_CASE("PalMetaStrategy same-day profit target fires on entry bar (long)",
+          "[PalMetaStrategy][SameDayExit][long][limit]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaLongLimit", port, opts, true);
+  meta->addPricePattern(metaMakeLongC1gtO1("50.00","1.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isFlatPosition(kCornSymbol));
+  REQUIRE(broker.getClosedTrades() == 1);
+  REQUIRE(broker.getOpenTrades()   == 0);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+
+  auto pos = broker.beginClosedPositions()->second;
+  REQUIRE(pos->getEntryDate() == createDate("20200108"));
+  REQUIRE(pos->getExitDate()  == createDate("20200108"));
+  REQUIRE(pos->getExitOrderType() == OrderType::SELL_AT_LIMIT);
+}
+
+TEST_CASE("PalMetaStrategy same-day stop wins when bar spans both stop and target (long)",
+          "[PalMetaStrategy][SameDayExit][long][stop-wins]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaLongStopWins", port, opts, true);
+  meta->addPricePattern(metaMakeLongC1gtO1("1.00","1.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isFlatPosition(kCornSymbol));
+  REQUIRE(broker.getClosedTrades() == 1);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+  REQUIRE(broker.beginClosedPositions()->second->getExitOrderType() == OrderType::SELL_AT_STOP);
+}
+
+TEST_CASE("PalMetaStrategy same-day: neither fires, long position stays open",
+          "[PalMetaStrategy][SameDayExit][long][no-trigger]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaLongNoTrigger", port, opts, true);
+  meta->addPricePattern(metaMakeLongC1gtO1("5.00","5.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isLongPosition(kCornSymbol));
+  REQUIRE(broker.getOpenTrades()   == 1);
+  REQUIRE(broker.getClosedTrades() == 0);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+}
+
+TEST_CASE("PalMetaStrategy same-day: cancelled long orders are erased from pending queue",
+          "[PalMetaStrategy][SameDayExit][long][bleed-through]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaLongBleed", port, opts, true);
+  meta->addPricePattern(metaMakeLongC1gtO1("5.00","5.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isLongPosition(kCornSymbol));
+  REQUIRE(broker.getOpenTrades()   == 1);
+  REQUIRE(broker.getClosedTrades() == 0);
+  // Cancelled same-day orders must be fully erased — nothing can bleed through.
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+}
+
+TEST_CASE("PalMetaStrategy with sameDayExits=false does not close on entry bar (long)",
+          "[PalMetaStrategy][SameDayExit][long][disabled]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>("MetaLongDisabled", port);
+  meta->addPricePattern(metaMakeLongC1gtO1("1.00","1.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isLongPosition(kCornSymbol));
+  REQUIRE(broker.getOpenTrades()   == 1);
+  REQUIRE(broker.getClosedTrades() == 0);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+}
+
+
+// ============================================================================
+// Behavioral — short patterns
+// ============================================================================
+
+TEST_CASE("PalMetaStrategy same-day stop-loss fires on entry bar (short)",
+          "[PalMetaStrategy][SameDayExit][short][stop]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayShortSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaShortStop", port, opts, true);
+  meta->addPricePattern(metaMakeShortO1gtC1("1.00","50.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isFlatPosition(kCornSymbol));
+  REQUIRE(broker.getClosedTrades() == 1);
+  REQUIRE(broker.getOpenTrades()   == 0);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+
+  auto pos = broker.beginClosedPositions()->second;
+  REQUIRE(pos->getEntryDate() == createDate("20200108"));
+  REQUIRE(pos->getExitDate()  == createDate("20200108"));
+  REQUIRE(pos->getExitOrderType() == OrderType::COVER_AT_STOP);
+}
+
+TEST_CASE("PalMetaStrategy same-day profit target fires on entry bar (short)",
+          "[PalMetaStrategy][SameDayExit][short][limit]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayShortSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaShortLimit", port, opts, true);
+  meta->addPricePattern(metaMakeShortO1gtC1("50.00","1.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isFlatPosition(kCornSymbol));
+  REQUIRE(broker.getClosedTrades() == 1);
+  REQUIRE(broker.getOpenTrades()   == 0);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+
+  auto pos = broker.beginClosedPositions()->second;
+  REQUIRE(pos->getEntryDate() == createDate("20200108"));
+  REQUIRE(pos->getExitDate()  == createDate("20200108"));
+  REQUIRE(pos->getExitOrderType() == OrderType::COVER_AT_LIMIT);
+}
+
+TEST_CASE("PalMetaStrategy same-day stop wins when bar spans both stop and target (short)",
+          "[PalMetaStrategy][SameDayExit][short][stop-wins]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayShortSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaShortStopWins", port, opts, true);
+  meta->addPricePattern(metaMakeShortO1gtC1("1.00","1.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isFlatPosition(kCornSymbol));
+  REQUIRE(broker.getClosedTrades() == 1);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+  REQUIRE(broker.beginClosedPositions()->second->getExitOrderType() == OrderType::COVER_AT_STOP);
+}
+
+TEST_CASE("PalMetaStrategy same-day: neither fires, short position stays open",
+          "[PalMetaStrategy][SameDayExit][short][no-trigger]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayShortSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaShortNoTrigger", port, opts, true);
+  meta->addPricePattern(metaMakeShortO1gtC1("5.00","5.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isShortPosition(kCornSymbol));
+  REQUIRE(broker.getOpenTrades()   == 1);
+  REQUIRE(broker.getClosedTrades() == 0);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+}
+
+TEST_CASE("PalMetaStrategy same-day: cancelled short orders are erased from pending queue",
+          "[PalMetaStrategy][SameDayExit][short][bleed-through]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayShortSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  StrategyOptions opts(false, 0, 0);
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>(
+      "MetaShortBleed", port, opts, true);
+  meta->addPricePattern(metaMakeShortO1gtC1("5.00","5.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isShortPosition(kCornSymbol));
+  REQUIRE(broker.getOpenTrades()   == 1);
+  REQUIRE(broker.getClosedTrades() == 0);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+}
+
+TEST_CASE("PalMetaStrategy with sameDayExits=false does not close on entry bar (short)",
+          "[PalMetaStrategy][SameDayExit][short][disabled]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayShortSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+
+  auto meta = std::make_shared<PalMetaStrategy<DecimalType>>("MetaShortDisabled", port);
+  meta->addPricePattern(metaMakeShortO1gtC1("1.00","1.00"));
+
+  runMetaSameDayBacktest(meta, "20200108");
+
+  auto& broker = meta->getStrategyBroker();
+  REQUIRE(meta->isShortPosition(kCornSymbol));
+  REQUIRE(broker.getOpenTrades()   == 1);
+  REQUIRE(broker.getClosedTrades() == 0);
+  REQUIRE(broker.beginPendingOrders() == broker.endPendingOrders());
+}
+
+
+// ============================================================================
+// Clone propagation — flag accessor checks
+// ============================================================================
+
+TEST_CASE("PalMetaStrategy copy constructor propagates isSameDayExitsEnabled",
+          "[PalMetaStrategy][SameDayExit][copy]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+  StrategyOptions opts(false, 0, 0);
+
+  PalMetaStrategy<DecimalType> origTrue("OT", port, opts, true);
+  origTrue.addPricePattern(metaMakeLongC1gtO1("1.00","1.00"));
+  REQUIRE(PalMetaStrategy<DecimalType>(origTrue).isSameDayExitsEnabled());
+
+  PalMetaStrategy<DecimalType> origFalse("OF", port, opts, false);
+  origFalse.addPricePattern(metaMakeLongC1gtO1("1.00","1.00"));
+  REQUIRE_FALSE(PalMetaStrategy<DecimalType>(origFalse).isSameDayExitsEnabled());
+}
+
+TEST_CASE("PalMetaStrategy::clone() propagates isSameDayExitsEnabled",
+          "[PalMetaStrategy][SameDayExit][clone]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+  StrategyOptions opts(false, 0, 0);
+
+  PalMetaStrategy<DecimalType> origTrue("OT", port, opts, true);
+  origTrue.addPricePattern(metaMakeLongC1gtO1("1.00","1.00"));
+  REQUIRE(origTrue.clone(port)->isSameDayExitsEnabled());
+
+  PalMetaStrategy<DecimalType> origFalse("OF", port, opts, false);
+  origFalse.addPricePattern(metaMakeLongC1gtO1("1.00","1.00"));
+  REQUIRE_FALSE(origFalse.clone(port)->isSameDayExitsEnabled());
+}
+
+TEST_CASE("PalMetaStrategy::cloneForBackTesting() propagates isSameDayExitsEnabled",
+          "[PalMetaStrategy][SameDayExit][clone]")
+{
+  DecimalType tick(createDecimal("0.25"));
+  auto ts   = metaSameDayLongSeries();
+  auto sec  = std::make_shared<FuturesSecurity<DecimalType>>(
+      "@C","Corn",createDecimal("50.0"),tick,ts);
+  auto port = std::make_shared<Portfolio<DecimalType>>("P");
+  port->addSecurity(sec);
+  StrategyOptions opts(false, 0, 0);
+
+  PalMetaStrategy<DecimalType> orig("OT", port, opts, true);
+  orig.addPricePattern(metaMakeLongC1gtO1("1.00","1.00"));
+  REQUIRE(orig.cloneForBackTesting()->isSameDayExitsEnabled());
+}
+
+
+// ============================================================================
+// Clone behavioral — clone_shallow executes same-day exits
+// ============================================================================
+
+TEST_CASE("PalMetaStrategy::clone_shallow executes same-day exits (long)",
+          "[PalMetaStrategy][SameDayExit][clone_shallow][behavioral]")
+{
+  using Dec = DecimalType;
+  DecimalType tick(createDecimal("0.25"));
+  StrategyOptions opts(false, 0, 0);
+
+  auto ts1 = metaSameDayLongSeries();
+  auto ts2 = metaSameDayLongSeries();
+  auto sec1 = std::make_shared<FuturesSecurity<Dec>>("@C","C1",createDecimal("50.0"),tick,ts1);
+  auto sec2 = std::make_shared<FuturesSecurity<Dec>>("@C","C2",createDecimal("50.0"),tick,ts2);
+  auto port1 = std::make_shared<Portfolio<Dec>>("P1"); port1->addSecurity(sec1);
+  auto port2 = std::make_shared<Portfolio<Dec>>("P2"); port2->addSecurity(sec2);
+
+  auto original = std::make_shared<PalMetaStrategy<Dec>>(
+      "MetaOrigLong", port1, opts, true);
+  original->addPricePattern(metaMakeLongC1gtO1("1.00","50.00"));
+  REQUIRE(original->isSameDayExitsEnabled());
+
+  auto shallowPtr = original->clone_shallow(port2);
+  REQUIRE(shallowPtr);
+  REQUIRE(shallowPtr->isSameDayExitsEnabled());
+
+  DateRange range(createDate("20200102"), createDate("20200108"));
+  BackTesterFactory<Dec>::backTestStrategy(original,    TimeFrame::DAILY, range);
+  BackTesterFactory<Dec>::backTestStrategy(shallowPtr,  TimeFrame::DAILY, range);
+
+  {
+    auto& b = original->getStrategyBroker();
+    REQUIRE(original->isFlatPosition(kCornSymbol));
+    REQUIRE(b.getClosedTrades() == 1);
+    REQUIRE(b.getOpenTrades()   == 0);
+    auto pos = b.beginClosedPositions()->second;
+    REQUIRE(pos->getExitDate()  == createDate("20200108"));
+    REQUIRE(pos->getExitOrderType() == OrderType::SELL_AT_STOP);
+  }
+
+  {
+    auto& b = shallowPtr->getStrategyBroker();
+    REQUIRE(shallowPtr->isFlatPosition(kCornSymbol));
+    REQUIRE(b.getClosedTrades() == 1);
+    REQUIRE(b.getOpenTrades()   == 0);
+    auto pos = b.beginClosedPositions()->second;
+    REQUIRE(pos->getExitDate()  == createDate("20200108"));
+    REQUIRE(pos->getExitOrderType() == OrderType::SELL_AT_STOP);
+  }
+}
+
+TEST_CASE("PalMetaStrategy::clone_shallow executes same-day exits (short)",
+          "[PalMetaStrategy][SameDayExit][clone_shallow][behavioral]")
+{
+  using Dec = DecimalType;
+  DecimalType tick(createDecimal("0.25"));
+  StrategyOptions opts(false, 0, 0);
+
+  auto ts1 = metaSameDayShortSeries();
+  auto ts2 = metaSameDayShortSeries();
+  auto sec1 = std::make_shared<FuturesSecurity<Dec>>("@C","C1",createDecimal("50.0"),tick,ts1);
+  auto sec2 = std::make_shared<FuturesSecurity<Dec>>("@C","C2",createDecimal("50.0"),tick,ts2);
+  auto port1 = std::make_shared<Portfolio<Dec>>("P1"); port1->addSecurity(sec1);
+  auto port2 = std::make_shared<Portfolio<Dec>>("P2"); port2->addSecurity(sec2);
+
+  auto original = std::make_shared<PalMetaStrategy<Dec>>(
+      "MetaOrigShort", port1, opts, true);
+  original->addPricePattern(metaMakeShortO1gtC1("1.00","50.00"));
+  REQUIRE(original->isSameDayExitsEnabled());
+
+  auto shallowPtr = original->clone_shallow(port2);
+  REQUIRE(shallowPtr);
+  REQUIRE(shallowPtr->isSameDayExitsEnabled());
+
+  DateRange range(createDate("20200102"), createDate("20200108"));
+  BackTesterFactory<Dec>::backTestStrategy(original,    TimeFrame::DAILY, range);
+  BackTesterFactory<Dec>::backTestStrategy(shallowPtr,  TimeFrame::DAILY, range);
+
+  {
+    auto& b = original->getStrategyBroker();
+    REQUIRE(original->isFlatPosition(kCornSymbol));
+    REQUIRE(b.getClosedTrades() == 1);
+    auto pos = b.beginClosedPositions()->second;
+    REQUIRE(pos->getExitDate()  == createDate("20200108"));
+    REQUIRE(pos->getExitOrderType() == OrderType::COVER_AT_STOP);
+  }
+
+  {
+    auto& b = shallowPtr->getStrategyBroker();
+    REQUIRE(shallowPtr->isFlatPosition(kCornSymbol));
+    REQUIRE(b.getClosedTrades() == 1);
+    auto pos = b.beginClosedPositions()->second;
+    REQUIRE(pos->getExitDate()  == createDate("20200108"));
+    REQUIRE(pos->getExitOrderType() == OrderType::COVER_AT_STOP);
+  }
 }

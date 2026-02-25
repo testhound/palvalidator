@@ -74,7 +74,8 @@ public:
      */
     static std::unique_ptr<ValidationInterface> createUnadjustedValidation(
         const std::string& policyName,
-        unsigned long permutations);
+        unsigned long permutations,
+        bool sameDayExits = false);
     
     /**
      * @brief Register a policy for Masters validation
@@ -123,8 +124,8 @@ public:
      */
     template<template<typename> class PolicyType>
     static void registerUnadjustedPolicy(const std::string& policyName) {
-        unadjustedFactories_[policyName] = [](unsigned long permutations) -> std::unique_ptr<ValidationInterface> {
-            return createUnadjustedValidationWrapper<PolicyType>(permutations);
+        unadjustedFactories_[policyName] = [](unsigned long permutations, bool sameDayExits) -> std::unique_ptr<ValidationInterface> {
+            return createUnadjustedValidationWrapper<PolicyType>(permutations, sameDayExits);
         };
     }
     
@@ -185,7 +186,7 @@ private:
     using MastersFactoryFunction = std::function<std::unique_ptr<ValidationInterface>(unsigned long)>;
     using RomanoWolfFactoryFunction = std::function<std::unique_ptr<ValidationInterface>(unsigned long)>;
     using BenjaminiHochbergFactoryFunction = std::function<std::unique_ptr<ValidationInterface>(unsigned long, double)>;
-    using UnadjustedFactoryFunction = std::function<std::unique_ptr<ValidationInterface>(unsigned long)>;
+    using UnadjustedFactoryFunction = std::function<std::unique_ptr<ValidationInterface>(unsigned long, bool)>;
     
     // Static factory registries for each validation method
     static std::unordered_map<std::string, MastersFactoryFunction> mastersFactories_;
@@ -205,7 +206,7 @@ private:
         unsigned long permutations, double falseDiscoveryRate);
     
     template<template<typename> class PolicyType>
-    static std::unique_ptr<ValidationInterface> createUnadjustedValidationWrapper(unsigned long permutations);
+    static std::unique_ptr<ValidationInterface> createUnadjustedValidationWrapper(unsigned long permutations, bool sameDayExits);
 };
 
 /**

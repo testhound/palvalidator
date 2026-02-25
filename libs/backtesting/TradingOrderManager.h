@@ -309,6 +309,109 @@ namespace mkc_timeseries
   };
 
   /**
+   * @class SameDayProcessOrderVisitor
+   * @brief Variant of ProcessOrderVisitor that allows fill evaluation when
+   *        bar datetime == order datetime (same-bar entry and exit).
+   *
+   * The standard ProcessOrderVisitor requires the bar's datetime to be
+   * strictly *after* the order's datetime, which correctly prevents
+   * next-bar orders from being filled on the same bar they are submitted.
+   * For same-day exits (stop/limit placed the instant an entry is filled
+   * at the open), the bar datetime and order datetime are identical, so
+   * that guard must be relaxed here.
+   *
+   * All fill logic (limit/stop price comparisons against High/Low) is
+   * identical to ProcessOrderVisitor.
+   */
+  template <class Decimal>
+  class SameDayProcessOrderVisitor : public TradingOrderVisitor<Decimal>
+  {
+  public:
+    explicit SameDayProcessOrderVisitor(const OHLCTimeSeriesEntry<Decimal>& tradingBar)
+      : mTradingBar(tradingBar)
+    {}
+
+    ~SameDayProcessOrderVisitor() {}
+
+    // visit() methods are identical to ProcessOrderVisitor EXCEPT we never call
+    // them for market-on-open order types (same-day exits are always stop/limit).
+
+    void visit(MarketOnOpenLongOrder<Decimal>*  order) override { ValidateOrder(order); /* no-op: not used for same-day */ }
+    void visit(MarketOnOpenSellOrder<Decimal>*  order) override { ValidateOrder(order); }
+    void visit(MarketOnOpenCoverOrder<Decimal>* order) override { ValidateOrder(order); }
+    void visit(MarketOnOpenShortOrder<Decimal>* order) override { ValidateOrder(order); }
+
+    void visit(SellAtLimitOrder<Decimal>* order) override
+    {
+      ValidateOrder(order);
+      if (mTradingBar.getHighValue() >= order->getLimitPrice())
+	{
+	  Decimal fillPrice = mTradingBar.getOpenValue();
+	  if (mTradingBar.getOpenValue() < order->getLimitPrice())
+	    fillPrice = order->getLimitPrice();
+	  order->MarkOrderExecuted(mTradingBar.getDateTime(), fillPrice);
+	}
+    }
+
+    void visit(CoverAtLimitOrder<Decimal>* order) override
+    {
+      ValidateOrder(order);
+      if (mTradingBar.getLowValue() <= order->getLimitPrice())
+	{
+	  Decimal fillPrice = mTradingBar.getOpenValue();
+	  if (mTradingBar.getOpenValue() > order->getLimitPrice())
+	    fillPrice = order->getLimitPrice();
+	  order->MarkOrderExecuted(mTradingBar.getDateTime(), fillPrice);
+	}
+    }
+
+    void visit(CoverAtStopOrder<Decimal>* order) override
+    {
+      ValidateOrder(order);
+      if (mTradingBar.getHighValue() >= order->getStopPrice())
+	{
+	  Decimal fillPrice = mTradingBar.getOpenValue();
+	  if (mTradingBar.getOpenValue() < order->getStopPrice())
+	    fillPrice = order->getStopPrice();
+	  order->MarkOrderExecuted(mTradingBar.getDateTime(), fillPrice);
+	}
+    }
+
+    void visit(SellAtStopOrder<Decimal>* order) override
+    {
+      ValidateOrder(order);
+      if (mTradingBar.getLowValue() <= order->getStopPrice())
+	{
+	  Decimal fillPrice = mTradingBar.getOpenValue();
+	  if (mTradingBar.getOpenValue() > order->getStopPrice())
+	    fillPrice = order->getStopPrice();
+	  order->MarkOrderExecuted(mTradingBar.getDateTime(), fillPrice);
+	}
+    }
+
+  private:
+    /**
+     * @brief Relaxed validation: only requires the order is pending.
+     * Does NOT enforce bar datetime > order datetime, since for same-day
+     * exits they are deliberately equal.
+     */
+    void ValidateOrder(TradingOrder<Decimal>* order)
+    {
+      if (!order->isOrderPending())
+	{
+	  if (order->isOrderExecuted())
+	    throw TradingOrderException("SameDayProcessOrderVisitor: executed order cannot be re-processed");
+	  else if (order->isOrderCanceled())
+	    throw TradingOrderException("SameDayProcessOrderVisitor: canceled order cannot be processed");
+	  else
+	    throw TradingOrderException("SameDayProcessOrderVisitor: unknown order state");
+	}
+    }
+
+    OHLCTimeSeriesEntry<Decimal> mTradingBar;
+  };
+
+  /**
    * @class TradingOrderManager
    * @brief Manages the lifecycle of trading orders, including submission, processing, execution, and cancellation.
    *
@@ -824,6 +927,39 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Processes stop and limit exit orders submitted on the same bar as entry.
+     *
+     * Called AFTER processPendingOrders() for bars where same-day exits are enabled.
+     * Processes only orders whose orderDateTime == processingDateTime, using the
+     * relaxed SameDayProcessOrderVisitor (bar datetime == order datetime is allowed).
+     *
+     * Stop orders are processed before limit orders so that when the bar's range
+     * spans both a stop and a target, the stop (pessimistic outcome) wins.
+     * When the stop fills, cancelComplementaryOrdersForPosition() in StrategyBroker
+     * marks the complementary limit order canceled before the limit pass begins.
+     *
+     * Any same-day exit order that does NOT trigger (stop not reached, limit not
+     * reached) is explicitly canceled and removed. This is mandatory: the next
+     * bar's eventExitOrders() will submit fresh exit orders for the same position,
+     * so stale same-day orders must not survive into the next processing cycle.
+     *
+     * @param processingDateTime The current bar's datetime.
+     * @param positions Current instrument position state.
+     */
+    void processSameDayExitOrders(const boost::posix_time::ptime& processingDateTime,
+				  const InstrumentPositionManager<Decimal>& positions)
+    {
+      // Stops first — if both stop and target are spanned by the bar's range,
+      // the stop (worse outcome) takes priority.
+      ProcessingSameDayExitOrders<SellAtStopOrder<Decimal>> (processingDateTime, mStopSellOrders,  positions);
+      ProcessingSameDayExitOrders<CoverAtStopOrder<Decimal>>(processingDateTime, mStopCoverOrders, positions);
+      ProcessingSameDayExitOrders<SellAtLimitOrder<Decimal>>(processingDateTime, mLimitSellOrders, positions);
+      ProcessingSameDayExitOrders<CoverAtLimitOrder<Decimal>>(processingDateTime, mLimitCoverOrders, positions);
+
+      mPendingOrdersUpToDate = false;
+    }
+    
+    /**
      * @brief Processes all pending orders for a given date (using default bar time) using current market conditions.
      * Legacy overload for backward compatibility. Forwards to the ptime-based processPendingOrders.
      * @param processingDate The current date in the backtest. Orders are processed against this date's bar data (using default time).
@@ -937,6 +1073,89 @@ namespace mkc_timeseries
 	  // 3) All other cases (not yet eligible, same-bar entry, no data, etc.)
 	  //    just skip and advance.
 	  ++it;
+	}
+    }
+
+    /**
+     * @brief Template helper for same-day exit order processing.
+     *
+     * Matches orders where orderDateTime == processingDateTime, uses
+     * SameDayProcessOrderVisitor for fill evaluation, and mandatorily
+     * cancels any order that does not fill (to prevent bleed-through
+     * into the next bar's normal order processing).
+     */
+    template <typename T>
+    void ProcessingSameDayExitOrders(const boost::posix_time::ptime& processingDateTime,
+				     std::vector<std::shared_ptr<T>>& vectorContainer,
+				     const InstrumentPositionManager<Decimal>& positions)
+    {
+      using OrderPtr = std::shared_ptr<T>;
+
+      auto it = vectorContainer.begin();
+      while (it != vectorContainer.end())
+	{
+	  OrderPtr order = *it;
+
+	  // Not a same-day order — leave it untouched for normal processPendingOrders
+	  if (order->getOrderDateTime() != processingDateTime)
+	    {
+	      ++it;
+	      continue;
+	    }
+
+	  // Same-day order already handled (e.g. canceled by a complementary fill
+	  // firing first in the stop pass) — erase it so it cannot appear in any
+	  // subsequent pending-order query.
+	  if (!order->isOrderPending())
+	    {
+	      it = vectorContainer.erase(it);
+	      continue;
+	    }
+
+	  // Position already flat (complementary order fired first): cancel and remove
+	  if (positions.isFlatPosition(order->getTradingSymbol()))
+	    {
+	      order->MarkOrderCanceled();
+	      NotifyOrderCanceled(order);
+	      mPendingOrdersUpToDate = false;
+	      it = vectorContainer.erase(it);
+	      continue;
+	    }
+
+	  auto symbolIt = mPortfolio->findSecurity(order->getTradingSymbol());
+	  if (symbolIt != mPortfolio->endPortfolio())
+	    {
+	      try
+		{
+		  auto entry = symbolIt->second->getTimeSeriesEntry(processingDateTime);
+		  SameDayProcessOrderVisitor<Decimal> visitor(entry);
+		  visitor.visit(order.get());
+
+		  if (order->isOrderExecuted())
+		    NotifyOrderExecuted(order);
+		  else
+		    {
+		      // Did not trigger — must cancel so it doesn't drift into the next bar
+		      order->MarkOrderCanceled();
+		      NotifyOrderCanceled(order);
+		    }
+		}
+	      catch (const mkc_timeseries::TimeSeriesDataNotFoundException&)
+		{
+		  // No bar data for this datetime — cancel defensively
+		  order->MarkOrderCanceled();
+		  NotifyOrderCanceled(order);
+		}
+	    }
+	  else
+	    {
+	      // Symbol not in portfolio — cancel defensively
+	      order->MarkOrderCanceled();
+	      NotifyOrderCanceled(order);
+	    }
+
+	  mPendingOrdersUpToDate = false;
+	  it = vectorContainer.erase(it);
 	}
     }
     
