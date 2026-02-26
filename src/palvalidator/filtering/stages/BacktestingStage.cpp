@@ -44,58 +44,12 @@ namespace palvalidator::filtering::stages
 								       exemptLimitOrders);
   }
 
-  bool BacktestingStage::validateReturnCount(const StrategyAnalysisContext& ctx, std::ostream& os) const
-  {
-    const auto n = ctx.highResReturns.size();
-    if (n < MIN_RETURNS_FOR_BOOTSTRAP)
-    {
-      os << "✗ Strategy filtered out: " << (ctx.strategy ? ctx.strategy->getStrategyName() : std::string("<unknown>"))
-         << " - Insufficient returns for bootstrap (" << n << " < " << MIN_RETURNS_FOR_BOOTSTRAP << ").\n";
-      return false;
-    }
-    
-    // Validate minimum trades for bootstrap analysis
-    if (ctx.backtester)
-    {
-      const auto numTrades = ctx.backtester->getNumTrades();
-      if (numTrades < MIN_TRADES_FOR_BOOTSTRAP)
-      {
-        os << "✗ Strategy filtered out: " << (ctx.strategy ? ctx.strategy->getStrategyName() : std::string("<unknown>"))
-           << " - Insufficient trades for bootstrap (" << numTrades << " < " << MIN_TRADES_FOR_BOOTSTRAP << ").\n";
-        return false;
-      }
-    }
-    
-    return true;
-  }
 
   FilterDecision BacktestingStage::execute(StrategyAnalysisContext& ctx, std::ostream& os) const
   {
     try
     {
       runBacktest(ctx);
-
-      if (!validateReturnCount(ctx, os))
-      {
-        std::ostringstream ss;
-        const auto numReturns = ctx.highResReturns.size();
-        const auto numTrades = ctx.backtester ? ctx.backtester->getNumTrades() : 0;
-        
-        if (numReturns < MIN_RETURNS_FOR_BOOTSTRAP)
-        {
-          ss << "Insufficient returns (" << numReturns << " < " << MIN_RETURNS_FOR_BOOTSTRAP << ")";
-        }
-        else if (numTrades < MIN_TRADES_FOR_BOOTSTRAP)
-        {
-          ss << "Insufficient trades (" << numTrades << " < " << MIN_TRADES_FOR_BOOTSTRAP << ")";
-        }
-        else
-        {
-          ss << "Insufficient data for bootstrap analysis";
-        }
-        
-        return FilterDecision::Fail(FilterDecisionType::FailInsufficientData, ss.str());
-      }
 
       return FilterDecision::Pass();
     }
