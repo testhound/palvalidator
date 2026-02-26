@@ -190,10 +190,10 @@ namespace mkc_timeseries
     }
 
     /// Minimum number of trades required to attempt this test
-    static unsigned int getMinStrategyTrades() { return 5; }
+    static unsigned int getMinStrategyTrades() { return 9; }
 
     // Minimum bars for statistical significance
-    static unsigned int getMinBarSeriesSize() { return 20; }
+    static unsigned int getMinBarSeriesSize() { return 10; }
 
     static Decimal getMinTradeFailureTestStatistic()
     {
