@@ -30,11 +30,11 @@ namespace mkc_timeseries
       static Decimal EquityTick;
       static Decimal SignificantPValue;
       static Decimal DefaultFDR;               // Default False Discovery Rate
-      static Decimal TwoThirds;
+      static Decimal TwoThirds;                // 0.666667 (the fraction 2/3)
       static Decimal TenPercent;
       static Decimal TwentyPercent;
       static Decimal DefaultEquitySlippage;
-      
+
       static Decimal createDecimal (const std::string& valueString)
       {
         if constexpr (std::is_floating_point_v<Decimal>) {
@@ -45,43 +45,94 @@ namespace mkc_timeseries
       }
     };
 
-  template <class Decimal> Decimal DecimalConstants<Decimal>::DecimalZero(0.0);
-  template <class Decimal> Decimal 
-    DecimalConstants<Decimal>::DecimalOneHundred(DecimalConstants<Decimal>::createDecimal("100.0"));
+  // ---------------------------------------------------------------------------
+  // Static member definitions
+  //
+  // All values are initialised via createDecimal(string) to guarantee that the
+  // full precision of the underlying Decimal type is used and to avoid
+  // floating-point literal rounding artifacts that can occur when constructing
+  // dec::decimal<N> objects directly from double/float literals.
+  // ---------------------------------------------------------------------------
+
   template <class Decimal> Decimal
-    DecimalConstants<Decimal>::TenPercent(DecimalConstants<Decimal>::createDecimal("0.10"));
+    DecimalConstants<Decimal>::DecimalZero(
+      DecimalConstants<Decimal>::createDecimal("0.0"));
+
   template <class Decimal> Decimal
-    DecimalConstants<Decimal>::TwentyPercent(DecimalConstants<Decimal>::createDecimal("0.20"));
+    DecimalConstants<Decimal>::DecimalOne(
+      DecimalConstants<Decimal>::createDecimal("1.0"));
 
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::DecimalMinusOne(
+      DecimalConstants<Decimal>::createDecimal("-1.0"));
 
-  template <class Decimal> Decimal 
-    DecimalConstants<Decimal>::DecimalTwo(DecimalConstants<Decimal>::createDecimal("2.0"));
-  template <class Decimal> Decimal 
-    DecimalConstants<Decimal>::DecimalMinusTwo(DecimalConstants<Decimal>::createDecimal("-2.0"));
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::DecimalTwo(
+      DecimalConstants<Decimal>::createDecimal("2.0"));
 
-  template <class Decimal> Decimal 
-    DecimalConstants<Decimal>::DecimalThree(DecimalConstants<Decimal>::createDecimal("3.0"));
-  template <class Decimal> Decimal 
-    DecimalConstants<Decimal>::DecimalMinusThree(DecimalConstants<Decimal>::createDecimal("-3.0"));
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::DecimalMinusTwo(
+      DecimalConstants<Decimal>::createDecimal("-2.0"));
 
-  template <class Decimal> Decimal DecimalConstants<Decimal>::DecimalOne(DecimalConstants<Decimal>::createDecimal("1.0"));
-  template <class Decimal> Decimal 
-    DecimalConstants<Decimal>::DecimalMinusOne(DecimalConstants<Decimal>::createDecimal("-1.0"));
-  template <class Decimal> Decimal 
-    DecimalConstants<Decimal>::DecimalOnePointFive(DecimalConstants<Decimal>::createDecimal("1.5"));
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::DecimalThree(
+      DecimalConstants<Decimal>::createDecimal("3.0"));
 
-    template <class Decimal> Decimal 
-    DecimalConstants<Decimal>::DefaultEquitySlippage(DecimalConstants<Decimal>::createDecimal("0.001"));
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::DecimalMinusThree(
+      DecimalConstants<Decimal>::createDecimal("-3.0"));
 
-    template <class Decimal> Decimal 
-    DecimalConstants<Decimal>::DecimalOnePointSevenFive(DecimalConstants<Decimal>::createDecimal("1.75"));
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::DecimalOneHundred(
+      DecimalConstants<Decimal>::createDecimal("100.0"));
 
-  template <class Decimal> Decimal DecimalConstants<Decimal>::EquityTick(0.01);
-  //template <class Decimal> Decimal DecimalConstants<Decimal>::SignificantPValue(0.045);
-  template <class Decimal> Decimal DecimalConstants<Decimal>::SignificantPValue(0.05);
-  template <class Decimal> Decimal DecimalConstants<Decimal>::DefaultFDR(0.20);
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::DecimalOnePointFive(
+      DecimalConstants<Decimal>::createDecimal("1.5"));
 
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::DecimalOnePointSevenFive(
+      DecimalConstants<Decimal>::createDecimal("1.75"));
 
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::TenPercent(
+      DecimalConstants<Decimal>::createDecimal("0.10"));
+
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::TwentyPercent(
+      DecimalConstants<Decimal>::createDecimal("0.20"));
+
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::DefaultEquitySlippage(
+      DecimalConstants<Decimal>::createDecimal("0.001"));
+
+  // EquityTick: minimum price increment for equities ($0.01)
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::EquityTick(
+      DecimalConstants<Decimal>::createDecimal("0.01"));
+
+  // SignificantPValue: p-value threshold for statistical significance
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::SignificantPValue(
+      DecimalConstants<Decimal>::createDecimal("0.05"));
+
+  // DefaultFDR: default False Discovery Rate threshold
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::DefaultFDR(
+      DecimalConstants<Decimal>::createDecimal("0.20"));
+
+  // TwoThirds: the fraction 2/3, approximately 0.666667.
+  // NOTE: The previous value was "66.6666667", which is a percentage, not a
+  // fraction.  This has been corrected to "0.666667".  If any call site was
+  // relying on the percentage form it should be updated to use
+  // DecimalOneHundred * TwoThirds or a dedicated constant instead.
+  template <class Decimal> Decimal
+    DecimalConstants<Decimal>::TwoThirds(
+      DecimalConstants<Decimal>::createDecimal("0.666667"));
+
+  // ---------------------------------------------------------------------------
+  // Free helper
+  // ---------------------------------------------------------------------------
   template <class Decimal>
   Decimal
   createADecimal(const std::string& numString)
@@ -89,8 +140,9 @@ namespace mkc_timeseries
     return DecimalConstants<Decimal>::createDecimal(numString);
   }
 
-  template <class Decimal> Decimal DecimalConstants<Decimal>::TwoThirds(createADecimal<Decimal>("66.6666667"));
-
+  // ---------------------------------------------------------------------------
+  // DecimalSqrtConstants - pre-computed square roots for integers 0..100
+  // ---------------------------------------------------------------------------
   template <class Decimal>
   class DecimalSqrtConstants
   {
@@ -202,7 +254,7 @@ namespace mkc_timeseries
 	  DecimalConstants<Decimal>::createDecimal (std::string("10.000000"))
 	};
 
-      if ((num >= 0) && (num <= 100))
+      if (num <= 100)
 	return sqrtConstants[num];
       else
 	{
@@ -214,4 +266,3 @@ namespace mkc_timeseries
 
 }
 #endif
-
