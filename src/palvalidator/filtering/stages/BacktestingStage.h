@@ -17,12 +17,8 @@ namespace palvalidator::filtering::stages
     FilterDecision execute(StrategyAnalysisContext& ctx, std::ostream& os) const;
 
   private:
-    static constexpr size_t MIN_RETURNS_FOR_BOOTSTRAP = 20;
-    static constexpr size_t MIN_TRADES_FOR_BOOTSTRAP = 5;
-
     void createFreshPortfolio(StrategyAnalysisContext& ctx) const;
     void runBacktest(StrategyAnalysisContext& ctx) const;
-    bool validateReturnCount(const StrategyAnalysisContext& ctx, std::ostream& os) const;
   };
 
 } // namespace palvalidator::filtering::stages

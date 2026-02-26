@@ -48,14 +48,6 @@ static Dec6 d6(const std::string& s)
     return DC6::createDecimal(s);
 }
 
-// ---------------------------------------------------------------------------
-// Helper: build a double from a string literal
-// ---------------------------------------------------------------------------
-static double dd(const std::string& s)
-{
-    return DCDbl::createDecimal(s);
-}
-
 // ============================================================================
 // SECTION 1 – createDecimal factory (both types)
 // ============================================================================
