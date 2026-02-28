@@ -195,9 +195,9 @@ void initializePolicyRegistry() {
         "BootStrappedLogProfitFactorPolicy",
         "Bootstrap Log Profit Factor",
         "Bootstrap-based logarithmic profit factor analysis for enhanced statistical robustness",
-        "experimental",
-        true,
-        "0.9.0",
+        "recommended",
+        false,
+        "1.0.0",
         "MKC Associates",
         {"bootstrap", "log-profit-factor", "statistical", "experimental"},
         {"Sufficient sample size", "Bootstrap libraries"}

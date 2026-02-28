@@ -329,7 +329,7 @@ void PolicySelector::displayPolicyRecommendations(const std::vector<std::string>
     std::vector<std::string> advanced;
     
     for (const std::string& policy : availablePolicies) {
-        if (policy == "GatedPerformanceScaledPalPolicy") {
+        if (policy == "BootStrappedLogProfitFactorPolicy") {
             recommended.push_back(policy + " (Recommended for most users)");
         } else if (policy == "RobustProfitFactorPolicy") {
             basic.push_back(policy + " (Good for beginners)");
