@@ -417,7 +417,8 @@ namespace mkc_timeseries
         Decimal sum = DC::DecimalZero;
         for (const auto& x : logs)
           sum += x;
-        const Decimal meanLog = sum / Decimal(static_cast<double>(n));
+
+        const Decimal meanLog = sum / Decimal(n);
 
         // Back-transform: exp(meanLog) - 1
         return std::exp(meanLog) - one;
@@ -547,7 +548,8 @@ namespace mkc_timeseries
         Decimal sum = DC::DecimalZero;
         for (const auto& x : logs)
           sum += x;
-        const Decimal meanLog = sum / Decimal(static_cast<double>(n));
+
+        const Decimal meanLog = sum / Decimal(n);
 
         // Back-transform: exp(meanLog) - 1
         const Decimal one = DC::DecimalOne;
@@ -1550,7 +1552,17 @@ namespace mkc_timeseries
     struct LogProfitFactorStat_LogPF
     {
       // Display PF (not logPF)
-      static double formatForDisplay(double log_pf) { return std::exp(log_pf); }
+      
+      static double formatForDisplay(const Decimal& log_pf) 
+      { 
+        // Use your helper to safely extract long double regardless of Decimal type
+        return static_cast<double>(std::exp(num::to_long_double(log_pf))); 
+      }
+
+      static double formatForDisplay(double log_pf)
+      {
+        return std::exp(log_pf);
+      }
 
       // This returns log(PF) internally, so it is NOT a ratio statistic in the
       // strict “nonnegative ratio” sense.
@@ -1685,7 +1697,16 @@ namespace mkc_timeseries
     struct LogProfitFactorFromLogBarsStat_LogPF
     {
       // Display PF (not logPF)
-      static double formatForDisplay(double log_pf) { return std::exp(log_pf); }
+      static double formatForDisplay(const Decimal& log_pf) 
+      { 
+        // Use your helper to safely extract long double regardless of Decimal type
+        return static_cast<double>(std::exp(num::to_long_double(log_pf))); 
+      }
+    
+      static double formatForDisplay(double log_pf)
+      {
+        return std::exp(log_pf);
+      }
 
       // This returns log(PF) internally, so it is NOT a ratio statistic in the
       // strict "nonnegative ratio" sense.
@@ -2972,62 +2993,71 @@ namespace mkc_timeseries
      * 
      * @return log(PF) where PF = numer / denom
      */
+
+    /**
+     * @brief Precision-hardened core algorithm for Log Profit Factor.
+     * * This version uses long double (xdouble) for all intermediate 
+     * transcendental calculations to protect the 8th decimal place 
+     * of the decimal<8> type.
+     */
     static Decimal computeLogPF_FromSums(Decimal sum_log_wins,
 					 Decimal sum_loss_mag,
 					 double  ruin_eps,
 					 double  denom_floor,
-					 [[maybe_unused]] double  prior_strength,
+					 [[maybe_unused]] double prior_strength,
 					 double  stop_loss_return_space,
 					 double  profit_target_return_space,
 					 double  tiny_win_fraction,
 					 double  tiny_win_min_return)
     {
       using DC = DecimalConstants<Decimal>;
-      const Decimal zero = DC::DecimalZero;
-      const Decimal one  = DC::DecimalOne;
+      using xdouble = long double;
+
+      // --- Step 1: Handle Empty or Zero Input ---
+      if (sum_log_wins == DC::DecimalZero && sum_loss_mag == DC::DecimalZero)
+        return DC::DecimalZero;
+
+      // Use the helper to extract high-precision floating point values
+      const xdouble wins_ld = num::to_long_double(sum_log_wins);
 
       // --- Step 2: Prior loss magnitude anchored to observed win mass ---
-      // The prior's sole purpose is to prevent denominator collapse when a resample
-      // contains no losses. It is deliberately sized as a small fraction of the
-      // observed win mass so it cannot dominate the denominator regardless of
-      // stop loss size or strategy type.
-      //
-      // Note: stop_loss_return_space is intentionally NOT used here. It survives
-      // only for its role in computing tiny_win_return (numerator floor) below.
-      // Prior sizing based on the stop loss caused left-tail collapse in small
-      // samples because the fixed stop-loss-sized prior dominated the denominator
-      // in resamples that drew few wins.
-      const Decimal prior_loss_mag = std::max(Decimal(denom_floor),
-					      Decimal(0.05) * sum_log_wins);
+      // Sized as a small fraction of observed wins to prevent denominator collapse.
+      const Decimal prior_loss_mag = std::max(Decimal(static_cast<xdouble>(denom_floor)),
+					      Decimal(static_cast<xdouble>(0.05) * wins_ld));
 
       // --- Step 3: Denominator with floor ---
+      // Addition in the Decimal domain is exact (int64).
       Decimal denom = sum_loss_mag + prior_loss_mag;
-
-      const Decimal d_denom_floor = Decimal(denom_floor);
+      const Decimal d_denom_floor = Decimal(static_cast<xdouble>(denom_floor));
+    
       if (denom < d_denom_floor)
-	denom = d_denom_floor;
+        denom = d_denom_floor;
 
-      // --- Step 4: Numerator floor ---
-      double stopAbs   = std::abs(stop_loss_return_space);
-      double targetAbs = std::abs(profit_target_return_space);
+      // --- Step 4: Numerator floor calculation ---
+      const xdouble stopAbs   = std::abs(static_cast<xdouble>(stop_loss_return_space));
+      const xdouble targetAbs = std::abs(static_cast<xdouble>(profit_target_return_space));
 
-      double scale = 0.0;
-      if (stopAbs > 0.0 && targetAbs > 0.0)
-	scale = std::min(stopAbs, targetAbs);
-      else if (targetAbs > 0.0)
-	scale = targetAbs;
-      else if (stopAbs > 0.0)
-	scale = stopAbs;
+      xdouble scale = 0.0L;
+      if (stopAbs > 0.0L && targetAbs > 0.0L)
+        scale = std::min(stopAbs, targetAbs);
+      else if (targetAbs > 0.0L)
+        scale = targetAbs;
+      else if (stopAbs > 0.0L)
+        scale = stopAbs;
 
-      const double tiny_win_return = std::max(tiny_win_min_return,
-					      tiny_win_fraction * scale);
-      const Decimal numer_floor = std::log(Decimal(1.0 + tiny_win_return));
+      const xdouble tiny_win_return = std::max(static_cast<xdouble>(tiny_win_min_return),
+					       static_cast<xdouble>(tiny_win_fraction) * scale);
+    
+      // Ensure the log(1 + r) transformation uses long double headroom.
+      const Decimal numer_floor = Decimal(std::log(1.0L + tiny_win_return));
 
       Decimal numer = sum_log_wins;
       if (numer < numer_floor)
-	numer = numer_floor;
+        numer = numer_floor;
 
       // --- Step 5: logPF = log(numer) - log(denom) ---
+      // These calls use the updated decimal_math.h overloads which 
+      // utilize getAsXDouble() for Decimal types.
       return std::log(numer) - std::log(denom);
     }
     
