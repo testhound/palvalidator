@@ -109,12 +109,12 @@ PolicyConfiguration PolicyConfiguration::createDefault() {
         "BootStrappedSharpeRatioPolicy"
     };
     
-    config.defaultPolicy_ = "GatedPerformanceScaledPalPolicy";
+    config.defaultPolicy_ = "BootStrappedLogProfitFactorPolicy";
     
     // Set policy settings to show experimental policies by default
     config.policySettings_.filterExperimental = false;
     config.policySettings_.showDescriptions = true;
-    config.policySettings_.interactiveMode = true;
+    config.policySettings_.interactiveMode = false;
     
     // Create default groups
     config.policyGroups_["recommended"] = PolicyGroup(

@@ -879,7 +879,7 @@ int main(int argc, char **argv)
     // Set validation method based on pipeline mode
     ValidationMethod validationMethod;
     bool partitionByFamily = false;
-    std::string selectedPolicy = "GatedPerformanceScaledPalPolicy"; // Default for bootstrap-only
+    std::string selectedPolicy = "BootStrappedLogProfitFactorPolicy"; // Default for bootstrap-only
     
     if (pipelineMode == PipelineMode::BootstrapOnly) {
         // Bootstrap-only mode: no multiple testing correction applied
@@ -957,7 +957,7 @@ int main(int argc, char **argv)
             // Use default policy from configuration
             selectedPolicy = policyConfig.getDefaultPolicy();
             if (selectedPolicy.empty() || !palvalidator::PolicyRegistry::isPolicyAvailable(selectedPolicy)) {
-                selectedPolicy = "GatedPerformanceScaledPalPolicy"; // Fallback default
+                selectedPolicy = "BootStrappedLogProfitFactorPolicy"; // Fallback default
             }
             std::cout << "Using configured default policy: " << selectedPolicy << std::endl;
         }

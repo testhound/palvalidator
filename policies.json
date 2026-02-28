@@ -11,7 +11,7 @@
       "BootStrappedLogProfitabilityPFPolicy",
       "BootStrappedSharpeRatioPolicy"
     ],
-    "default": "GatedPerformanceScaledPalPolicy",
+    "default": "BootStrappedLogProfitFactorPolicy",
     "groups": {
       "recommended": {
         "policies": ["BootStrappedProfitFactorPolicy", "BootStrappedLogProfitFactorPolicy", "BootStrappedProfitabilityPFPolicy", "BootStrappedLogProfitabilityPFPolicy"],
