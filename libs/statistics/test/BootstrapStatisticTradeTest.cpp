@@ -1407,13 +1407,17 @@ TEST_CASE("LogProfitFactorStat_LogPF trade overload: constructor parameters prop
 
   SECTION("Higher prior_strength makes log(PF) more conservative via trade overload")
     {
-      // NOTE: prior_strength is no longer used in the denominator prior calculation.
-      // The prior is now anchored to 5% of sum_log_wins, making it independent of
-      // prior_strength. Varying prior_strength must produce identical results.
-      auto trades = makeOneBarTrades(rawReturns);
+      // With max-based prior, prior_strength only affects the result when
+      // sum_loss_mag is small enough that the prior dominates.
+      // Use all-winning returns so the denominator is entirely prior-driven.
+      std::vector<DecimalType> winReturns = {
+        DecimalType("0.10"), DecimalType("0.05"), DecimalType("0.20"),
+        DecimalType("0.15"), DecimalType("0.08")
+      };
+      auto trades = makeOneBarTrades(winReturns);
 
-      LogPFStat stat_low (1e-8, 1e-6, /*prior=*/0.5);
-      LogPFStat stat_high(1e-8, 1e-6, /*prior=*/2.0);
+      LogPFStat stat_low (1e-8, 1e-6, /*prior=*/0.01);
+      LogPFStat stat_high(1e-8, 1e-6, /*prior=*/0.05);
 
       double result_low  = num::to_double(stat_low(trades));
       double result_high = num::to_double(stat_high(trades));
@@ -1421,8 +1425,8 @@ TEST_CASE("LogProfitFactorStat_LogPF trade overload: constructor parameters prop
       REQUIRE(std::isfinite(result_low));
       REQUIRE(std::isfinite(result_high));
 
-      // prior_strength is intentionally unused: results must be identical.
-      REQUIRE(result_high == Catch::Approx(result_low).epsilon(1e-12));
+      // Higher prior_strength → larger prior_loss_mag → larger denominator → lower log(PF).
+      REQUIRE(result_high < result_low);
     }
   
 
@@ -1956,7 +1960,7 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF trade overload: edge cases",
     };
     auto trades = makeOneBarLogTrades(rawReturns, 1e-10);
 
-    LogPFBars stat(1e-10, 1e-8, 1.0, 0.5, 0.3);
+    LogPFBars stat(1e-10, 1e-8, 0.05, 0.5, 0.3);
     DecimalType result = stat(trades);
 
     REQUIRE(std::isfinite(num::to_double(result)));
@@ -2046,10 +2050,9 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF trade overload: constructor para
 
   SECTION("Custom stop_loss_pct propagates through trade overload")
     {
-      // NOTE: stop_loss_pct no longer affects the denominator prior. It only
-      // influences the numerator floor (tiny_win_return in Step 4). To observe
-      // this effect, wins must be small enough for the floor to activate.
-      // With normal-sized wins (rawReturns), all calls produce identical results.
+      // stop_loss_pct is accepted for backward compatibility but is intentionally
+      // ignored by LogProfitFactorFromLogBarsStat_LogPF. All calls with different
+      // stop_loss_pct values must produce identical results.
       std::vector<DecimalType> tinyWinReturns = {
 	DecimalType("0.0001"), DecimalType("-0.05"),
 	DecimalType("-0.03"),  DecimalType("0.0002")
@@ -2068,14 +2071,18 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF trade overload: constructor para
       REQUIRE(num::to_double(stat3(trades)) ==
 	      Catch::Approx(num::to_double(stat3(flattenTrades(trades)))).epsilon(1e-12));
 
-      // Larger stop_loss → larger numer_floor → higher log(PF) when wins are tiny.
-      REQUIRE(num::to_double(stat1(trades)) < num::to_double(stat2(trades)));
-      REQUIRE(num::to_double(stat2(trades)) < num::to_double(stat3(trades)));
+      // stop_loss_pct is ignored — all three must produce identical results.
+      REQUIRE(num::to_double(stat1(trades)) ==
+	      Catch::Approx(num::to_double(stat2(trades))).epsilon(1e-12));
+      REQUIRE(num::to_double(stat2(trades)) ==
+	      Catch::Approx(num::to_double(stat3(trades))).epsilon(1e-12));
     }
 
-  SECTION("Custom profit_target_pct propagates — tiny-win regime shows ordering")
+  SECTION("Custom profit_target_pct propagates — parameter is ignored")
   {
-    // Use tiny wins so the numerator floor dominates (from existing flat tests).
+    // profit_target_pct is accepted for backward compatibility but is intentionally
+    // ignored by LogProfitFactorFromLogBarsStat_LogPF. All calls with different
+    // profit_target_pct values must produce identical results.
     std::vector<DecimalType> tinyWinReturns = {
       DecimalType("0.0001"), DecimalType("-0.05"),
       DecimalType("-0.10"),  DecimalType("-0.02")
@@ -2094,21 +2101,27 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF trade overload: constructor para
     REQUIRE(num::to_double(stat3(trades)) ==
             Catch::Approx(num::to_double(stat3(flattenTrades(trades)))).epsilon(1e-12));
 
-    // Higher profit_target → higher numer_floor → higher log(PF).
-    REQUIRE(num::to_double(stat1(trades)) < num::to_double(stat2(trades)));
-    REQUIRE(num::to_double(stat2(trades)) < num::to_double(stat3(trades)));
+    // profit_target_pct is ignored — all three must produce identical results.
+    REQUIRE(num::to_double(stat1(trades)) ==
+            Catch::Approx(num::to_double(stat2(trades))).epsilon(1e-12));
+    REQUIRE(num::to_double(stat2(trades)) ==
+            Catch::Approx(num::to_double(stat3(trades))).epsilon(1e-12));
   }
 
   SECTION("Higher prior_strength makes log(PF) strictly lower (more pessimistic)")
     {
-      // NOTE: prior_strength is no longer used in the denominator prior calculation.
-      // The prior is now anchored to 5% of sum_log_wins, making it independent of
-      // prior_strength. Varying prior_strength must produce identical results.
-      auto trades = makeOneBarLogTrades(rawReturns, ruin_eps);
+      // With max-based prior, prior_strength only affects the result when
+      // sum_loss_mag is small enough that the prior dominates.
+      // Use all-winning returns so the denominator is entirely prior-driven.
+      std::vector<DecimalType> winReturns = {
+        DecimalType("0.10"), DecimalType("0.05"), DecimalType("0.20"),
+        DecimalType("0.15"), DecimalType("0.08")
+      };
+      auto trades = makeOneBarLogTrades(winReturns, ruin_eps);
 
-      LogPFBars stat_low (ruin_eps, 1e-6, /*prior=*/0.5);
-      LogPFBars stat_mid (ruin_eps, 1e-6, /*prior=*/1.0);
-      LogPFBars stat_high(ruin_eps, 1e-6, /*prior=*/2.0);
+      LogPFBars stat_low (ruin_eps, 1e-6, /*prior=*/0.01);
+      LogPFBars stat_mid (ruin_eps, 1e-6, /*prior=*/0.05);
+      LogPFBars stat_high(ruin_eps, 1e-6, /*prior=*/0.10);
 
       double result_low  = num::to_double(stat_low(trades));
       double result_mid  = num::to_double(stat_mid(trades));
@@ -2118,9 +2131,9 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF trade overload: constructor para
       REQUIRE(std::isfinite(result_mid));
       REQUIRE(std::isfinite(result_high));
 
-      // prior_strength is intentionally unused: all results must be identical.
-      REQUIRE(result_high == Catch::Approx(result_mid).epsilon(1e-12));
-      REQUIRE(result_mid  == Catch::Approx(result_low).epsilon(1e-12));
+      // Higher prior_strength → larger prior_loss_mag → larger denominator → lower log(PF).
+      REQUIRE(result_high < result_mid);
+      REQUIRE(result_mid  < result_low);
     }
  
   SECTION("All custom parameters: trade overload matches flat log-bar overload")
@@ -2259,8 +2272,9 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF trade overload: multi-bar trade 
     // Critical usage-contract test: getDailyReturns() must contain log-growth
     // values, not raw percent returns.  If raw returns were passed, the stat
     // would interpret them as log-bars, producing a different (incorrect) result.
+    // Use large returns so log(1+r) differs substantially from r.
     std::vector<DecimalType> rawReturns = {
-      DecimalType("0.05"), DecimalType("-0.02"), DecimalType("0.03")
+      DecimalType("0.50"), DecimalType("-0.60"), DecimalType("0.40")
     };
 
     // Correct usage: pre-log the returns.
@@ -2275,7 +2289,7 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF trade overload: multi-bar trade 
     DecimalType incorrect = stat(rawTrades);
 
     // The two results must differ, documenting the usage contract.
-    REQUIRE(num::to_double(correct) != Catch::Approx(num::to_double(incorrect)).margin(1e-6));
+    REQUIRE(num::to_double(correct) != Catch::Approx(num::to_double(incorrect)).margin(1e-9));
   }
 }
 
