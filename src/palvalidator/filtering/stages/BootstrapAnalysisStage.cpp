@@ -916,7 +916,7 @@ namespace palvalidator::filtering::stages
 					   /*Basic*/       false,   // same
 					   /*Percentile*/  false,   // same
 					   /*MOutOfN*/     true,    // fixed-ratio path for trade-level
-					   /*PercentileT*/ true,    // distribution-free, appropriate for IID
+					   /*PercentileT*/ false,    // distribution-free, appropriate for IID
 					   /*BCa*/         true);   // distribution-free, appropriate for IID
 
 
@@ -1244,7 +1244,8 @@ namespace palvalidator::filtering::stages
     using Decimal   = Num;
     using Stat      = mkc_timeseries::StatUtils<Decimal>;
     using TradeType = Trade<Decimal>;
-    using Sampler   = typename Stat::LogProfitFactorFromLogBarsStat_LogPF;
+    using Sampler = typename Stat::LogProfitFactorFromLogBarsStat_LogPF_Custom<Stat::SmallSampleNumerPolicy,
+									       Stat::SmallSampleDenomPolicy>;
     using Resampler = IIDResampler<TradeType>;
     using AutoCI    = AutoCIResult<Decimal>;
     using Candidate = typename AutoCI::Candidate;
@@ -1303,7 +1304,7 @@ namespace palvalidator::filtering::stages
       /*Basic*/       false,
       /*Percentile*/  false,
       /*MOutOfN*/     true,
-      /*PercentileT*/ true,
+      /*PercentileT*/ false,
       /*BCa*/         true);
 
     os << "   [Bootstrap] AutoCI trade-level (PF): passing stop loss of "
