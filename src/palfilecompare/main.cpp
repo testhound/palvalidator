@@ -229,6 +229,35 @@ void comparePatternSystems(const std::shared_ptr<PriceActionLabSystem>& system1,
 }
 
 /**
+ * @brief Prompts user for a yes/no answer (default is yes)
+ * @param prompt The prompt message to display
+ * @return true if user answered yes (or pressed enter), false otherwise
+ */
+bool getUserYesNo(const string& prompt)
+{
+    cout << prompt << " [Y/n]: ";
+    string input;
+    getline(cin, input);
+    input = trim(input);
+    if (input.empty()) return true;          // default: yes
+    return (input == "y" || input == "Y" || input == "yes" || input == "Yes" || input == "YES");
+}
+
+/**
+ * @brief Resolves a filename against an optional directory prefix
+ * @param directory Directory path (may be empty, meaning current directory)
+ * @param filename  Filename or relative path supplied by the user
+ * @return Combined filesystem path
+ */
+filesystem::path resolveFilePath(const string& directory, const string& filename)
+{
+    if (directory.empty()) {
+        return filesystem::path(filename);
+    }
+    return filesystem::path(directory) / filesystem::path(filename);
+}
+
+/**
  * @brief Validates that a file exists and is readable
  * @param filePath Path to the file to validate
  * @return true if file exists and is readable, false otherwise
@@ -339,26 +368,85 @@ int main(int argc, char* argv[])
         return SUCCESS;
     }
     
-    // Get file paths (from command line or user input)
-    if (file1Path.empty()) {
-        file1Path = getUserInput("Enter path to first PAL IR file");
-        if (file1Path.empty()) {
-            cerr << "Error: First file path cannot be empty" << endl;
-            return INVALID_INPUT_ERROR;
+    // -----------------------------------------------------------------------
+    // Resolve file paths
+    //
+    // When both paths are supplied on the command line they are used as-is.
+    // In interactive mode the user is first asked whether the two files share
+    // a common directory (the most common scenario).  If yes, the directory is
+    // collected once and prepended to each filename; if no, each full path is
+    // collected independently.
+    // -----------------------------------------------------------------------
+
+    filesystem::path filePath1, filePath2;
+
+    if (!file1Path.empty() && !file2Path.empty()) {
+        // Both paths provided on the command line – use them directly.
+        filePath1 = filesystem::path(file1Path);
+        filePath2 = filesystem::path(file2Path);
+    }
+    else {
+        // Interactive mode: ask about shared directory first.
+        bool sameDirectory = getUserYesNo("Are both PAL IR files in the same directory?");
+
+        if (sameDirectory) {
+            string sharedDir = getUserInput("Enter the directory containing both files");
+            if (sharedDir.empty()) {
+                cerr << "Error: Directory path cannot be empty" << endl;
+                return INVALID_INPUT_ERROR;
+            }
+
+            // Validate the directory exists up front so we can give a clear error.
+            if (!filesystem::exists(sharedDir) || !filesystem::is_directory(sharedDir)) {
+                cerr << "Error: Directory does not exist or is not a directory: " << sharedDir << endl;
+                return FILE_SYSTEM_ERROR;
+            }
+
+            string fname1 = file1Path.empty()
+                ? getUserInput("Enter the filename of the first PAL IR file")
+                : filesystem::path(file1Path).filename().string();
+
+            if (fname1.empty()) {
+                cerr << "Error: First filename cannot be empty" << endl;
+                return INVALID_INPUT_ERROR;
+            }
+
+            string fname2 = file2Path.empty()
+                ? getUserInput("Enter the filename of the second PAL IR file")
+                : filesystem::path(file2Path).filename().string();
+
+            if (fname2.empty()) {
+                cerr << "Error: Second filename cannot be empty" << endl;
+                return INVALID_INPUT_ERROR;
+            }
+
+            filePath1 = resolveFilePath(sharedDir, fname1);
+            filePath2 = resolveFilePath(sharedDir, fname2);
+        }
+        else {
+            // Files are in different directories – collect each full path separately.
+            if (file1Path.empty()) {
+                file1Path = getUserInput("Enter the full path to the first PAL IR file");
+                if (file1Path.empty()) {
+                    cerr << "Error: First file path cannot be empty" << endl;
+                    return INVALID_INPUT_ERROR;
+                }
+            }
+
+            if (file2Path.empty()) {
+                file2Path = getUserInput("Enter the full path to the second PAL IR file");
+                if (file2Path.empty()) {
+                    cerr << "Error: Second file path cannot be empty" << endl;
+                    return INVALID_INPUT_ERROR;
+                }
+            }
+
+            filePath1 = filesystem::path(file1Path);
+            filePath2 = filesystem::path(file2Path);
         }
     }
-    
-    if (file2Path.empty()) {
-        file2Path = getUserInput("Enter path to second PAL IR file");
-        if (file2Path.empty()) {
-            cerr << "Error: Second file path cannot be empty" << endl;
-            return INVALID_INPUT_ERROR;
-        }
-    }
-    
+
     try {
-        filesystem::path filePath1(file1Path);
-        filesystem::path filePath2(file2Path);
         
         // Validate input files
         if (!validateInputFile(filePath1)) {
