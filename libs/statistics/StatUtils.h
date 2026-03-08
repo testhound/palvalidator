@@ -2,6 +2,7 @@
 #include <vector>
 #include <cmath>
 #include <tuple>
+#include <optional>
 #include <random>
 #include <functional> 
 #include <numeric> // Required for std::accumulate
@@ -104,15 +105,15 @@ namespace mkc_timeseries
      * scaling across different sample sizes.
      *
      * MODES:
-     *   0 = Legacy (hard cutoff at n=30, backward compatible)
-     *   1 = Smooth fade (default, eliminates discontinuity)
-     *   2 = Always on (constant alpha, no fade)
+     * 0 = Legacy (hard cutoff at n=30, backward compatible)
+     * 1 = Smooth fade (default, eliminates discontinuity)
+     * 2 = Always on (constant alpha, no fade)
      *
      * SCALING (Mode 1 - Smooth Fade):
-     *   n ∈ [20, 30]:   Full protection (k ≥ 1)
-     *   n ∈ [31, 50]:   Still protected (k ≥ 1, covers 94% of typical data)
-     *   n ∈ [51, 100]:  Gradual fade (k scales down smoothly)
-     *   n > 100:        Minimal winsorization (uses raw alpha)
+     * n ∈ [20, 30]:   Full protection (k ≥ 1)
+     * n ∈ [31, 50]:   Still protected (k ≥ 1, covers 94% of typical data)
+     * n ∈ [51, 100]:  Gradual fade (k scales down smoothly)
+     * n > 100:        Minimal winsorization (uses raw alpha)
      *
      * @tparam Decimal Numeric type (e.g., mkc_timeseries::number)
      */
@@ -125,9 +126,9 @@ namespace mkc_timeseries
        *
        * @param alpha         Base winsorization proportion (e.g., 0.02 for 2% per tail)
        * @param adaptive_mode Winsorization strategy:
-       *                      0 = Legacy (hard cutoff at n=30)
-       *                      1 = Smooth fade (default, eliminates discontinuity)
-       *                      2 = Always on (constant alpha)
+       * 0 = Legacy (hard cutoff at n=30)
+       * 1 = Smooth fade (default, eliminates discontinuity)
+       * 2 = Always on (constant alpha)
        */
       explicit AdaptiveWinsorizer(double alpha = 0.02, int adaptive_mode = 1)
         : m_alpha(alpha)
@@ -283,13 +284,13 @@ namespace mkc_timeseries
      * computes the geometric mean.
      *
      * WINSORIZATION:
-     *   - Applied in log-space for symmetry and stability
-     *   - Adaptive scaling eliminates n=30/31 discontinuity
-     *   - See AdaptiveWinsorizer for detailed behavior
+     * - Applied in log-space for symmetry and stability
+     * - Adaptive scaling eliminates n=30/31 discontinuity
+     * - See AdaptiveWinsorizer for detailed behavior
      *
      * TYPICAL USAGE:
-     *   GeoMeanStat stat;  // Defaults to smooth fade mode
-     *   Decimal gm = stat(returns);
+     * GeoMeanStat stat;  // Defaults to smooth fade mode
+     * Decimal gm = stat(returns);
      */
     template <typename Decimal>
     struct GeoMeanStat
@@ -326,18 +327,18 @@ namespace mkc_timeseries
        * @param clip_ruin       If true, clip 1+r to at least ruin_eps before log.
        * @param winsor_small_n  If true, enable adaptive winsorization.
        * @param winsor_alpha    Base winsorization proportion (e.g., 0.02 for 2% per tail).
-       *                        For small n, actual percentage will be higher due to k ≥ 1 enforcement.
-       *                        Effective percentages with adaptive mode 1:
-       *                          n=20:  10% per tail (k=1, 2 out of 20)
-       *                          n=26:  7.7% per tail (k=1, 2 out of 26)
-       *                          n=30:  6.7% per tail (k=1, 2 out of 30)
-       *                          n=50:  4.0% per tail (k=1, 2 out of 50)
-       *                          n=100: ~2.0% per tail (k=2, 4 out of 100)
+       * For small n, actual percentage will be higher due to k ≥ 1 enforcement.
+       * Effective percentages with adaptive mode 1:
+       * n=20:  10% per tail (k=1, 2 out of 20)
+       * n=26:  7.7% per tail (k=1, 2 out of 26)
+       * n=30:  6.7% per tail (k=1, 2 out of 30)
+       * n=50:  4.0% per tail (k=1, 2 out of 50)
+       * n=100: ~2.0% per tail (k=2, 4 out of 100)
        * @param ruin_eps        Floor for (1+r). Must be > 0 (e.g., 1e-8).
        * @param adaptive_mode   Winsorization strategy:
-       *                        0 = Legacy (hard cutoff at n=30, backward compatible)
-       *                        1 = Smooth fade (default, eliminates discontinuity)
-       *                        2 = Always on (constant alpha, no fade)
+       * 0 = Legacy (hard cutoff at n=30, backward compatible)
+       * 1 = Smooth fade (default, eliminates discontinuity)
+       * 2 = Always on (constant alpha, no fade)
        */
       explicit GeoMeanStat(bool   clip_ruin      = true,
                            bool   winsor_small_n = true,
@@ -352,7 +353,7 @@ namespace mkc_timeseries
 
       /**
        * @brief Backward-compatible constructor (legacy signature).
-       *        Defaults to smooth adaptive mode (mode=1).
+       * Defaults to smooth adaptive mode (mode=1).
        */
       explicit GeoMeanStat(bool clip_ruin, double ruin_eps)
         : m_clipRuin(clip_ruin)
@@ -369,10 +370,10 @@ namespace mkc_timeseries
        *
        * @details
        * Process:
-       *   1. Convert returns to log-space: log(1 + r)
-       *   2. Apply adaptive winsorization to log-values (if enabled)
-       *   3. Compute mean of (winsorized) logs
-       *   4. Back-transform: exp(mean_log) - 1
+       * 1. Convert returns to log-space: log(1 + r)
+       * 2. Apply adaptive winsorization to log-values (if enabled)
+       * 3. Compute mean of (winsorized) logs
+       * 4. Back-transform: exp(mean_log) - 1
        *
        * @throws std::domain_error if clip_ruin=false and any 1+r ≤ 0
        */
@@ -458,17 +459,17 @@ namespace mkc_timeseries
      * winsorization as GeoMeanStat but operates directly on log-space values.
      *
      * PERFORMANCE:
-     *   In bootstrap with 1000 iterations, this avoids 1000 × n log() computations
-     *   by working with pre-computed log-bars.
+     * In bootstrap with 1000 iterations, this avoids 1000 × n log() computations
+     * by working with pre-computed log-bars.
      *
      * CONSISTENCY:
-     *   GeoMeanStat(returns) ≡ GeoMeanFromLogBarsStat(makeLogGrowthSeries(returns))
-     *   Both use identical AdaptiveWinsorizer logic.
+     * GeoMeanStat(returns) ≡ GeoMeanFromLogBarsStat(makeLogGrowthSeries(returns))
+     * Both use identical AdaptiveWinsorizer logic.
      *
      * TYPICAL USAGE:
-     *   auto logBars = StatUtils::makeLogGrowthSeries(returns, ruin_eps);
-     *   GeoMeanFromLogBarsStat stat;
-     *   Decimal gm = stat(logBars);
+     * auto logBars = StatUtils::makeLogGrowthSeries(returns, ruin_eps);
+     * GeoMeanFromLogBarsStat stat;
+     * Decimal gm = stat(logBars);
      */
     template <typename Decimal>
     struct GeoMeanFromLogBarsStat
@@ -498,11 +499,11 @@ namespace mkc_timeseries
        *
        * @param winsor_small_n If true, enable adaptive winsorization.
        * @param winsor_alpha   Base winsorization proportion (e.g., 0.02 for 2% per tail).
-       *                       See GeoMeanStat documentation for effective percentages.
+       * See GeoMeanStat documentation for effective percentages.
        * @param adaptive_mode  Winsorization strategy:
-       *                       0 = Legacy (hard cutoff at n=30)
-       *                       1 = Smooth fade (default, eliminates discontinuity)
-       *                       2 = Always on (constant alpha, no fade)
+       * 0 = Legacy (hard cutoff at n=30)
+       * 1 = Smooth fade (default, eliminates discontinuity)
+       * 2 = Always on (constant alpha, no fade)
        */
       explicit GeoMeanFromLogBarsStat(bool   winsor_small_n = true,
                                       double winsor_alpha   = 0.02,
@@ -517,18 +518,18 @@ namespace mkc_timeseries
        * @brief Compute geometric mean from pre-computed log(1+r) bars.
        *
        * @param logBars Vector of log-transformed returns. Each element should be
-       *                log(max(1 + r_i, ruin_eps)) as produced by makeLogGrowthSeries.
+       * log(max(1 + r_i, ruin_eps)) as produced by makeLogGrowthSeries.
        * @return Decimal per-period geometric mean (same units as original returns).
        *
        * @details
        * Process:
-       *   1. Copy logBars (to preserve caller's data)
-       *   2. Apply adaptive winsorization to log-values (if enabled)
-       *   3. Compute mean of (winsorized) logs
-       *   4. Back-transform: exp(mean_log) - 1
+       * 1. Copy logBars (to preserve caller's data)
+       * 2. Apply adaptive winsorization to log-values (if enabled)
+       * 3. Compute mean of (winsorized) logs
+       * 4. Back-transform: exp(mean_log) - 1
        *
        * NOTE: Input is already in log-space, so no log() calls are needed.
-       *       This is the key performance optimization for bootstrap use.
+       * This is the key performance optimization for bootstrap use.
        */
       Decimal operator()(const std::vector<Decimal>& logBars) const
       {
@@ -702,7 +703,7 @@ namespace mkc_timeseries
      * This function takes a vector of per-period returns (expressed as decimals,
      * where +5% is 0.05) and converts each return into a log-growth value:
      *
-     *     log_i = log( max(1 + r_i, ruin_eps) )
+     * log_i = log( max(1 + r_i, ruin_eps) )
      *
      * The value ruin_eps is used to clamp the growth factor in cases where
      * 1 + r_i is zero or negative. This prevents undefined logarithms and
@@ -714,15 +715,15 @@ namespace mkc_timeseries
      * such as LogProfitFactorFromLogBarsStat.
      *
      * @param returns
-     *     Vector of percentage returns, where +1% = 0.01.
+     * Vector of percentage returns, where +1% = 0.01.
      *
      * @param ruin_eps
-     *     A small positive constant used when 1 + r_i <= 0. Must be > 0.
-     *     This value determines how "ruin" is represented in log space.
+     * A small positive constant used when 1 + r_i <= 0. Must be > 0.
+     * This value determines how "ruin" is represented in log space.
      *
      * @return
-     *     A vector of log-growth values of the same length as the input.
-     *     Each output element is log(max(1 + r_i, ruin_eps)).
+     * A vector of log-growth values of the same length as the input.
+     * Each output element is log(max(1 + r_i, ruin_eps)).
      *
      * @note
      * The caller is responsible for using the same ruin_eps here and in the
@@ -862,6 +863,305 @@ namespace mkc_timeseries
       return computeFactor(win, loss, compressResult);
     }
 
+    using xdouble = long double;
+
+    // Policy 1: current behavior (matches your existing computeLogPF_FromSums)
+    struct HardMaxWinAnchorDenomPolicy
+    {
+      static Decimal computeDenom(Decimal sum_log_wins,
+				  Decimal sum_loss_mag,
+				  Decimal floor_d,
+				  double  prior_strength,
+				  int     /*loss_count*/,
+				  int     /*N*/)
+      {
+	const xdouble wins_ld  = num::to_long_double(sum_log_wins);
+	const xdouble prior_ld = static_cast<xdouble>(prior_strength);
+
+	const Decimal prior_loss_mag =
+	  std::max(floor_d, Decimal(prior_ld * wins_ld));
+
+	return std::max(sum_loss_mag, prior_loss_mag);
+      }
+    };
+
+    // Policy 2: smooth denom (recommended baseline): denom = L + alpha*W
+    struct SmoothAdditiveWinDenomPolicy
+    {
+      static Decimal computeDenom(Decimal sum_log_wins,
+				  Decimal sum_loss_mag,
+				  Decimal floor_d,
+				  double  prior_strength,
+				  int     /*loss_count*/,
+				  int     /*N*/)
+      {
+	const Decimal alpha(static_cast<xdouble>(prior_strength));
+	Decimal denom = sum_loss_mag + alpha * sum_log_wins;
+	return std::max(denom, floor_d);
+      }
+    };
+
+    // Policy 3: smooth + count-fading with k0 computed from N (best small-sample)
+    struct SmoothAdditiveWinCountFadingDenomPolicy
+    {
+      static int computeK0FromN(int N)
+      {
+	// Your preference: k0 ~ 5 for N~20–27
+	// Use k0 = round(0.2*N), clamped.
+	if (N <= 0) return 5;
+
+	const xdouble raw = static_cast<xdouble>(N) * 0.20L;
+	int k0 = static_cast<int>(std::llround(raw));
+	if (k0 < 3)  k0 = 3;
+	if (k0 > 10) k0 = 10;
+	return k0;
+      }
+
+      static Decimal computeDenom(Decimal sum_log_wins,
+				  Decimal sum_loss_mag,
+				  Decimal floor_d,
+				  double  prior_strength,
+				  int     loss_count,
+				  int     N)
+      {
+	if (loss_count < 0) loss_count = 0;
+	if (N < 0) N = 0;
+
+	const int k0_int = computeK0FromN(N);
+
+	const xdouble k0   = static_cast<xdouble>(k0_int);
+	const xdouble lc   = static_cast<xdouble>(loss_count);
+	const xdouble fade = k0 / (k0 + lc); // in (0,1]
+
+	const double effective_prior_strength = prior_strength * static_cast<double>(fade);
+
+	// Reuse smooth additive denom with effective prior
+	return SmoothAdditiveWinDenomPolicy::computeDenom(sum_log_wins,
+							  sum_loss_mag,
+							  floor_d,
+							  effective_prior_strength,
+							  /*loss_count*/ -1,
+							  /*N*/ -1);
+      }
+    };
+
+    struct NumeratorFloorPolicy
+    {
+      static Decimal computeNumer(Decimal sum_log_wins, Decimal floor_d)
+      {
+	return std::max(sum_log_wins, floor_d);
+      }
+    };
+
+    struct NumeratorStrictPolicy
+    {
+      static Decimal computeNumer(Decimal sum_log_wins, Decimal /*floor_d*/)
+      {
+	return sum_log_wins;
+      }
+    };
+
+
+    // ---- Result / finalization policies ----
+    // These policies define how to map (numer, denom) to the final statistic.
+
+    struct ResultRawPFPolicy
+    {
+      // Returns PF (ratio) in Decimal space.
+      static Decimal finalizeFromRatio(const Decimal& numer, const Decimal& denom)
+      {
+	using DC = DecimalConstants<Decimal>;
+	return (denom > DC::DecimalZero) ? (numer / denom) : DC::DecimalZero;
+      }
+    };
+
+    struct ResultLog1pPFPolicy
+    {
+      // Returns log(1 + PF). This is your legacy "compressResult" behavior:
+      // return std::log(DecimalOne + pf); :contentReference[oaicite:2]{index=2}
+      static Decimal finalizeFromRatio(const Decimal& numer, const Decimal& denom)
+      {
+	using DC = DecimalConstants<Decimal>;
+	const Decimal pf = (denom > DC::DecimalZero) ? (numer / denom) : DC::DecimalZero;
+	return std::log(DC::DecimalOne + pf);
+      }
+    };
+
+    struct ResultLogPFPolicy
+    {
+      // Returns log(PF) = log(numer) - log(denom).
+      // This matches the LogPF family behavior. :contentReference[oaicite:3]{index=3}
+      static Decimal finalizeFromRatio(const Decimal& numer, const Decimal& denom)
+      {
+	// Use long double logs to avoid relying on std::log(Decimal) overloads.
+	const long double n = num::to_long_double(numer);
+	const long double d = num::to_long_double(denom);
+	return Decimal(std::log(n) - std::log(d));
+      }
+    };
+
+    using LegacyNumerPolicy = NumeratorFloorPolicy;
+    using LegacyDenomPolicy = HardMaxWinAnchorDenomPolicy;
+    
+    // For new small-sample calls (loss_count + N) we recommend smooth + count-fade.
+    using SmallSampleNumerPolicy = NumeratorFloorPolicy;
+    using SmallSampleDenomPolicy = SmoothAdditiveWinCountFadingDenomPolicy;
+
+    // =========================================================================
+    // LogPFConfig — consolidates the three shared numeric parameters so they
+    // travel as a single object and eliminate repeated constructor boilerplate.
+    // =========================================================================
+    struct LogPFConfig
+    {
+      double ruin_eps       = StatUtils::DefaultRuinEps;
+      double denom_floor    = StatUtils::DefaultDenomFloor;
+      double prior_strength = StatUtils::DefaultPriorStrength;
+
+      LogPFConfig() = default;
+      LogPFConfig(double ruin_eps_, double denom_floor_, double prior_strength_) noexcept
+        : ruin_eps(ruin_eps_), denom_floor(denom_floor_), prior_strength(prior_strength_)
+      {}
+    };
+
+    // =========================================================================
+    // MedianPriorDenomPolicy — used by the Robust (log(1+PF)) family.
+    //
+    // Requires the full per-loss magnitude container (not just the scalar sum)
+    // to compute a median-based Bayesian prior.  Exposes computePrior() which
+    // is called by computeProfitFactor_FromSums_MedianImpl.
+    // =========================================================================
+    struct MedianPriorDenomPolicy
+    {
+      template<typename LossMagContainer>
+      static Decimal computePrior(const LossMagContainer& loss_mags,
+                                   double ruin_eps,
+                                   double denom_floor,
+                                   double prior_strength,
+                                   double default_loss_magnitude)
+      {
+        if (!loss_mags.empty())
+        {
+          LossMagContainer copy(loss_mags.begin(), loss_mags.end());
+          const std::size_t mid = copy.size() / 2;
+          std::nth_element(copy.begin(),
+                           copy.begin() + static_cast<std::ptrdiff_t>(mid),
+                           copy.end());
+          return copy[mid] * Decimal(prior_strength);
+        }
+        else
+        {
+          const Decimal assumed =
+            (default_loss_magnitude > 0.0)
+              ? Decimal(default_loss_magnitude)
+              : Decimal(std::max(-std::log(ruin_eps), denom_floor));
+          return assumed * Decimal(prior_strength);
+        }
+      }
+    };
+
+    // =========================================================================
+    // AccumSums — unified accumulation result.
+    //
+    //   sum_log_wins   Σ log(1+r) for r > 0
+    //   sum_loss_mag   Σ |log(1+r)| for r < 0          (scalar, always ≥ 0)
+    //   sum_log_losses signed Σ log(1+r) for r < 0     (always ≤ 0)
+    //   loss_mags      per-bar |log(1+r)| buffer        (for MedianPriorDenomPolicy)
+    //   loss_count     number of losing bars             (for count-fading denom)
+    //   N              total bar count
+    // =========================================================================
+    struct AccumSums
+    {
+      Decimal sum_log_wins   = Decimal(0);
+      Decimal sum_loss_mag   = Decimal(0);
+      Decimal sum_log_losses = Decimal(0);
+      boost::container::small_vector<Decimal, 64> loss_mags;
+      int loss_count = 0;
+      int N          = 0;
+    };
+
+    // =========================================================================
+    // RawReturnsAccumPolicy — accumulates from raw percent returns.
+    //
+    // Uses the ruin_double trick (raw double comparison + raw double log) so
+    // that sub-precision ruin events (e.g. ruin_eps=1e-8 in decimal<8>) still
+    // produce a finite loss magnitude.
+    // =========================================================================
+    struct RawReturnsAccumPolicy
+    {
+      static AccumSums accumulate(const std::vector<Decimal>& input,
+                                   double ruin_eps)
+      {
+        using DC = DecimalConstants<Decimal>;
+        AccumSums s;
+        s.N = static_cast<int>(input.size());
+
+        const Decimal one    = DC::DecimalOne;
+        const Decimal zero   = DC::DecimalZero;
+        const double  ruin_d = (ruin_eps > 0.0) ? ruin_eps : StatUtils::DefaultRuinEps;
+
+        for (const auto& r : input)
+        {
+          if (r > zero)
+          {
+            s.sum_log_wins += std::log(one + r);
+          }
+          else if (r < zero)
+          {
+            const double growth_dbl = num::to_double(one + r);
+
+            Decimal lr_mag;
+            if (growth_dbl <= 0.0)
+              lr_mag = Decimal(-std::log(ruin_d));   // ruin bypass
+            else
+              lr_mag = -std::log(one + r);
+
+            s.sum_loss_mag   += lr_mag;
+            s.sum_log_losses -= lr_mag;
+            s.loss_mags.push_back(lr_mag);
+            s.loss_count++;
+          }
+          // r == 0: neutral bar, skip
+        }
+        return s;
+      }
+    };
+
+    // =========================================================================
+    // LogBarsAccumPolicy — accumulates from pre-computed log-growth values.
+    //
+    // ruin_eps is unused here: ruin handling was applied upstream in
+    // makeLogGrowthSeries() or an equivalent transformation.
+    // =========================================================================
+    struct LogBarsAccumPolicy
+    {
+      static AccumSums accumulate(const std::vector<Decimal>& input,
+                                   double /*ruin_eps*/)
+      {
+        using DC = DecimalConstants<Decimal>;
+        AccumSums s;
+        s.N = static_cast<int>(input.size());
+
+        const Decimal zero = DC::DecimalZero;
+
+        for (const auto& lr : input)
+        {
+          if (lr > zero)
+          {
+            s.sum_log_wins += lr;
+          }
+          else if (lr < zero)
+          {
+            const Decimal lr_mag = -lr;
+            s.sum_loss_mag   += lr_mag;
+            s.sum_log_losses -= lr_mag;
+            s.loss_mags.push_back(lr_mag);
+            s.loss_count++;
+          }
+        }
+        return s;
+      }
+    };
+
     /**
      * @brief Compute a robust, regularized profit factor in log space.
      *
@@ -873,29 +1173,29 @@ namespace mkc_timeseries
      *
      * The computation proceeds in three main stages:
      *
-     *   1. Transform returns into log-growth values:
-     *        • For each return r, compute growth = 1 + r.
-     *        • If growth <= 0, clamp to ruin_eps (a small positive constant).
-     *        • Take lr = log(growth).
-     *        • If r > 0, add lr to the numerator (sum of log wins).
-     *        • If r < 0, add lr to the log-loss sum and store its magnitude
-     *          into a loss-magnitudes buffer.
+     * 1. Transform returns into log-growth values:
+     * • For each return r, compute growth = 1 + r.
+     * • If growth <= 0, clamp to ruin_eps (a small positive constant).
+     * • Take lr = log(growth).
+     * • If r > 0, add lr to the numerator (sum of log wins).
+     * • If r < 0, add lr to the log-loss sum and store its magnitude
+     * into a loss-magnitudes buffer.
      *
-     *   2. Build a robust prior for the denominator:
-     *        • If there is at least one loss, compute the median loss magnitude
-     *          from the loss-magnitudes buffer and scale it by prior_strength.
-     *        • If there are no losses, use default_loss_magnitude if it is
-     *          positive; otherwise, derive a fallback magnitude from ruin_eps
-     *          and denom_floor. This acts as a pseudo-loss so the denominator
-     *          does not vanish when the sample has only wins.
+     * 2. Build a robust prior for the denominator:
+     * • If there is at least one loss, compute the median loss magnitude
+     * from the loss-magnitudes buffer and scale it by prior_strength.
+     * • If there are no losses, use default_loss_magnitude if it is
+     * positive; otherwise, derive a fallback magnitude from ruin_eps
+     * and denom_floor. This acts as a pseudo-loss so the denominator
+     * does not vanish when the sample has only wins.
      *
-     *   3. Form the final ratio:
-     *        • Numerator is the sum of log wins.
-     *        • Denominator is the absolute sum of log losses plus the prior.
-     *        • The denominator is floored at denom_floor to avoid division
-     *          by extremely small values.
-     *        • If compressResult is true, the final value is log(1 + PF);
-     *          otherwise the raw PF ratio (numerator / denominator) is returned.
+     * 3. Form the final ratio:
+     * • Numerator is the sum of log wins.
+     * • Denominator is the absolute sum of log losses plus the prior.
+     * • The denominator is floored at denom_floor to avoid division
+     * by extremely small values.
+     * • If compressResult is true, the final value is log(1 + PF);
+     * otherwise the raw PF ratio (numerator / denominator) is returned.
      *
      * This function is the core implementation used by LogProfitFactorStat.
      * When combined with makeLogGrowthSeries and LogProfitFactorFromLogBarsStat,
@@ -903,37 +1203,37 @@ namespace mkc_timeseries
      * precomputed log-growth series.
      *
      * @param xs
-     *     Vector of per-period returns, expressed as decimal fractions
-     *     (for example +1% = 0.01).
+     * Vector of per-period returns, expressed as decimal fractions
+     * (for example +1% = 0.01).
      *
      * @param compressResult
-     *     If true, return log(1 + PF). If false, return the raw PF ratio.
-     *     The compressed version is usually preferred for inference.
+     * If true, return log(1 + PF). If false, return the raw PF ratio.
+     * The compressed version is usually preferred for inference.
      *
      * @param ruin_eps
-     *     Small positive floor for (1 + r) when it would otherwise be zero
-     *     or negative. This ensures log(1 + r) is always defined and heavily
-     *     penalizes ruin-like events.
+     * Small positive floor for (1 + r) when it would otherwise be zero
+     * or negative. This ensures log(1 + r) is always defined and heavily
+     * penalizes ruin-like events.
      *
      * @param denom_floor
-     *     Minimum allowed denominator value in log space. This prevents extreme
-     *     PF blow-ups when loss magnitudes are very small.
+     * Minimum allowed denominator value in log space. This prevents extreme
+     * PF blow-ups when loss magnitudes are very small.
      *
      * @param prior_strength
-     *     Multiplier for the prior loss magnitude. A value of 1.0 behaves like
-     *     adding one extra loss of "typical" size to the denominator.
+     * Multiplier for the prior loss magnitude. A value of 1.0 behaves like
+     * adding one extra loss of "typical" size to the denominator.
      *
      * @param default_loss_magnitude
-     *     Optional fallback loss magnitude used when there are no losses in
-     *     the sample. If this is greater than zero, it is interpreted as a
-     *     fixed log-loss magnitude (for example derived from a strategy stop
-     *     loss). If it is zero or negative, a ruin-based fallback is derived
-     *     from ruin_eps and denom_floor.
+     * Optional fallback loss magnitude used when there are no losses in
+     * the sample. If this is greater than zero, it is interpreted as a
+     * fixed log-loss magnitude (for example derived from a strategy stop
+     * loss). If it is zero or negative, a ruin-based fallback is derived
+     * from ruin_eps and denom_floor.
      *
      * @return
-     *     Robust profit-factor statistic in either compressed (log(1 + PF))
-     *     or raw PF form, depending on compressResult. Returns zero if xs
-     *     is empty.
+     * Robust profit-factor statistic in either compressed (log(1 + PF))
+     * or raw PF form, depending on compressResult. Returns zero if xs
+     * is empty.
      */
     static Decimal computeLogProfitFactorRobust(
 						const std::vector<Decimal>& xs,
@@ -987,585 +1287,123 @@ namespace mkc_timeseries
     }
     
     /**
-     * @brief Computes log(PF) with fixed in-sample prior - optimized for bootstrap inference
-     * 
-     * ============================================================================
-     * WHY THIS VERSION IS BETTER FOR BOOTSTRAPPING THAN computeLogProfitFactorRobust
-     * ============================================================================
-     * 
-     * This function is specifically designed for out-of-sample bootstrap evaluation
-     * when you have derived stop losses from in-sample data. It differs from
-     * computeLogProfitFactorRobust in several critical ways that make it superior
-     * for bootstrap confidence intervals, BCa, and permutation testing.
-     * 
-     * 
-     * KEY DIFFERENCE #1: Returns log(PF) instead of log(1+PF)
-     * --------------------------------------------------------
-     * 
-     * computeLogProfitFactorRobust returns:
-     *   log(1 + PF) where PF = numerator / denominator
-     * 
-     * computeLogProfitFactorRobust_LogPF returns:
-     *   log(PF) = log(numerator) - log(denominator)
-     * 
-     * Why log(PF) is better for bootstrapping:
-     * 
-     *   a) TRUE LOG-RATIO: Converts multiplicative variation into additive variation,
-     *      which dramatically reduces skewness in bootstrap distributions.
-     *      
-     *      Example: PF values of 0.5, 1.0, 2.0
-     *        - In linear space: asymmetric around 1.0
-     *        - In log(PF) space: -0.69, 0, +0.69 (perfectly symmetric!)
-     * 
-     *   b) OUTLIER COMPRESSION: Extreme profit factors have less influence.
-     *        PF = 100  → log(1+PF) = 4.62  vs  log(PF) = 4.61  (similar)
-     *        PF = 10   → log(1+PF) = 2.40  vs  log(PF) = 2.30  (similar)
-     *        PF = 2    → log(1+PF) = 1.10  vs  log(PF) = 0.69  (different!)
-     *      
-     *      The "+1" artifact matters most at PF ∈ [0.5, 3], which is exactly where
-     *      most bootstrap resamples land. Removing it improves stability.
-     * 
-     *   c) CLEAN THRESHOLD: Testing PF ≥ 1.0 becomes log(PF) ≥ 0
-     *      No awkward constants like log(2) ≈ 0.693 to remember or compare against.
-     * 
-     *   d) BETTER BCa BEHAVIOR: The jackknife acceleration parameter in BCa is
-     *      notorious for instability with ratio statistics. Log-ratios have more
-     *      regular leave-one-out behavior, leading to more stable acceleration
-     *      estimates and better coverage properties.
-     * 
-     *   e) REDUCED PERCENTILE JUMPINESS: Bootstrap percentile and basic intervals
-     *      are less sensitive to rare extreme resamples because log(PF) compresses
-     *      the tail more effectively than log(1+PF).
-     * 
-     * 
-     * KEY DIFFERENCE #2: Uses fixed in-sample prior, not empirical median
-     * --------------------------------------------------------------------
-     * 
-     * computeLogProfitFactorRobust prior strategy:
-     *   - CASE A (losses exist): Uses median of OBSERVED losses in the data
-     *   - CASE B (no losses):    Falls back to stop loss parameter
-     * 
-     * computeLogProfitFactorRobust_LogPF prior strategy:
-     *   - ALWAYS uses stop loss from in-sample data as the prior
-     *   - Never looks at out-of-sample loss distribution
-     * 
-     * Why fixed in-sample prior is better for out-of-sample bootstrapping:
-     * 
-     *   a) NO DATA LEAKAGE: The prior comes from IN-SAMPLE data, while bootstrap
-     *      resampling happens on OUT-OF-SAMPLE data. This maintains clean separation
-     *      and prevents circular reasoning.
-     * 
-     *   b) REDUCED BOOTSTRAP VARIANCE: Different bootstrap resamples may have very
-     *      different loss counts (3 vs 15 losses). 
-     *      
-     *      With empirical median:
-     *        - Each resample computes its own median → prior varies randomly
-     *        - Adds sampling noise to the statistic itself
-     *        - Bootstrap variance includes both data resampling AND prior variation
-     *      
-     *      With fixed in-sample prior:
-     *        - Same prior across all resamples → consistent regularization
-     *        - Bootstrap variance comes only from data resampling (as intended)
-     *        - Cleaner, more stable confidence intervals
-     * 
-     *   c) STABLE WITH FEW LOSSES: Out-of-sample resamples with only 2-3 losses
-     *      have very noisy empirical medians. The in-sample stop loss is a more
-     *      reliable, stable estimate of "typical loss magnitude."
-     * 
-     *   d) PROPER BAYESIAN INFERENCE: You're asking: "Given what I learned in-sample
-     *      about typical losses (the stop loss), how does this strategy perform
-     *      out-of-sample?" Using the in-sample stop as an informative prior is
-     *      exactly the right way to answer this question.
-     * 
-     *   e) HANDLES REGIME CHANGES GRACEFULLY: 
-     *        - If OOS losses are smaller than in-sample: Prior adds conservative
-     *          regularization (good - prevents overfitting to lucky samples)
-     *        - If OOS losses are larger than in-sample: Observed data dominates
-     *          the prior anyway, so you see the true performance degradation
-     * 
-     * 
-     * KEY DIFFERENCE #3: Explicit unit conversion (return space → log space)
-     * -----------------------------------------------------------------------
-     * 
-     * computeLogProfitFactorRobust had an ambiguous "default_loss_magnitude" parameter
-     * that could be interpreted as either return-space or log-space, leading to
-     * potential unit mismatch bugs.
-     * 
-     * computeLogProfitFactorRobust_LogPF explicitly:
-     *   1. Takes stop_loss_return_space as a fraction (e.g., 0.043 = 4.3% loss)
-     *   2. Converts it to log-space: -log(1 - stop_loss)
-     *   3. Uses that as the prior magnitude
-     * 
-     * This makes the units crystal clear and prevents subtle bugs where the prior
-     * is off by orders of magnitude due to unit confusion.
-     * 
-     * 
-     * KEY FEATURE: Adaptive Prior Strength (Optional)
-     * ------------------------------------------------
-     * 
-     * When prior_strength < 0, this function automatically scales the prior based on
-     * the number of observed losses, using the formula:
-     * 
-     *   effective_prior_strength = min(adaptive_cap, adaptive_k / num_losses)
-     * 
-     * This provides adaptive regularization:
-     *   - Few losses (2-5):    High prior strength (1.0) → rely on in-sample stop
-     *   - Many losses (20+):   Low prior strength (0.25) → trust out-of-sample data
-     * 
-     * Why this is powerful for bootstrapping:
-     * 
-     *   Bootstrap resamples naturally vary in loss count. Adaptive scaling ensures
-     *   that resamples with few losses (high uncertainty) get more regularization,
-     *   while resamples with many losses (high confidence) get less. This is
-     *   statistically principled and further reduces bootstrap variance.
-     * 
-     * 
-     * MATHEMATICAL FOUNDATION
-     * -----------------------
-     * 
-     * This function computes:
-     * 
-     *   log(PF) = log(numerator) - log(denominator)
-     * 
-     * where:
-     *   numerator   = sum(log(1+r)) for r > 0, floored at "one tiny win"
-     *   denominator = sum(-log(1+r)) for r < 0, plus prior_loss_mag
-     * 
-     * The log-ratio form is the standard statistical approach for making ratio
-     * metrics well-behaved under resampling. It appears in:
-     *   - Log odds ratios in logistic regression
-     *   - Log relative risk in epidemiology  
-     *   - Log Sharpe ratios in some finance literature
-     *   - Log hazard ratios in survival analysis
-     * 
-     * The consistent finding across all these domains: taking log(ratio) rather
-     * than ratio-then-log produces more stable, symmetric, and interpretable
-     * sampling distributions.
-     * 
-     * 
-     * WHEN TO USE EACH FUNCTION
-     * --------------------------
-     * 
-     * Use computeLogProfitFactorRobust when:
-     *   ✓ You want the prior to adapt to the observed data (empirical Bayes)
-     *   ✓ You're evaluating performance on the same dataset used to set parameters
-     *   ✓ You don't have reliable, enforced stop losses
-     *   ✓ You're not doing bootstrap/permutation inference
-     * 
-     * Use computeLogProfitFactorRobust_LogPF when:
-     *   ✓ You have stop losses derived from in-sample data
-     *   ✓ You're evaluating out-of-sample performance with bootstrapping
-     *   ✓ You're using BCa, permutation tests, or other resampling methods
-     *   ✓ You want maximum stability and minimal skew in sampling distributions
-     *   ✓ You want a clean PF ≥ 1 threshold (log(PF) ≥ 0)
-     * 
-     * 
-     * EMPIRICAL VALIDATION
-     * --------------------
-     * 
-     * You should empirically validate the improvements by comparing:
-     *   1. Bootstrap CI width (narrower = better)
-     *   2. BCa coverage properties (closer to nominal = better)
-     *   3. Stability across different random seeds (less variation = better)
-     *   4. Out-of-sample predictive accuracy of CI bounds
-     * 
-     * Based on statistical theory and extensive use in other domains, we expect
-     * computeLogProfitFactorRobust_LogPF to show measurable improvements in all
-     * these metrics for typical profit factor bootstrapping scenarios.
-     * 
-     * ============================================================================
-     * 
-     * @param xs Vector of returns in return space (e.g., 0.01 = 1% gain)
-     * 
-     * @param ruin_eps Floor for (1+r) to prevent log(0). When 1+r ≤ 0, it's
-     *                 clamped to ruin_eps. Default: 1e-10
-     * 
-     * @param denom_floor Minimum denominator in log-space to prevent division
-     *                    by extremely small values. Default: 1e-6
-     * 
-     * @param prior_strength Controls Bayesian regularization:
-     *                       - If ≥ 0: Fixed strength (e.g., 1.0 = add one stop-loss)
-     *                       - If < 0: ADAPTIVE mode based on loss count
-     *                       Default: 1.0
-     * 
-     * @param stop_loss_return_space Stop loss in return space (positive value).
-     *                               Example: 0.043 means 4.3% maximum loss.
-     *                               This should come from IN-SAMPLE optimization.
-     *                               Default: 0.0 (uses fallback)
-     * 
-     * @param profit_target_return_space Profit target in return space.
-     *                                   Example: 0.0314 means 3.14% target.
-     *                                   Used to compute numerator floor.
-     *                                   Default: 0.0
-     * 
-     * @param tiny_win_fraction Fraction of min(target, stop) used as numerator
-     *                          floor to prevent log(0). Default: 0.05 (5%)
-     * 
-     * @param tiny_win_min_return Absolute minimum return for numerator floor.
-     *                            Default: 1e-4 (1 basis point)
-     * 
-     * @param adaptive_k Virtual loss pool for adaptive mode. Higher = more
-     *                   conservative. Only used when prior_strength < 0.
-     *                   Default: 5.0
-     * 
-     * @param adaptive_cap Maximum prior strength in adaptive mode. Prevents
-     *                     over-regularization with very few losses.
-     *                     Default: 1.0
-     * 
-     * @return log(PF) where PF = (sum of log-wins) / (sum of log-losses + prior)
-     *         Returns 0 if xs is empty.
-     *         For PF ≥ 1 threshold, test: result ≥ 0
-     */    
+     * @brief Computes log(PF) with symmetric dynamic flooring - optimized for bootstrap inference.
+     * * @details
+     * This function dynamically clamps the profit factor to a symmetric boundary 
+     * [prior_strength, 1/prior_strength] (e.g., [0.01, 100]) using the drawn data mass.
+     * It completely removes the need for arbitrary strategy-specific stop losses or profit targets.
+     * * @param xs Vector of returns in return space (e.g., 0.01 = 1% gain)
+     * @param ruin_eps Floor for (1+r) to prevent log(0). Default: 1e-8
+     * @param denom_floor Minimum denominator in log-space to prevent division by absolute zero.
+     * @param prior_strength Controls the dynamic boundary. A value of 0.01 ensures
+     * the denominator is never less than 1% of the numerator,
+     * and the numerator is never less than 1% of the denominator.
+     * * @return log(PF) where PF = (sum of log-wins) / (sum of log-losses) bounded symmetrically.
+     * Returns 0 if xs is empty.
+     *
+     * @tparam NumerPolicy  Numerator construction policy (default: LegacyNumerPolicy).
+     *                      Existing call sites with no explicit template args are unchanged.
+     * @tparam DenomPolicy  Denominator construction policy (default: LegacyDenomPolicy).
+     *                      Monte Carlo permutation callers use the default; bootstrap
+     *                      callers needing different policies should use
+     *                      LogProfitFactorFromLogBarsStat_LogPF_Custom instead.
+     */
+    template<class NumerPolicy = LegacyNumerPolicy,
+             class DenomPolicy = LegacyDenomPolicy>
     static Decimal computeLogProfitFactorRobust_LogPF(const std::vector<Decimal>& xs,
-						      double ruin_eps                     = DefaultRuinEps,
-						      double denom_floor                  = DefaultDenomFloor,
-						      double prior_strength               = DefaultPriorStrength,
-						      double stop_loss_return_space       = 0.0,
-						      double profit_target_return_space   = 0.0,
-						      double tiny_win_fraction            = 0.05,
-						      double tiny_win_min_return          = 1e-4)
+						      double ruin_eps       = DefaultRuinEps,
+						      double denom_floor    = DefaultDenomFloor,
+						      double prior_strength = DefaultPriorStrength)
     {
       using DC = DecimalConstants<Decimal>;
 
       if (xs.empty())
         return DC::DecimalZero;
 
-      const Decimal one    = DC::DecimalOne;
-      const Decimal zero   = DC::DecimalZero;
-      const Decimal d_ruin = Decimal(ruin_eps);
+      // RawReturnsAccumPolicy owns the ruin-precision guard (raw double comparison
+      // + raw double log bypass), so the accumulation loop is no longer duplicated here.
+      const AccumSums sums = RawReturnsAccumPolicy::accumulate(xs, ruin_eps);
 
-      // --- Step 1: Accumulate log-growth wins and loss magnitudes ---
-      Decimal sum_log_wins = DC::DecimalZero;
-      Decimal sum_loss_mag = DC::DecimalZero;
-
-      for (const auto& r : xs)
-	{
-	  Decimal growth = one + r;
-	  if (growth <= zero)
-            growth = d_ruin;
-
-	  const Decimal lr = std::log(growth);
-
-	  if (lr > zero)
-            sum_log_wins += lr;
-	  else if (lr < zero)
-            sum_loss_mag += (-lr);
-	}
-
-      // --- Delegate to core algorithm ---
-      return computeLogPF_FromSums(
-				   sum_log_wins,
-				   sum_loss_mag,
-				   ruin_eps,
-				   denom_floor,
-				   prior_strength,
-				   stop_loss_return_space,
-				   profit_target_return_space,
-				   tiny_win_fraction,
-				   tiny_win_min_return);
+      // Delegate to the policy-parameterised core.
+      return computeProfitFactor_FromSums_Impl<NumerPolicy, DenomPolicy, ResultLogPFPolicy>(
+        sums.sum_log_wins,
+        sums.sum_loss_mag,
+        ruin_eps,
+        denom_floor,
+        prior_strength,
+        std::optional<int>(sums.loss_count),
+        std::optional<int>(sums.N));
     }
-    
-    /**
-     * @brief Functor wrapper for the robust log profit-factor on raw returns.
-     *
-     * @details
-     * This struct adapts StatUtils::computeLogProfitFactorRobust into a
-     * callable "statistic" type that can be passed into bootstrap engines
-     * (for example StrategyAutoBootstrap). It expects a vector of per-period
-     * returns and internally computes a robust profit-factor in log space.
-     *
-     * Typical usage:
-     *   • Configure the constructor with compression and prior settings.
-     *   • Call operator() with a vector of returns.
-     *   • Optionally post-process the result using formatForDisplay, which
-     *     maps the log(1 + PF) form back to a linear PF minus one.
-     *
-     * By default, the statistic returns log(1 + PF_robust), which is monotone
-     * in PF and better behaved for confidence intervals and hypothesis tests.
-     */
-    struct LogProfitFactorStat
+
+    // Deprecated 5-parameter version
+    static Decimal computeLogProfitFactorRobust_LogPF(const std::vector<Decimal>& xs,
+						      double ruin_eps,
+						      double denom_floor,
+						      double prior_strength,
+						      double /* stop_loss_return_space */)
     {
-      static double formatForDisplay(double value) { return std::exp(value) - 1.0; }
-      static constexpr bool isRatioStatistic() noexcept
-      {
-	return true;
-      }
+        return computeLogProfitFactorRobust_LogPF(xs, ruin_eps, denom_floor, prior_strength);
+    }
 
-      StatisticSupport support() const noexcept
-      {
-	// Both raw PF and log(1+PF) are >= 0 with this implementation.
-	return StatisticSupport::nonStrictLowerBound(0.0, 1e-12);
-      }
-          /**
-     * @brief Construct a robust log profit-factor statistic on raw returns.
-     *
-     * @details
-     * The configuration parameters here are passed through to
-     * computeLogProfitFactorRobust. They control whether the result is
-     * compressed, how ruin events are handled, how strongly the loss prior
-     * is applied, and what to assume when no losses appear in the sample.
-     *
-     * @param compressResult
-     *     If true, operator() returns log(1 + PF). If false, it returns
-     *     the raw PF ratio. The default is StatUtils::DefaultCompress.
-     *
-     * @param ruin_eps
-     *     Small positive floor for (1 + r) when computing log(1 + r).
-     *     Must be strictly greater than zero. The default is
-     *     StatUtils::DefaultRuinEps.
-     *
-     * @param denom_floor
-     *     Minimum denominator value in log space. This protects against
-     *     extremely large PF values caused by tiny loss magnitudes.
-     *     The default is StatUtils::DefaultDenomFloor.
-     *
-     * @param prior_strength
-     *     Scale factor for the prior loss magnitude used in the denominator.
-     *     A value of 1.0 behaves like adding one additional loss of typical
-     *     size. The default is StatUtils::DefaultPriorStrength.
-     *
-     * @param stop_loss_pct
-     *     Optional stop-loss percentage expressed as a decimal fraction
-     *     (for example 0.025 for 2.5%). If greater than zero, this is
-     *     converted to a fixed log-loss magnitude and used as the default
-     *     prior when the sample contains no losses. If zero, the prior
-     *     falls back to a ruin-based magnitude derived from ruin_eps.
-     */
-      explicit LogProfitFactorStat(bool   compressResult = StatUtils::DefaultCompress,
-                                   double ruin_eps       = StatUtils::DefaultRuinEps,
-                                   double denom_floor    = StatUtils::DefaultDenomFloor,
-                                   double prior_strength = StatUtils::DefaultPriorStrength,
-                                   double stop_loss_pct  = 0.0)
-	: m_compressResult(compressResult)
-	, m_ruinEps(ruin_eps)
-	, m_denomFloor(denom_floor)
-	, m_priorStrength(prior_strength)
-      {
-	if (stop_loss_pct > 0.0) {
-	  m_defaultLossMag = std::abs(std::log(1.0 - stop_loss_pct));
-	} else {
-	  m_defaultLossMag = 0.0;
-	}
-      }
-
-          /**
-     * @brief Evaluate the robust log profit-factor on a return series.
-     *
-     * @details
-     * This method forwards its arguments to computeLogProfitFactorRobust
-     * using the configuration stored in this functor. It takes a vector of
-     * per-period returns, expressed as decimal fractions, and returns a
-     * robust profit-factor statistic in either compressed or raw form.
-     *
-     * The input is assumed to be raw returns r (for example +1% = 0.01),
-     * not precomputed log-growth values. Ruin events, priors, and
-     * denominator flooring are handled as described in
-     * computeLogProfitFactorRobust.
-     *
-     * @param returns
-     *     Vector of per-period returns. May be any length; if empty,
-     *     the result is zero.
-     *
-     * @return
-     *     Robust profit-factor statistic in either log(1 + PF) or raw PF
-     *     form depending on the configuration of this functor.
-     */
-      Decimal operator()(const std::vector<Decimal>& returns) const
-      {
-	return StatUtils<Decimal>::computeLogProfitFactorRobust(returns,
-								m_compressResult,
-								m_ruinEps,
-								m_denomFloor,
-								m_priorStrength,
-								m_defaultLossMag); 
-      }
-
-    private:
-      bool   m_compressResult;
-      double m_ruinEps;
-      double m_denomFloor;
-      double m_priorStrength;
-      double m_defaultLossMag; 
-    };
-
-    /**
-     * @brief Robust, regularized profit-factor statistic using precomputed log-growth bars.
-     *
-     * @details
-     * This statistic computes the same robust profit-factor as LogProfitFactorStat,
-     * but expects the input vector to already contain log-growth values of the form:
-     *
-     *     logBars[i] = log( max(1 + return_i, ruin_eps) )
-     *
-     * This design allows callers to precompute log(1 + r) once and reuse those
-     * values across many bootstrap iterations, dramatically reducing computation
-     * time by avoiding repeated logarithm evaluations.
-     *
-     * Interpretation of log-bars:
-     *   • logBars[i] > 0  → this is a winning bar (return > 0)
-     *   • logBars[i] < 0  → this is a losing bar  (return < 0)
-     *   • logBars[i] = 0  → neutral bar          (return = 0)
-     *
-     * The statistic:
-     *   1. Sums positive log-bars (wins).
-     *   2. Sums negative log-bars (losses).
-     *   3. Computes the median magnitude of losses if any exist.
-     *   4. Applies a prior amount to the denominator to stabilize PF.
-     *   5. Uses a stop-loss magnitude or a ruin-based fallback if no losses exist.
-     *   6. Floors the denominator at denom_floor for numerical stability.
-     *   7. Returns either:
-     *        • rawPF = sum_wins / (sum_loss_magnitudes + prior), or
-     *        • log(1 + rawPF) if compressResult = true.
-     *
-     * When logBars is created using makeLogGrowthSeries with the same ruin_eps,
-     * this statistic will match LogProfitFactorStat to standard numerical tolerance.
-     *
-     * @param compressResult
-     *     If true (default), returns log(1 + PF), which is usually more stable
-     *     for bootstrap inference. If false, returns the raw PF ratio.
-     *
-     * @param ruin_eps
-     *     The ruin clipping constant used when fallback loss magnitude is needed.
-     *     Must match the value used when constructing logBars.
-     *
-     * @param denom_floor
-     *     Minimum denominator value to prevent division by extremely small numbers.
-     *
-     * @param prior_strength
-     *     The amount of prior added to the denominator. A value of 1.0 behaves
-     *     like adding one typical loss magnitude.
-     *
-     * @param stop_loss_pct
-     *     Optional stop-loss percentage expressed as a decimal fraction.
-     *     When > 0, the fallback loss magnitude becomes abs(log(1 - stop_loss_pct)).
-     *     When = 0, the fallback magnitude is derived from ruin_eps.
-     */
-    struct LogProfitFactorFromLogBarsStat
+    // Deprecated 6-parameter version (Called by MonteCarloTestPolicy.h)
+    static Decimal computeLogProfitFactorRobust_LogPF(const std::vector<Decimal>& xs,
+						      double ruin_eps,
+						      double denom_floor,
+						      double prior_strength,
+						      double /* stop_loss_return_space */,
+						      double /* profit_target_return_space */)
     {
-      static double formatForDisplay(double value) { return std::exp(value) - 1.0; }
-      static constexpr bool isRatioStatistic() noexcept { return true; }
+        return computeLogProfitFactorRobust_LogPF(xs, ruin_eps, denom_floor, prior_strength);
+    }
 
-      StatisticSupport support() const noexcept
-      {
-	// Both raw PF and log(1+PF) are >= 0 with this implementation.
-	return StatisticSupport::nonStrictLowerBound(0.0, 1e-12);
-      }
-
-      explicit LogProfitFactorFromLogBarsStat(bool   compressResult = StatUtils::DefaultCompress,
-					      double ruin_eps       = StatUtils::DefaultRuinEps,
-					      double denom_floor    = StatUtils::DefaultDenomFloor,
-					      double prior_strength = StatUtils::DefaultPriorStrength,
-					      double stop_loss_pct  = 0.0)
-	: m_compressResult(compressResult)
-	, m_ruinEps(ruin_eps)
-	, m_denomFloor(denom_floor)
-	, m_priorStrength(prior_strength)
-      {
-	if (stop_loss_pct > 0.0)
-	  m_defaultLossMag = std::abs(std::log(1.0 - stop_loss_pct));
-	else
-	  m_defaultLossMag = 0.0;
-      }
-
-      /**
-       * @brief Evaluate the robust log profit-factor from a vector of log-bars.
-       *
-       * @details
-       * This function processes each log-growth value to categorize wins and losses,
-       * compute prior-adjusted denominator terms, enforce minimum denominator size,
-       * and produce a profit-factor estimate. The output is either:
-       *
-       *     log(1 + PF)     if compressResult = true
-       *     PF              if compressResult = false
-       *
-       * The function expects each element of logBars to be a valid log-growth value
-       * produced by makeLogGrowthSeries or an equivalent transformation.
-       *
-       * Behavior:
-       *   • Empty input returns zero.
-       *   • Positive log-bars add to the numerator (wins).
-       *   • Negative log-bars contribute to loss magnitudes.
-       *   • Median loss magnitude is used as a Bayesian-style prior if losses exist.
-       *   • A stop-loss or ruin-based fallback magnitude is used if no losses exist.
-       *   • Denominator is floored at denom_floor.
-       *
-       * @param logBars
-       *     Vector of precomputed log-growth values. Must not contain unprocessed
-       *     percent returns. Each element should represent log(max(1 + r_i, ruin_eps)).
-       *
-       * @return
-       *     The profit-factor statistic, either compressed or raw depending on
-       *     the constructor configuration.
-       */
-
-      //
-
-      Decimal operator()(const std::vector<Decimal>& logBars) const
-      {
-	using DC = DecimalConstants<Decimal>;
-
-	if (logBars.empty())
-	  return DC::DecimalZero;
-
-	boost::container::small_vector<Decimal, 32> loss_mags;
-	Decimal sum_log_wins   = DC::DecimalZero;
-	Decimal sum_log_losses = DC::DecimalZero;
-
-	// --- Step 1: Accumulate sums and loss magnitudes ---
-	for (const auto& lr : logBars)
-	  {
-	    if (lr > DC::DecimalZero)
-	      sum_log_wins += lr;
-	    else if (lr < DC::DecimalZero)
-	      {
-		sum_log_losses += lr;
-		loss_mags.push_back(-lr);
-	      }
-	  }
-
-	// --- Step 2: Delegate to core algorithm ---
-	// Note: Need to convert loss_mags (small_vector<32>) to compatible type
-	// or use template parameter in helper
-    
-	// Convert to small_vector<64> for compatibility
-	boost::container::small_vector<Decimal, 64> loss_magnitudes(
-								    loss_mags.begin(), loss_mags.end());
-
-	return StatUtils<Decimal>::computeRobustPF_FromSums(
-							    sum_log_wins,
-							    sum_log_losses,
-							    loss_magnitudes,
-							    m_compressResult,
-							    m_ruinEps,
-							    m_denomFloor,
-							    m_priorStrength,
-							    m_defaultLossMag);
-      }
-    private:
-      bool   m_compressResult;
-      double m_ruinEps;
-      double m_denomFloor;
-      double m_priorStrength;
-      double m_defaultLossMag;
-    };
-
-    struct LogProfitFactorStat_LogPF
+    // Deprecated 8-parameter version
+    static Decimal computeLogProfitFactorRobust_LogPF(const std::vector<Decimal>& xs,
+						      double ruin_eps,
+						      double denom_floor,
+						      double prior_strength,
+						      double /* stop_loss_return_space */,
+						      double /* profit_target_return_space */,
+						      double /* tiny_win_fraction */,
+						      double /* tiny_win_min_return */)
     {
-      // Display PF (not logPF)
-      
-      static double formatForDisplay(const Decimal& log_pf) 
-      { 
-        // Use your helper to safely extract long double regardless of Decimal type
-        return static_cast<double>(std::exp(num::to_long_double(log_pf))); 
-      }
+        return computeLogProfitFactorRobust_LogPF(xs, ruin_eps, denom_floor, prior_strength);
+    }
 
-      static double formatForDisplay(double log_pf)
+    // =========================================================================
+    // SymmetricPFStat<AccumPolicy, NumerPolicy, DenomPolicy>
+    //
+    // Template backing the LogPF family.  Returns log(PF) directly (unbounded
+    // support) using the symmetric dynamic-flooring algorithm.
+    //
+    //   AccumPolicy  controls input format:
+    //     RawReturnsAccumPolicy → operator() accepts raw percent returns
+    //     LogBarsAccumPolicy    → operator() accepts pre-computed log-bars
+    //
+    //   NumerPolicy  controls numerator construction (default: LegacyNumerPolicy)
+    //   DenomPolicy  controls denominator construction (default: LegacyDenomPolicy)
+    //
+    // The plain type aliases (LogProfitFactorStat_LogPF etc.) use the defaults
+    // and require no changes at existing call sites.
+    //
+    // To specify custom policies, use the _Custom template aliases which
+    // require both NumerPolicy and DenomPolicy to be supplied explicitly:
+    //
+    //   LogProfitFactorFromLogBarsStat_LogPF_Custom<
+    //       SmallSampleNumerPolicy,
+    //       SmallSampleDenomPolicy> stat;
+    // =========================================================================
+    template<class AccumPolicy,
+             class NumerPolicy = LegacyNumerPolicy,
+             class DenomPolicy = LegacyDenomPolicy>
+    struct SymmetricPFStat
+    {
+      // --- Statistic interface ---
+      static double formatForDisplay(const Decimal& log_pf)
       {
-        return std::exp(log_pf);
+        return static_cast<double>(std::exp(num::to_long_double(log_pf)));
       }
+      static double formatForDisplay(double log_pf) { return std::exp(log_pf); }
 
-      // This returns log(PF) internally, so it is NOT a ratio statistic in the
-      // strict “nonnegative ratio” sense.
       static constexpr bool isRatioStatistic() noexcept { return false; }
 
       StatisticSupport support() const noexcept
@@ -1573,254 +1411,173 @@ namespace mkc_timeseries
         return StatisticSupport::unbounded();
       }
 
-      explicit LogProfitFactorStat_LogPF(double ruin_eps              = StatUtils::DefaultRuinEps,
-					 double denom_floor           = StatUtils::DefaultDenomFloor,
-					 double prior_strength        = StatUtils::DefaultPriorStrength,
-					 double stop_loss_pct         = 0.0,   // return-space fraction
-					 double profit_target_pct     = 0.0,   // return-space fraction
-					 double tiny_win_fraction     = 0.05,
-					 double tiny_win_min_return   = 1e-4)
-        : m_ruinEps(ruin_eps),
-          m_denomFloor(denom_floor),
-          m_priorStrength(prior_strength),
-          m_stopLossPct(stop_loss_pct),
-          m_profitTargetPct(profit_target_pct),
-          m_tinyWinFraction(tiny_win_fraction),
-          m_tinyWinMinReturn(tiny_win_min_return)
+      // --- Constructors ---
+
+      /// Clean 3-parameter constructor.
+      explicit SymmetricPFStat(double ruin_eps       = StatUtils::DefaultRuinEps,
+                                double denom_floor    = StatUtils::DefaultDenomFloor,
+                                double prior_strength = StatUtils::DefaultPriorStrength)
+        : m_config(ruin_eps, denom_floor, prior_strength)
       {}
 
-      Decimal operator()(const std::vector<Decimal>& returns) const
+      /// Construct directly from a LogPFConfig.
+      explicit SymmetricPFStat(LogPFConfig cfg) noexcept : m_config(cfg) {}
+
+      // Backward-compatible constructors (extra params silently ignored)
+      explicit SymmetricPFStat(double ruin_eps, double denom_floor, double prior_strength,
+                                double /*stop_loss_pct*/)
+        : m_config(ruin_eps, denom_floor, prior_strength) {}
+
+      explicit SymmetricPFStat(double ruin_eps, double denom_floor, double prior_strength,
+                                double /*stop_loss_pct*/, double /*profit_target_pct*/)
+        : m_config(ruin_eps, denom_floor, prior_strength) {}
+
+      explicit SymmetricPFStat(double ruin_eps, double denom_floor, double prior_strength,
+                                double /*stop_loss_pct*/, double /*profit_target_pct*/,
+                                double /*tiny_win_fraction*/, double /*tiny_win_min_return*/)
+        : m_config(ruin_eps, denom_floor, prior_strength) {}
+
+      // --- operator() ---
+
+      Decimal operator()(const std::vector<Decimal>& input) const
       {
-        return StatUtils<Decimal>::computeLogProfitFactorRobust_LogPF(
-								      returns,
-								      m_ruinEps,
-								      m_denomFloor,
-								      m_priorStrength,
-								      m_stopLossPct,        // IMPORTANT: return space, e.g. 0.0430502
-								      m_profitTargetPct,    // IMPORTANT: return space, e.g. 0.0314
-								      m_tinyWinFraction,
-								      m_tinyWinMinReturn);
+        using DC = DecimalConstants<Decimal>;
+        if (input.empty()) return DC::DecimalZero;
+
+        const AccumSums sums = AccumPolicy::accumulate(input, m_config.ruin_eps);
+
+        // Call Impl directly so NumerPolicy and DenomPolicy are honoured.
+        // Pass the actual loss_count and N from AccumSums so count-fading
+        // denominator policies receive real counts rather than nullopt.
+        return StatUtils<Decimal>::template computeProfitFactor_FromSums_Impl<
+            NumerPolicy, DenomPolicy, ResultLogPFPolicy>(
+          sums.sum_log_wins,
+          sums.sum_loss_mag,
+          m_config.ruin_eps,
+          m_config.denom_floor,
+          m_config.prior_strength,
+          std::optional<int>(sums.loss_count),
+          std::optional<int>(sums.N));
       }
 
+      /// Flatten Trade daily-returns then evaluate.
       Decimal operator()(const std::vector<Trade<Decimal>>& trades) const
       {
-	if (trades.empty()) return DecimalConstants<Decimal>::DecimalZero;
-
-	std::vector<Decimal> flat;
-	flat.reserve(trades.size() * 3);
-
-	for (const auto& trade : trades) {
-	  const auto& daily = trade.getDailyReturns();
-	  flat.insert(flat.end(), daily.begin(), daily.end());
-	}
-
-	return (*this)(flat); // Dispatches to the original operator()(const std::vector<Decimal>&)
+        if (trades.empty()) return DecimalConstants<Decimal>::DecimalZero;
+        std::vector<Decimal> flat;
+        flat.reserve(trades.size() * 3);
+        for (const auto& trade : trades)
+        {
+          const auto& daily = trade.getDailyReturns();
+          flat.insert(flat.end(), daily.begin(), daily.end());
+        }
+        return (*this)(flat);
       }
-      
+
     private:
-      double m_ruinEps;
-      double m_denomFloor;
-      double m_priorStrength;
-
-      // Store these in return-space fractions (not log space)
-      double m_stopLossPct;
-      double m_profitTargetPct;
-
-      double m_tinyWinFraction;
-      double m_tinyWinMinReturn;
+      LogPFConfig m_config;
     };
 
-    /**
-     * @brief Optimized robust log profit-factor statistic using precomputed log-growth bars.
-     *
-     * @details
-     * This statistic computes the same robust log(PF) as LogProfitFactorStat_LogPF,
-     * but expects the input vector to already contain log-growth values of the form:
-     *
-     *     logBars[i] = log( max(1 + return_i, ruin_eps) )
-     *
-     * This design allows callers to precompute log(1 + r) once and reuse those
-     * values across many bootstrap iterations, dramatically reducing computation
-     * time by avoiding repeated logarithm evaluations.
-     *
-     * Key differences from LogProfitFactorFromLogBarsStat:
-     *   • Returns log(PF) directly instead of log(1+PF) or PF
-     *   • Uses stop_loss_return_space to compute prior loss magnitude
-     *   • Uses profit_target_return_space for numerator floor calculation
-     *   • Applies numerator floor to prevent log(0) issues
-     *   • Final result: log(numer) - log(denom)
-     *
-     * Interpretation of log-bars:
-     *   • logBars[i] > 0  → this is a winning bar (return > 0)
-     *   • logBars[i] < 0  → this is a losing bar  (return < 0)
-     *   • logBars[i] = 0  → neutral bar          (return = 0)
-     *
-     * The statistic:
-     *   1. Sums positive log-bars (wins) → sum_log_wins
-     *   2. Sums absolute values of negative log-bars (losses) → sum_loss_mag
-     *   3. Computes prior_loss_mag from stop_loss_return_space (if provided)
-     *   4. Applies denominator floor for numerical stability
-     *   5. Computes numerator floor from profit_target_return_space (if provided)
-     *   6. Returns log(max(sum_log_wins, numer_floor)) - log(sum_loss_mag + prior_loss_mag)
-     *
-     * When logBars is created using makeLogGrowthSeries with the same ruin_eps,
-     * this statistic will match LogProfitFactorStat_LogPF to standard numerical tolerance.
-     *
-     * @param ruin_eps
-     *     The ruin clipping constant used when fallback loss magnitude is needed.
-     *     Must match the value used when constructing logBars.
-     *
-     * @param denom_floor
-     *     Minimum denominator value to prevent division by extremely small numbers.
-     *
-     * @param prior_strength
-     *     The amount of prior added to the denominator. A value of 1.0 behaves
-     *     like adding one stop-loss-sized pseudo-loss to the denominator.
-     *
-     * @param stop_loss_pct
-     *     Stop-loss percentage expressed as a decimal fraction in return space.
-     *     When > 0, the prior loss magnitude becomes abs(log(1 - stop_loss_pct)).
-     *     When = 0, uses fallback based on ruin_eps.
-     *
-     * @param profit_target_pct
-     *     Profit target percentage expressed as a decimal fraction in return space.
-     *     Used to compute the numerator floor as a "tiny win".
-     *
-     * @param tiny_win_fraction
-     *     Fraction of min(stop_loss_pct, profit_target_pct) to use as tiny win size.
-     *     Default is 0.05 (5%).
-     *
-     * @param tiny_win_min_return
-     *     Minimum return value to use as tiny win, expressed in return space.
-     *     Default is 1e-4 (1 basis point).
-     */
-    struct LogProfitFactorFromLogBarsStat_LogPF
+    // =========================================================================
+    // RobustPFStat<AccumPolicy>
+    //
+    // Template backing the Robust log(1+PF) family.  Uses a median-based
+    // Bayesian prior for the denominator, producing a conservative estimate.
+    //
+    //   RawReturnsAccumPolicy → operator() accepts raw percent returns
+    //   LogBarsAccumPolicy    → operator() accepts pre-computed log-bars
+    // =========================================================================
+    template<class AccumPolicy>
+    struct RobustPFStat
     {
-      // Display PF (not logPF)
-      static double formatForDisplay(const Decimal& log_pf) 
-      { 
-        // Use your helper to safely extract long double regardless of Decimal type
-        return static_cast<double>(std::exp(num::to_long_double(log_pf))); 
-      }
-    
-      static double formatForDisplay(double log_pf)
-      {
-        return std::exp(log_pf);
-      }
-
-      // This returns log(PF) internally, so it is NOT a ratio statistic in the
-      // strict "nonnegative ratio" sense.
-      static constexpr bool isRatioStatistic() noexcept { return false; }
+      // --- Statistic interface ---
+      static double formatForDisplay(double value) { return std::exp(value) - 1.0; }
+      static constexpr bool isRatioStatistic() noexcept { return true; }
 
       StatisticSupport support() const noexcept
       {
-	return StatisticSupport::unbounded();
+        return StatisticSupport::nonStrictLowerBound(0.0, 1e-12);
       }
 
-      explicit LogProfitFactorFromLogBarsStat_LogPF(
-						    double ruin_eps              = StatUtils::DefaultRuinEps,
-						    double denom_floor           = StatUtils::DefaultDenomFloor,
-						    double prior_strength        = StatUtils::DefaultPriorStrength,
-						    double stop_loss_pct         = 0.0,   // return-space fraction
-						    double profit_target_pct     = 0.0,   // return-space fraction
-						    double tiny_win_fraction     = 0.05,
-						    double tiny_win_min_return   = 1e-4)
-	: m_ruinEps(ruin_eps),
-	  m_denomFloor(denom_floor),
-	  m_priorStrength(prior_strength),
-	  m_stopLossPct(stop_loss_pct),
-	  m_profitTargetPct(profit_target_pct),
-	  m_tinyWinFraction(tiny_win_fraction),
-	  m_tinyWinMinReturn(tiny_win_min_return)
+      // --- Constructor ---
+      explicit RobustPFStat(bool   compressResult = StatUtils::DefaultCompress,
+                             double ruin_eps       = StatUtils::DefaultRuinEps,
+                             double denom_floor    = StatUtils::DefaultDenomFloor,
+                             double prior_strength = StatUtils::DefaultPriorStrength,
+                             double stop_loss_pct  = 0.0)
+        : m_compressResult(compressResult)
+        , m_config(ruin_eps, denom_floor, prior_strength)
+        , m_defaultLossMag(stop_loss_pct > 0.0
+                             ? std::abs(std::log(1.0 - stop_loss_pct))
+                             : 0.0)
       {}
 
-      /**
-       * @brief Evaluate the robust log(PF) from a vector of precomputed log-bars.
-       *
-       * @details
-       * This function processes each log-growth value to categorize wins and losses,
-       * compute prior-adjusted denominator terms, enforce minimum denominator size,
-       * apply numerator floor, and produce a log(PF) estimate.
-       *
-       * The function expects each element of logBars to be a valid log-growth value
-       * produced by makeLogGrowthSeries or an equivalent transformation.
-       *
-       * Behavior:
-       *   • Empty input returns zero.
-       *   • Positive log-bars add to the numerator (wins).
-       *   • Negative log-bars contribute to loss magnitudes (absolute values summed).
-       *   • Prior loss magnitude is computed from stop_loss_pct (if provided).
-       *   • Numerator is floored based on profit_target_pct and tiny_win parameters.
-       *   • Denominator is floored at denom_floor.
-       *   • Returns log(numer) - log(denom) where PF = numer/denom.
-       *
-       * @param logBars
-       *     Vector of precomputed log-growth values. Must not contain unprocessed
-       *     percent returns. Each element should represent log(max(1 + r_i, ruin_eps)).
-       *
-       * @return
-       *     The log(PF) statistic, where PF is the profit factor.
-       */
-      Decimal operator()(const std::vector<Decimal>& logBars) const
+      // --- operator() ---
+      Decimal operator()(const std::vector<Decimal>& input) const
       {
-	using DC = DecimalConstants<Decimal>;
+        using DC = DecimalConstants<Decimal>;
+        if (input.empty()) return DC::DecimalZero;
 
-	if (logBars.empty())
-	  return DC::DecimalZero;
+        const AccumSums sums = AccumPolicy::accumulate(input, m_config.ruin_eps);
 
-	const Decimal zero = DC::DecimalZero;
-
-	// --- Step 1: Accumulate log-growth wins and loss magnitudes ---
-	Decimal sum_log_wins = DC::DecimalZero;
-	Decimal sum_loss_mag = DC::DecimalZero;
-
-	for (const auto& lr : logBars)
-	  {
-	    if (lr > zero)
-	      sum_log_wins += lr;
-	    else if (lr < zero)
-	      sum_loss_mag += (-lr);
-	  }
-
-	// --- Delegate to core algorithm ---
-	return StatUtils<Decimal>::computeLogPF_FromSums(sum_log_wins,
-							 sum_loss_mag,
-							 m_ruinEps,
-							 m_denomFloor,
-							 m_priorStrength,
-							 m_stopLossPct,
-							 m_profitTargetPct,
-							 m_tinyWinFraction,
-							 m_tinyWinMinReturn);
+        return StatUtils<Decimal>::computeRobustPF_FromSums(
+          sums.sum_log_wins,
+          sums.sum_log_losses,
+          sums.loss_mags,
+          m_compressResult,
+          m_config.ruin_eps,
+          m_config.denom_floor,
+          m_config.prior_strength,
+          m_defaultLossMag);
       }
 
-      Decimal operator()(const std::vector<Trade<Decimal>>& trades) const
-      {
-	if (trades.empty()) return DecimalConstants<Decimal>::DecimalZero;
-
-	std::vector<Decimal> flat;
-	flat.reserve(trades.size() * 3);
-
-	for (const auto& trade : trades) {
-	  const auto& daily = trade.getDailyReturns();
-	  flat.insert(flat.end(), daily.begin(), daily.end());
-	}
-
-	return (*this)(flat); // Dispatches to the original operator()(const std::vector<Decimal>&)
-      }
-      
     private:
-      double m_ruinEps;
-      double m_denomFloor;
-      double m_priorStrength;
-
-      // Store these in return-space fractions (not log space)
-      double m_stopLossPct;
-      double m_profitTargetPct;
-
-      double m_tinyWinFraction;
-      double m_tinyWinMinReturn;
+      bool        m_compressResult;
+      LogPFConfig m_config;
+      double      m_defaultLossMag;
     };
+
+    // =========================================================================
+    // Type aliases — all four original names remain valid as drop-in
+    // replacements.  Zero call-site changes required.
+    //
+    // Preferred:  LogProfitFactorStat_LogPF / LogProfitFactorFromLogBarsStat_LogPF
+    //   Returns log(PF); unbounded support; symmetric dynamic flooring.
+    //
+    // Legacy:     LogProfitFactorStat / LogProfitFactorFromLogBarsStat
+    //   Returns log(1+PF); nonneg support; median-based Bayesian prior.
+    // =========================================================================
+    using LogProfitFactorStat_LogPF            = SymmetricPFStat<RawReturnsAccumPolicy>;
+    using LogProfitFactorFromLogBarsStat_LogPF = SymmetricPFStat<LogBarsAccumPolicy>;
+    using LogProfitFactorStat                  = RobustPFStat<RawReturnsAccumPolicy>;
+    using LogProfitFactorFromLogBarsStat       = RobustPFStat<LogBarsAccumPolicy>;
+
+    // =========================================================================
+    // Custom-policy template aliases for the LogPF family.
+    //
+    // These aliases require the caller to supply BOTH NumerPolicy and DenomPolicy
+    // explicitly — there are no defaults.  This is intentional: it forces the
+    // call site to be self-documenting about which policies are in effect.
+    //
+    // Usage (bootstrap stage, for example):
+    //
+    //   LogProfitFactorFromLogBarsStat_LogPF_Custom<
+    //       SmallSampleNumerPolicy,
+    //       SmallSampleDenomPolicy> stat(ruin_eps, denom_floor, prior_strength);
+    //
+    //   LogProfitFactorStat_LogPF_Custom<
+    //       SmallSampleNumerPolicy,
+    //       SmallSampleDenomPolicy> stat;
+    //
+    // The plain aliases above remain unchanged for all existing code.
+    // =========================================================================
+    template<class NumerPolicy, class DenomPolicy>
+    using LogProfitFactorStat_LogPF_Custom =
+        SymmetricPFStat<RawReturnsAccumPolicy, NumerPolicy, DenomPolicy>;
+
+    template<class NumerPolicy, class DenomPolicy>
+    using LogProfitFactorFromLogBarsStat_LogPF_Custom =
+        SymmetricPFStat<LogBarsAccumPolicy, NumerPolicy, DenomPolicy>;
 
     /**
      * @brief Computes the Log Profit Factor from a series of returns.
@@ -1986,7 +1743,7 @@ namespace mkc_timeseries
      * @return          std::vector<Decimal> with length (min(maxLag,n-1)+1), ρ[0] == 1.
      *
      * Definition:
-     *   ρ(k) = sum_{t=k}^{n-1} (x_t - μ)(x_{t-k} - μ) / sum_{t=0}^{n-1} (x_t - μ)^2
+     * ρ(k) = sum_{t=k}^{n-1} (x_t - μ)(x_{t-k} - μ) / sum_{t=0}^{n-1} (x_t - μ)^2
      */
     static std::vector<Decimal>
     computeACF(const std::vector<Decimal>& monthly, std::size_t maxLag)
@@ -2039,8 +1796,8 @@ namespace mkc_timeseries
      * @brief Suggest a stationary-bootstrap mean block length from an ACF curve.
      *
      * Heuristic:
-     *  - Noise band ≈ 2/sqrt(nSamples).
-     *  - Let k* be the largest lag with |ρ(k)| > band, clamp to [minL, maxL].
+     * - Noise band ≈ 2/sqrt(nSamples).
+     * - Let k* be the largest lag with |ρ(k)| > band, clamp to [minL, maxL].
      *
      * Works with ACF stored as Decimal or double.
      */
@@ -2214,7 +1971,7 @@ namespace mkc_timeseries
       
     /**
      * @brief Computes the (unbiased) sample variance given a precomputed mean.
-     *        Returns 0 when data.size() < 2.
+     * Returns 0 when data.size() < 2.
      */
     static Decimal computeVariance(const std::vector<Decimal>& data, const Decimal& mean)
     {
@@ -2234,7 +1991,7 @@ namespace mkc_timeseries
 
     /**
      * @brief Single-pass, numerically stable mean and (unbiased) variance via Welford.
-     *        Returns {0,0} for empty; variance=0 for n<2.
+     * Returns {0,0} for empty; variance=0 for n<2.
      */
     static std::pair<Decimal, Decimal> computeMeanAndVariance(const std::vector<Decimal>& data)
     {
@@ -2285,10 +2042,10 @@ namespace mkc_timeseries
      *
      * @param v A constant reference to a vector of Decimal values.
      * @return The excess Moors' Kurtosis ($K_{Moors} - 1.233$) as a Decimal.
-     *         Returns DecimalZero if the sample size is < 7 or the denominator ($Q3-Q1$) is zero.
+     * Returns DecimalZero if the sample size is < 7 or the denominator ($Q3-Q1$) is zero.
      *
      * @see Moors, J.J.A. (1988). "A quantile alternative for kurtosis". *The Statistician*, 37(1), 25-32.
-     *      (Defines the $K_{Moors}$ statistic and its normal-case value.)
+     * (Defines the $K_{Moors}$ statistic and its normal-case value.)
      */
     static Decimal getMoorsKurtosis(const std::vector<Decimal>& v)
     {
@@ -2337,16 +2094,16 @@ namespace mkc_timeseries
      * where $Q_1$, $Q_2$ (median), and $Q_3$ are the 25th, 50th, and 75th percentiles.
      *
      * The coefficient ranges from $-1$ to $+1$.
-     * *   **$B > 0$**: Positively skewed (right-skewed); longer/heavier upper tail.
-     * *   **$B < 0$**: Negatively skewed (left-skewed); longer/heavier lower tail (e.g., larger downside moves).
-     * *   **$B \approx 0$**: Symmetric distribution.
+     * * **$B > 0$**: Positively skewed (right-skewed); longer/heavier upper tail.
+     * * **$B < 0$**: Negatively skewed (left-skewed); longer/heavier lower tail (e.g., larger downside moves).
+     * * **$B \approx 0$**: Symmetric distribution.
      *
      * @param v A constant reference to a vector of Decimal values.
      * @return The Bowley Skewness (B) as a Decimal. Returns DecimalZero if the sample size
-     *         is < 4 or the interquartile range ($Q3-Q1$) is numerically tiny.
+     * is < 4 or the interquartile range ($Q3-Q1$) is numerically tiny.
      *
      * @see Bowley, A. L. (1920). *Elements of Statistics*. P. S. King & Son.
-     *      (One of the early proponents of this measure for descriptive statistics.)
+     * (One of the early proponents of this measure for descriptive statistics.)
      */
     static Decimal getBowleySkewness(const std::vector<Decimal>& v)
     {
@@ -2378,19 +2135,19 @@ namespace mkc_timeseries
      * @brief Measures asymmetry in tail spread between lower and upper sides.
      *
      * @details
-     *   Uses 10–50–90% quantiles by default:
+     * Uses 10–50–90% quantiles by default:
      *
-     *     lowerSpan = Q50 - Q10
-     *     upperSpan = Q90 - Q50
+     * lowerSpan = Q50 - Q10
+     * upperSpan = Q90 - Q50
      *
-     *   Returns:
-     *     tailRatio = max(lowerSpan, upperSpan) / min(lowerSpan, upperSpan)
+     * Returns:
+     * tailRatio = max(lowerSpan, upperSpan) / min(lowerSpan, upperSpan)
      *
-     *   If either span is non-positive or too small: returns 1.0.
+     * If either span is non-positive or too small: returns 1.0.
      *
-     *   Interpretation:
-     *     ~1.0  → roughly symmetric tails around the median
-     *     >>1.0 → one side is much more stretched (heavier or more volatile tail)
+     * Interpretation:
+     * ~1.0  → roughly symmetric tails around the median
+     * >>1.0 → one side is much more stretched (heavier or more volatile tail)
      */
     static double getTailSpanRatio(const std::vector<Decimal>& v,
 				   double pLow  = 0.10,
@@ -2438,12 +2195,12 @@ namespace mkc_timeseries
      *
      * 1.  **Bowley Skew (bowleySkew):** Measures overall asymmetry in the body of the distribution.
      * 2.  **Tail Span Ratio (tailRatio):** Quantifies tail asymmetry by comparing the
-     *     spread of the lower tail ($Q_{50}-Q_{10}$) to the upper tail ($Q_{90}-Q_{50}$).
-     *     A high ratio (>> 1) indicates that one tail is much more extended/volatile than the other.
+     * spread of the lower tail ($Q_{50}-Q_{10}$) to the upper tail ($Q_{90}-Q_{50}$).
+     * A high ratio (>> 1) indicates that one tail is much more extended/volatile than the other.
      *
      * The resulting struct classifies the distribution's shape based on two critical flags:
-     * *   `hasStrongAsymmetry`: True if $| \text{bowleySkew} | >= \text{bowleyThreshold}$.
-     * *   `hasHeavyTails`: True if $\text{tailRatio} >= \text{tailRatioThreshold}$.
+     * * `hasStrongAsymmetry`: True if $| \text{bowleySkew} | >= \text{bowleyThreshold}$.
+     * * `hasHeavyTails`: True if $\text{tailRatio} >= \text{tailRatioThreshold}$.
      *
      * This summary is particularly valuable in finance for assessing the non-Normal characteristics
      * of returns (e.g., negative skew and high tail risk) without being corrupted by rare, massive outliers.
@@ -2491,11 +2248,11 @@ namespace mkc_timeseries
      * distort moment-based results.
      *
      * 1.  **Skewness (First element):** Calculated using `getBowleySkewness`. This measures the
-     *     asymmetry of the distribution based on quartiles. A negative value indicates a
-     *     heavier left (negative) tail, common in financial losses.
+     * asymmetry of the distribution based on quartiles. A negative value indicates a
+     * heavier left (negative) tail, common in financial losses.
      * 2.  **Excess Kurtosis (Second element):** Calculated using `getMoorsKurtosis`. This measures
-     *     the heaviness of the tails relative to the Normal distribution (where $K_{Excess} \approx 0$).
-     *     A positive value indicates fatter tails (leptokurtosis).
+     * the heaviness of the tails relative to the Normal distribution (where $K_{Excess} \approx 0$).
+     * A positive value indicates fatter tails (leptokurtosis).
      *
      * **Robustness Note:** The result is always based on the more stable quantile methods
      * (Bowley/Moors), not the standard Fisher's moments, which are also available in
@@ -2503,10 +2260,10 @@ namespace mkc_timeseries
      *
      * @param v A constant reference to a vector of Decimal values.
      * @return A `std::pair<double, double>` containing:
-     *         - **First:** Bowley Skewness (B).
-     *         - **Second:** Moors' Excess Kurtosis ($K_{Excess}$).
-     *         Returns $\{0.0, 0.0\}$ if the sample size is less than 7 (the minimum required
-     *         for a stable Moors' Kurtosis calculation).
+     * - **First:** Bowley Skewness (B).
+     * - **Second:** Moors' Excess Kurtosis ($K_{Excess}$).
+     * Returns $\{0.0, 0.0\}$ if the sample size is less than 7 (the minimum required
+     * for a stable Moors' Kurtosis calculation).
      * @see getBowleySkewness
      * @see getMoorsKurtosis
      */
@@ -2754,21 +2511,21 @@ namespace mkc_timeseries
      * commonly used quantile definition for continuous distributions.
      *
      * For a sorted sample x₍₁₎ ≤ ... ≤ x₍ₙ₎ and probability p ∈ [0,1]:
-     *   h = (n-1)×p + 1    (1-based position)
-     *   i = ⌊h⌋            (lower index)
-     *   γ = h - i          (interpolation fraction)
+     * h = (n-1)×p + 1    (1-based position)
+     * i = ⌊h⌋            (lower index)
+     * γ = h - i          (interpolation fraction)
      *
      * The quantile is computed as:
-     *   Q₇(p) = (1-γ)×x₍ᵢ₎ + γ×x₍ᵢ₊₁₎
+     * Q₇(p) = (1-γ)×x₍ᵢ₎ + γ×x₍ᵢ₊₁₎
      *
      * Edge cases:
-     *   - p ≤ 0: returns minimum (first element)
-     *   - p ≥ 1: returns maximum (last element)
-     *   - Empty vector: throws std::invalid_argument
+     * - p ≤ 0: returns minimum (first element)
+     * - p ≥ 1: returns maximum (last element)
+     * - Empty vector: throws std::invalid_argument
      *
      * Reference:
-     *   Hyndman, R.J. and Fan, Y. (1996). Sample quantiles in statistical packages.
-     *   American Statistician, 50(4), 361-365.
+     * Hyndman, R.J. and Fan, Y. (1996). Sample quantiles in statistical packages.
+     * American Statistician, 50(4), 361-365.
      *
      * @tparam T Numeric type (e.g., double, Decimal). Must support arithmetic operations.
      *
@@ -2782,7 +2539,7 @@ namespace mkc_timeseries
      * @complexity O(1) time, O(1) space (requires data to already be sorted).
      *
      * @note This function assumes the input is already sorted. For unsorted data,
-     *       use quantileType7Unsorted() instead.
+     * use quantileType7Unsorted() instead.
      */
     static Decimal quantileType7Sorted(const std::vector<Decimal>& sorted, double p)
     {
@@ -2820,9 +2577,9 @@ namespace mkc_timeseries
      * sorting to find the required elements.
      *
      * This function is suitable when:
-     *   - The input data is not sorted
-     *   - You need a single quantile (or a few quantiles)
-     *   - You don't want to modify the original vector
+     * - The input data is not sorted
+     * - You need a single quantile (or a few quantiles)
+     * - You don't want to modify the original vector
      *
      * For multiple quantiles on the same dataset, consider sorting once and using
      * quantileType7Sorted() repeatedly for better performance.
@@ -2830,7 +2587,7 @@ namespace mkc_timeseries
      * @tparam T Numeric type (e.g., double, Decimal). Must support arithmetic operations.
      *
      * @param data Unsorted vector. The input is passed by const reference and copied
-     *             internally, so the original vector is not modified.
+     * internally, so the original vector is not modified.
      * @param p Quantile probability in [0,1]. Values outside this range are clamped.
      *
      * @return The type-7 quantile at probability p.
@@ -2882,72 +2639,57 @@ namespace mkc_timeseries
       return x0 + (x1 - x0) * Decimal(frac);
     }
     
+
   private:
-    /**
-     * @brief A private helper function to compute a factor from gains and losses.
-     * @details This function encapsulates the core ratio calculation and handles the
-     * division-by-zero case where losses are zero. It can also apply
-     * logarithmic compression to the result.
-     * @param gains The total sum of positive values (wins).
-     * @param losses The total sum of negative values (losses).
-     * @param compressResult A boolean flag; if true, applies log(1 + pf) to the result.
-     * @return The calculated factor as a Decimal.
-     */
-    static Decimal computeFactor(const Decimal& gains, const Decimal& losses, bool compressResult)
+    // =========================================================================
+    // computeFactor — private helper: ratio of gains to |losses|.
+    // =========================================================================
+    static Decimal computeFactor(const Decimal& gains, const Decimal& losses,
+                                  bool compressResult)
     {
       Decimal pf;
-	
-      // If there are no losses, return a fixed large number to signify a highly profitable state.
       if (losses == DecimalConstants<Decimal>::DecimalZero)
-	{
-	  pf = DecimalConstants<Decimal>::DecimalOneHundred;
-	}
+	pf = DecimalConstants<Decimal>::DecimalOneHundred;
       else
-	{
-	  pf = gains / num::abs(losses);
-	}
-	
-      // Apply log compression to the final profit factor if requested
+	pf = gains / num::abs(losses);
+
       if (compressResult)
 	return Decimal(std::log(num::to_double(DecimalConstants<Decimal>::DecimalOne + pf)));
       else
 	return pf;
     }
 
-    // 🔒 Internal bootstrap helper that takes a user-supplied RNG
+    // =========================================================================
+    // Internal bootstrap helpers
+    // =========================================================================
     template<typename RNG>
-    static std::vector<Decimal> bootstrapWithRNG(const std::vector<Decimal>& input, size_t sampleSize, RNG& rng)
+    static std::vector<Decimal> bootstrapWithRNG(const std::vector<Decimal>& input,
+                                                   size_t sampleSize, RNG& rng)
     {
       if (input.empty())
 	throw std::invalid_argument("bootstrapWithRNG: input vector must not be empty");
-
       if (sampleSize == 0)
 	sampleSize = input.size();
 
       std::vector<Decimal> result;
       result.reserve(sampleSize);
-
-      for (size_t i = 0; i < sampleSize; ++i) {
-	size_t index = rng.uniform(size_t(0), input.size() - 1);
-	result.push_back(input[index]);
-      }
-
+      for (size_t i = 0; i < sampleSize; ++i)
+	result.push_back(input[rng.uniform(size_t(0), input.size() - 1)]);
       return result;
     }
 
-    // 🔒 Internal core logic for bootstrapping tuple-based statistics
     template<typename RNG>
     static std::tuple<Decimal, Decimal> getBootstrappedTupleStatistic(
-								      const std::vector<Decimal>& barReturns,
-								      std::function<std::tuple<Decimal, Decimal>(const std::vector<Decimal>&)> statisticFunc,
-								      size_t numBootstraps,
-								      RNG& rng)
+	const std::vector<Decimal>& barReturns,
+	std::function<std::tuple<Decimal, Decimal>(const std::vector<Decimal>&)> statisticFunc,
+	size_t numBootstraps,
+	RNG& rng)
     {
       if (barReturns.size() < 5)
-	return std::make_tuple(DecimalConstants<Decimal>::DecimalZero, DecimalConstants<Decimal>::DecimalZero);
+	return std::make_tuple(DecimalConstants<Decimal>::DecimalZero,
+			       DecimalConstants<Decimal>::DecimalZero);
 
-      std::vector<Decimal> stat1_values;
-      std::vector<Decimal> stat2_values;
+      std::vector<Decimal> stat1_values, stat2_values;
       stat1_values.reserve(numBootstraps);
       stat2_values.reserve(numBootstraps);
 
@@ -2958,109 +2700,93 @@ namespace mkc_timeseries
 	  stat1_values.push_back(stat1);
 	  stat2_values.push_back(stat2);
 	}
-
-      Decimal median_stat1 = mkc_timeseries::MedianOfVec(stat1_values);
-      Decimal median_stat2 = mkc_timeseries::MedianOfVec(stat2_values);
-
-      return std::make_tuple(median_stat1, median_stat2);
+      return std::make_tuple(mkc_timeseries::MedianOfVec(stat1_values),
+			     mkc_timeseries::MedianOfVec(stat2_values));
     }
 
-  private:
-        /**
-     * @brief Core algorithm for computing log(PF) from precomputed log-space sums.
-     * 
-     * @details
-     * This is the heart of the LogPF_LogPF computation. It takes precomputed
-     * sums of log wins and loss magnitudes, applies priors and floors, and
-     * returns log(PF).
-     * 
-     * This function is designed to be called by:
-     * - computeLogProfitFactorRobust_LogPF (after computing sums from raw returns)
-     * - LogProfitFactorFromLogBarsStat_LogPF::operator() (after summing precomputed logs)
-     * 
-     * By extracting this core logic, we ensure algorithm changes only need to be
-     * made in ONE place, eliminating maintenance nightmares.
-     * 
-     * @param sum_log_wins    Sum of positive log-growth values (numerator base)
-     * @param sum_loss_mag    Sum of absolute values of negative log-growth values
-     * @param ruin_eps        Ruin epsilon for fallback prior calculation
-     * @param denom_floor     Minimum denominator value
-     * @param prior_strength  Prior strength multiplier
-     * @param stop_loss_return_space      Stop loss in return space (e.g., 0.05 for 5%)
-     * @param profit_target_return_space  Profit target in return space
-     * @param tiny_win_fraction           Fraction for numerator floor calculation
-     * @param tiny_win_min_return         Minimum numerator floor value
-     * 
-     * @return log(PF) where PF = numer / denom
-     */
-
-    /**
-     * @brief Precision-hardened core algorithm for Log Profit Factor.
-     * * This version uses long double (xdouble) for all intermediate 
-     * transcendental calculations to protect the 8th decimal place 
-     * of the decimal<8> type.
-     */
+    // =========================================================================
+    // computeLogPF_FromSums — core of the SymmetricLogPF algorithm.
+    //
+    // 5-param overload: legacy path (LegacyNumerPolicy + LegacyDenomPolicy).
+    //   Passes std::nullopt for loss_count / N; denom policy treats -1 as "no
+    //   count info" and does not apply count-fading.
+    //
+    // 7-param overload: count-fading path (SmallSampleDenomPolicy).
+    //   Passes actual loss_count and N for the adaptive prior.
+    //
+    // NOTE: ruin_eps is NOT used inside the Impl — ruin handling is upstream.
+    // =========================================================================
     static Decimal computeLogPF_FromSums(Decimal sum_log_wins,
 					 Decimal sum_loss_mag,
 					 double  ruin_eps,
 					 double  denom_floor,
-					 [[maybe_unused]] double prior_strength,
-					 double  stop_loss_return_space,
-					 double  profit_target_return_space,
-					 double  tiny_win_fraction,
-					 double  tiny_win_min_return)
+					 double  prior_strength)
     {
-      using DC = DecimalConstants<Decimal>;
-      using xdouble = long double;
-
-      // --- Step 1: Handle Empty or Zero Input ---
-      if (sum_log_wins == DC::DecimalZero && sum_loss_mag == DC::DecimalZero)
-        return DC::DecimalZero;
-
-      // Use the helper to extract high-precision floating point values
-      const xdouble wins_ld = num::to_long_double(sum_log_wins);
-
-      // --- Step 2: Prior loss magnitude anchored to observed win mass ---
-      // Sized as a small fraction of observed wins to prevent denominator collapse.
-      const Decimal prior_loss_mag = std::max(Decimal(static_cast<xdouble>(denom_floor)),
-					      Decimal(static_cast<xdouble>(0.05) * wins_ld));
-
-      // --- Step 3: Denominator with floor ---
-      // Addition in the Decimal domain is exact (int64).
-      Decimal denom = sum_loss_mag + prior_loss_mag;
-      const Decimal d_denom_floor = Decimal(static_cast<xdouble>(denom_floor));
-    
-      if (denom < d_denom_floor)
-        denom = d_denom_floor;
-
-      // --- Step 4: Numerator floor calculation ---
-      const xdouble stopAbs   = std::abs(static_cast<xdouble>(stop_loss_return_space));
-      const xdouble targetAbs = std::abs(static_cast<xdouble>(profit_target_return_space));
-
-      xdouble scale = 0.0L;
-      if (stopAbs > 0.0L && targetAbs > 0.0L)
-        scale = std::min(stopAbs, targetAbs);
-      else if (targetAbs > 0.0L)
-        scale = targetAbs;
-      else if (stopAbs > 0.0L)
-        scale = stopAbs;
-
-      const xdouble tiny_win_return = std::max(static_cast<xdouble>(tiny_win_min_return),
-					       static_cast<xdouble>(tiny_win_fraction) * scale);
-    
-      // Ensure the log(1 + r) transformation uses long double headroom.
-      const Decimal numer_floor = Decimal(std::log(1.0L + tiny_win_return));
-
-      Decimal numer = sum_log_wins;
-      if (numer < numer_floor)
-        numer = numer_floor;
-
-      // --- Step 5: logPF = log(numer) - log(denom) ---
-      // These calls use the updated decimal_math.h overloads which 
-      // utilize getAsXDouble() for Decimal types.
-      return std::log(numer) - std::log(denom);
+      return computeProfitFactor_FromSums_Impl<LegacyNumerPolicy,
+					       LegacyDenomPolicy,
+					       ResultLogPFPolicy>(
+        sum_log_wins, sum_loss_mag,
+        ruin_eps, denom_floor, prior_strength,
+        std::nullopt, std::nullopt);
     }
-    
+
+    static Decimal computeLogPF_FromSums(Decimal sum_log_wins,
+					 Decimal sum_loss_mag,
+					 int     loss_count,
+					 int     N,
+					 double  ruin_eps,
+					 double  denom_floor,
+					 double  prior_strength)
+    {
+      return computeProfitFactor_FromSums_Impl<SmallSampleNumerPolicy,
+					       SmallSampleDenomPolicy,
+					       ResultLogPFPolicy>(
+        sum_log_wins, sum_loss_mag,
+        ruin_eps, denom_floor, prior_strength,
+        std::optional<int>(loss_count),
+        std::optional<int>(N));
+    }
+
+    // =========================================================================
+    // computeProfitFactor_FromSums_MedianImpl
+    //
+    // Core of the Robust algorithm.  Calls MedianPriorDenomPolicy::computePrior
+    // for the denominator prior, then applies NumerPolicyT and ResultPolicyT.
+    //
+    // ruin_eps IS used here — it determines the no-loss fallback magnitude in
+    // MedianPriorDenomPolicy::computePrior.
+    // =========================================================================
+    template<class NumerPolicyT, class ResultPolicyT, class LossMagContainer>
+    static Decimal computeProfitFactor_FromSums_MedianImpl(
+					     Decimal sum_log_wins,
+					     Decimal sum_log_losses,
+					     const LossMagContainer& loss_mags,
+					     double  ruin_eps,
+					     double  denom_floor,
+					     double  prior_strength,
+					     double  default_loss_magnitude)
+    {
+      const Decimal d_floor = Decimal(denom_floor);
+
+      const Decimal prior = MedianPriorDenomPolicy::computePrior(
+        loss_mags, ruin_eps, denom_floor, prior_strength, default_loss_magnitude);
+
+      Decimal denom = num::abs(sum_log_losses) + prior;
+      if (denom < d_floor) denom = d_floor;
+
+      return ResultPolicyT::finalizeFromRatio(
+        NumerPolicyT::computeNumer(sum_log_wins, d_floor), denom);
+    }
+
+    // =========================================================================
+    // computeRobustPF_FromSums — dispatcher for the Robust family.
+    //
+    // Selects ResultLog1pPFPolicy or ResultRawPFPolicy based on compressResult,
+    // then delegates to computeProfitFactor_FromSums_MedianImpl.
+    //
+    // Called by: computeLogProfitFactorRobust (public static method)
+    //            RobustPFStat::operator()
+    // =========================================================================
     template<typename LossMagContainer>
     static Decimal computeRobustPF_FromSums(
 					    Decimal sum_log_wins,
@@ -3072,90 +2798,61 @@ namespace mkc_timeseries
 					    double  prior_strength,
 					    double  default_loss_magnitude)
     {
-      using DC = DecimalConstants<Decimal>;
-    
-      Decimal prior_loss_mag = DC::DecimalZero;
-
-      // ===========================================================================
-      // BAYESIAN REGULARIZATION: Median-Based Prior for Robust Profit Factor
-      // ===========================================================================
-      //
-      // This section adds a "prior loss" to the denominator to prevent overfitting
-      // and produce more conservative profit factor estimates, especially important
-      // for small samples or strategies with few observed losses.
-      //
-      // KEY INSIGHT: Using the median makes the profit factor WORSE (smaller), and
-      // this is INTENTIONAL - it's a regularization technique for more reliable
-      // estimates.
-      //
-      // HOW IT WORKS:
-      //   1. Compute the MEDIAN of observed loss magnitudes (not mean - median is
-      //      robust to outliers and represents a "typical" loss)
-      //   2. Multiply by prior_strength to create a "virtual loss"
-      //   3. Add this to the denominator, effectively increasing the total losses
-      //
-      // EXAMPLE with prior_strength = 1.0:
-      //   - Observed losses (log-space): [0.01, 0.02, 0.03]
-      //   - Median = 0.02
-      //   - prior_loss_mag = 0.02 × 1.0 = 0.02
-      //   - Denominator WITHOUT prior: 0.06
-      //   - Denominator WITH prior:    0.06 + 0.02 = 0.08  (33% increase!)
-      //   - Result: Profit factor is 25% LOWER (more conservative)
-      //
-      // WHY THIS MAKES SENSE:
-      //   - Prevents unrealistically high profit factors from lucky samples
-      //   - Acts like having "one extra typical loss" beyond what was observed
-      //   - Hedges against future losses that weren't in the training sample
-      //   - Similar to Laplace smoothing in probability estimation
-      //
-      // PARAMETER MEANINGS:
-      //   prior_strength = 0.0 → No regularization (use raw observations only)
-      //   prior_strength = 1.0 → Add 1 median-sized pseudo-loss (DEFAULT)
-      //   prior_strength = 2.0 → Add 2 median-sized pseudo-losses (very conservative)
-      //
-      // NOTE: A prior_strength of 1.0 is NOT a no-op! It meaningfully increases
-      // the denominator and reduces the profit factor, which is the desired
-      // conservative behavior for robust statistical estimation.
-      // ===========================================================================
-      if (!loss_magnitudes.empty())
-	{
-	  // Make a mutable copy for nth_element
-	  LossMagContainer loss_mags_copy(loss_magnitudes.begin(), 
-					  loss_magnitudes.end());
-        
-	  const std::size_t mid = loss_mags_copy.size() / 2;
-	  std::nth_element(loss_mags_copy.begin(),
-			   loss_mags_copy.begin() + static_cast<std::ptrdiff_t>(mid),
-			   loss_mags_copy.end());
-	  const Decimal med = loss_mags_copy[mid];
-
-	  prior_loss_mag = med * Decimal(prior_strength);
-	}
-      else
-	{
-	  Decimal assumed_mag;
-	  if (default_loss_magnitude > 0.0)
-            assumed_mag = Decimal(default_loss_magnitude);
-	  else
-            assumed_mag = Decimal(std::max(-std::log(ruin_eps), denom_floor));
-        
-	  prior_loss_mag = assumed_mag * Decimal(prior_strength);
-	}
-
-      // Rest of algorithm...
-      const Decimal numer = sum_log_wins;
-      Decimal denom = num::abs(sum_log_losses) + prior_loss_mag;
-
-      const Decimal d_floor = Decimal(denom_floor);
-      if (denom < d_floor)
-        denom = d_floor;
-
-      Decimal pf = (denom > DC::DecimalZero) ? (numer / denom) : DC::DecimalZero;
-
       if (compressResult)
-        return std::log(DC::DecimalOne + pf);
+        return computeProfitFactor_FromSums_MedianImpl<
+                 NumeratorStrictPolicy, ResultLog1pPFPolicy>(
+          sum_log_wins, sum_log_losses, loss_magnitudes,
+          ruin_eps, denom_floor, prior_strength, default_loss_magnitude);
+      else
+        return computeProfitFactor_FromSums_MedianImpl<
+                 NumeratorStrictPolicy, ResultRawPFPolicy>(
+          sum_log_wins, sum_log_losses, loss_magnitudes,
+          ruin_eps, denom_floor, prior_strength, default_loss_magnitude);
+    }
 
-      return pf;
+    // =========================================================================
+    // computeProfitFactor_FromSums_Impl — core of the SymmetricLogPF algorithm.
+    //
+    // All three aspects (numerator, denominator, result mapping) are policy
+    // template parameters.
+    //
+    // loss_count / N are std::optional:
+    //   std::nullopt → converted to -1; denom policies degrade gracefully
+    //   integer      → actual count; enables SmoothAdditiveWinCountFading
+    //
+    // ruin_eps is intentionally (void)d — ruin handling is upstream.
+    // =========================================================================
+    template <class NumeratorPolicyT, class DenomPolicyT, class ResultPolicyT>
+    static Decimal computeProfitFactor_FromSums_Impl(Decimal            sum_log_wins,
+						     Decimal            sum_loss_mag,
+						     double             ruin_eps,
+						     double             denom_floor,
+						     double             prior_strength,
+						     std::optional<int> loss_count,
+						     std::optional<int> N)
+    {
+      using DC      = DecimalConstants<Decimal>;
+      using xdouble = long double;
+
+      (void)ruin_eps;  // handled upstream in makeLogGrowthSeries / accumulation policies
+
+      if (sum_log_wins == DC::DecimalZero && sum_loss_mag == DC::DecimalZero)
+	return DC::DecimalZero;
+
+      if (denom_floor <= 0.0)
+	denom_floor = StatUtils::DefaultDenomFloor;
+
+      const Decimal floor_d(static_cast<xdouble>(denom_floor));
+      const int lc = loss_count.value_or(-1);
+      const int nn = N.value_or(-1);
+
+      const Decimal denom =
+	DenomPolicyT::computeDenom(sum_log_wins, sum_loss_mag, floor_d,
+				   prior_strength, lc, nn);
+      const Decimal numer =
+	NumeratorPolicyT::computeNumer(sum_log_wins, floor_d);
+
+      return ResultPolicyT::finalizeFromRatio(numer, denom);
     }
   };
 }

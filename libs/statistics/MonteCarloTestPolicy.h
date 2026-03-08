@@ -180,11 +180,13 @@ namespace mkc_timeseries
       // -----------------------------------------------------------------------
       // Use newer _LogPF interface with automatic return→log conversion
       // -----------------------------------------------------------------------
+
+      const double prior_strength = 0.01;
       return StatUtils<Decimal>::computeLogProfitFactorRobust_LogPF(
 								    barSeries,
 								    StatUtils<Decimal>::DefaultRuinEps,
 								    StatUtils<Decimal>::DefaultDenomFloor,
-								    StatUtils<Decimal>::DefaultPriorStrength,
+								    prior_strength,
 								    stopLossPct,
 								    profitTargetPct);
     }
