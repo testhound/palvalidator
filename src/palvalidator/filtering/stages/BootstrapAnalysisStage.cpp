@@ -1310,9 +1310,12 @@ namespace palvalidator::filtering::stages
        << stopLossPct << " to LogProfitFactorFromLogBarsStat_LogPF\n";
 
     // Same stat as the bar-level path, constructed identically.
+
+    double bootstrap_prior_strength = 0.01;
+    
     Sampler stat(Stat::DefaultRuinEps,
 		 Stat::DefaultDenomFloor,
-		 Stat::DefaultPriorStrength,
+		 bootstrap_prior_strength,
 		 stopLossPct,
 		 profitTargetPct);
 
