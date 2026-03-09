@@ -410,8 +410,16 @@ TEST_CASE("select: Single candidate selection",
     SECTION("Throws when given empty candidate list")
     {
         std::vector<Candidate> empty;
-        
-        REQUIRE_THROWS_AS(Selector::select(empty), std::invalid_argument);
+
+        REQUIRE_THROWS_AS(Selector::select(empty),
+                          palvalidator::StrategyAutoBootstrapException);
+        // Verify the specific reason code
+        try { Selector::select(empty); }
+        catch (const palvalidator::StrategyAutoBootstrapException& ex)
+        {
+            REQUIRE(ex.getReason() ==
+                    palvalidator::StrategyAutoBootstrapException::Reason::NoCandidatesProvided);
+        }
     }
 }
 
