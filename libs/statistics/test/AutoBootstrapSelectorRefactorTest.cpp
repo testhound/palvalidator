@@ -431,7 +431,7 @@ TEST_CASE("ScoreNormalizer::computeTotalScore: Score computation",
         auto norm = normalizer.normalize(raw);
         
         // Length penalty below threshold - no overflow penalty
-        double length_penalty = 0.5;  // Assuming kBcaLengthPenaltyThreshold > 0.5
+        double length_penalty = 0.5;  // Assuming kBcaLengthOverflowThreshold > 0.5
         
         double total = normalizer.computeTotalScore(
             norm, raw, MethodId::BCa, length_penalty);
@@ -1036,7 +1036,7 @@ TEST_CASE("analyzeBcaRejection: BCa rejection diagnostics",
         auto analysis = Selector::analyzeBcaRejection(candidates, raw, 1, true);
         
         // Check if length penalty exceeds threshold
-        bool exceeds = 10.0 > AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold;
+        bool exceeds = 10.0 > AutoBootstrapConfiguration::kBcaLengthRejectionThreshold;
         if (exceeds)
         {
             REQUIRE(analysis.rejectedForLength() == true);
@@ -1135,10 +1135,17 @@ TEST_CASE("validateInputs: Input validation",
     SECTION("Empty candidate list throws exception")
     {
         std::vector<Candidate> empty_candidates;
-        
+
         REQUIRE_THROWS_AS(
             Selector::validateInputs(empty_candidates),
-            std::invalid_argument);
+            palvalidator::StrategyAutoBootstrapException);
+        // Verify the specific reason code
+        try { Selector::validateInputs(empty_candidates); }
+        catch (const palvalidator::StrategyAutoBootstrapException& ex)
+        {
+            REQUIRE(ex.getReason() ==
+                    palvalidator::StrategyAutoBootstrapException::Reason::NoCandidatesProvided);
+        }
     }
     
     SECTION("Non-empty candidate list does not throw")
@@ -1193,10 +1200,17 @@ TEST_CASE("select: Full integration test with valid candidates",
     SECTION("Throws on empty candidates")
     {
         std::vector<Candidate> empty_candidates;
-        
+
         REQUIRE_THROWS_AS(
             Selector::select(empty_candidates, weights, unbounded),
-            std::invalid_argument);
+            palvalidator::StrategyAutoBootstrapException);
+        // Verify the specific reason code
+        try { Selector::select(empty_candidates, weights, unbounded); }
+        catch (const palvalidator::StrategyAutoBootstrapException& ex)
+        {
+            REQUIRE(ex.getReason() ==
+                    palvalidator::StrategyAutoBootstrapException::Reason::NoCandidatesProvided);
+        }
     }
 }
 

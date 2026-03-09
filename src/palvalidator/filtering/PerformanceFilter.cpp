@@ -211,6 +211,9 @@ namespace palvalidator
         case FilterDecisionType::FailInsufficientData:
           mFilteringSummary.incrementInsufficientCount();
           break;
+        case FilterDecisionType::FailBootstrap:
+          mFilteringSummary.incrementFailBootstrapCount();
+          break;
         case FilterDecisionType::FailHurdle:
           mFilteringSummary.incrementFailLBoundCount();
           break;

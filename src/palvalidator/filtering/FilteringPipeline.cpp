@@ -1,4 +1,5 @@
 #include "filtering/FilteringPipeline.h"
+#include "BootstrapException.h"
 #include "analysis/DivergenceAnalyzer.h"
 #include "DecimalConstants.h"
 #include <sstream>
@@ -180,7 +181,21 @@ using mkc_timeseries::DecimalConstants;
     }
     
     // Stage 2: Bootstrap Analysis
-    auto bootstrap = mBootstrapStage.execute(ctx, os);
+    // A BootstrapStageException propagates from BootstrapAnalysisStage::execute()
+    // when the tournament cannot produce a trustworthy CI for any enabled method
+    // (all candidates failed hard gates). This is a data-quality failure: the
+    // strategy's return series is too pathological to evaluate reliably.
+    BootstrapAnalysisResult bootstrap{};
+    try
+      {
+        bootstrap = mBootstrapStage.execute(ctx, os);
+      }
+    catch (const palvalidator::BootstrapStageException& ex)
+      {
+        const std::string reason = ex.what();
+        os << "✗ Strategy filtered out: " << reason << "\n";
+        return FilterDecision::Fail(FilterDecisionType::FailBootstrap, reason);
+      }
 
     if (!bootstrap.computationSucceeded)
       {

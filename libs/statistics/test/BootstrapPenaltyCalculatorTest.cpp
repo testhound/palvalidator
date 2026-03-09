@@ -622,7 +622,7 @@ TEST_CASE("BootstrapPenaltyCalculator: BCa length penalty thresholds",
     SECTION("Configuration constants are correct values")
     {
         // Document the actual threshold values
-        double threshold = AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold;
+        double threshold = AutoBootstrapConfiguration::kBcaLengthOverflowThreshold;
         double scale = AutoBootstrapConfiguration::kBcaLengthOverflowScale;
         
         // Verify threshold = 1.0
@@ -673,7 +673,7 @@ TEST_CASE("BootstrapPenaltyCalculator: BCa length penalty thresholds",
         
         // Verify this is documented in code comments
         INFO("BCa length overflow penalty applies only to MethodId::BCa");
-        INFO("Threshold: " << AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold);
+        INFO("Threshold: " << AutoBootstrapConfiguration::kBcaLengthOverflowThreshold);
         INFO("Scale: " << AutoBootstrapConfiguration::kBcaLengthOverflowScale);
     }
 }
