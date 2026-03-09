@@ -148,13 +148,15 @@ namespace mkc_timeseries
       std::vector<Decimal> newVolume;
 #endif
 
-      // Apply the same permutation to all day-factor arrays
-      apply_perm(mRelativeOpen,  newOpen);
-      apply_perm(mRelativeHigh,  newHigh);
-      apply_perm(mRelativeLow,   newLow);
-      apply_perm(mRelativeClose, newClose);
+      // Apply the same permutation to all day-factor arrays,
+      // always sourcing from the immutable originals so each call
+      // is an independent draw from the empirical baseline.
+      apply_perm(mOriginalRelativeOpen,  newOpen);
+      apply_perm(mOriginalRelativeHigh,  newHigh);
+      apply_perm(mOriginalRelativeLow,   newLow);
+      apply_perm(mOriginalRelativeClose, newClose);
 #ifdef SYNTHETIC_VOLUME
-      apply_perm(mRelativeVolume, newVolume);
+      apply_perm(mOriginalRelativeVolume, newVolume);
 #endif
 
       // Ensure the anchor day keeps open factor = 1
@@ -267,6 +269,16 @@ namespace mkc_timeseries
 	  mDateSeries.addElement(it->getDateValue());
 	}
       }
+
+      // Snapshot the empirical baseline so every shuffle draws from the
+      // same original factors rather than from the previous permutation.
+      mOriginalRelativeOpen  = mRelativeOpen;
+      mOriginalRelativeHigh  = mRelativeHigh;
+      mOriginalRelativeLow   = mRelativeLow;
+      mOriginalRelativeClose = mRelativeClose;
+#ifdef SYNTHETIC_VOLUME
+      mOriginalRelativeVolume = mRelativeVolume;
+#endif
     }
 
     std::shared_ptr<OHLCTimeSeries<Decimal, LookupPolicy>> buildEodInternal()
@@ -330,9 +342,14 @@ namespace mkc_timeseries
     Decimal        mMinimumTick;
     Decimal        mMinimumTickDiv2;
     VectorDate     mDateSeries;
+    // Working (permuted) factor vectors — overwritten on each shuffleFactors() call.
     std::vector<Decimal> mRelativeOpen, mRelativeHigh, mRelativeLow, mRelativeClose;
+    // Immutable empirical baseline — set once in initEodDataInternal(), never mutated.
+    std::vector<Decimal> mOriginalRelativeOpen, mOriginalRelativeHigh,
+                         mOriginalRelativeLow,  mOriginalRelativeClose;
 #ifdef SYNTHETIC_VOLUME
     std::vector<Decimal> mRelativeVolume;
+    std::vector<Decimal> mOriginalRelativeVolume;
 #endif
     Decimal        mFirstOpen;
 #ifdef SYNTHETIC_VOLUME
@@ -475,9 +492,22 @@ private:
                 mDateSeries.addElement(it->getDateValue());
             }
         }
+
+        // Snapshot the empirical baseline so every shuffle draws from the
+        // same original factors rather than from the previous permutation.
+        mOriginalRelativeOpen  = mRelativeOpen;
+        mOriginalRelativeHigh  = mRelativeHigh;
+        mOriginalRelativeLow   = mRelativeLow;
+        mOriginalRelativeClose = mRelativeClose;
+#ifdef SYNTHETIC_VOLUME
+        mOriginalRelativeVolume = mRelativeVolume;
+#endif
     }
 
     void shuffleOverNightChangesInternal(RandomMersenne& randGenerator) {
+        // Reset to empirical baseline before each permutation so iterations
+        // are independent draws rather than permutations of permutations.
+        mRelativeOpen = mOriginalRelativeOpen;
         if (mRelativeOpen.size() <= 1) return; 
         for (size_t i = mRelativeOpen.size() - 1; i > 1; --i) { 
             size_t j = randGenerator.DrawNumberExclusive(i) + 1; 
@@ -485,22 +515,32 @@ private:
         }
     }
 
-    void shuffleTradingDayChangesInternal(RandomMersenne& randGenerator) {
-        if (mRelativeHigh.size() <= 1) return; 
-        size_t i = mRelativeHigh.size();
-        while (i > 1)
-        {
-            size_t j = randGenerator.DrawNumberExclusive(i);
-            i--; 
-            std::swap(mRelativeHigh[i],  mRelativeHigh[j]);
-            std::swap(mRelativeLow [i],  mRelativeLow [j]);
-            std::swap(mRelativeClose[i], mRelativeClose[j]);
+    void shuffleTradingDayChangesInternal(RandomMersenne& randGenerator)
+    {
+      // Reset to empirical baseline before each permutation.
+      mRelativeHigh  = mOriginalRelativeHigh;
+      mRelativeLow   = mOriginalRelativeLow;
+      mRelativeClose = mOriginalRelativeClose;
 #ifdef SYNTHETIC_VOLUME
-            std::swap(mRelativeVolume[i], mRelativeVolume[j]);
+      mRelativeVolume = mOriginalRelativeVolume;
 #endif
-        }
-    }
 
+      if (mRelativeHigh.size() <= 2)
+	return;
+
+      // Fisher–Yates over subrange [1..n-1], keeping index 0 fixed as anchor
+      for (size_t i = mRelativeHigh.size() - 1; i > 1; --i)
+	{
+	  size_t j = randGenerator.DrawNumberExclusive(i) + 1; // j in [1, i]
+	  std::swap(mRelativeHigh[i],  mRelativeHigh[j]);
+	  std::swap(mRelativeLow[i],   mRelativeLow[j]);
+	  std::swap(mRelativeClose[i], mRelativeClose[j]);
+#ifdef SYNTHETIC_VOLUME
+	  std::swap(mRelativeVolume[i], mRelativeVolume[j]);
+#endif
+	}
+    }
+    
     std::shared_ptr<OHLCTimeSeries<Decimal, LookupPolicy>> buildEodInternal() {
         if (mSourceTimeSeries.getNumEntries() == 0) {
              return std::make_shared<OHLCTimeSeries<Decimal, LookupPolicy>>(
@@ -561,9 +601,14 @@ private:
     Decimal mMinimumTick;
     Decimal mMinimumTickDiv2;
     VectorDate mDateSeries;
+    // Working (permuted) factor vectors — overwritten on each shuffleFactors() call.
     std::vector<Decimal> mRelativeOpen, mRelativeHigh, mRelativeLow, mRelativeClose;
+    // Immutable empirical baseline — set once in initEodDataInternal(), never mutated.
+    std::vector<Decimal> mOriginalRelativeOpen, mOriginalRelativeHigh,
+                         mOriginalRelativeLow,  mOriginalRelativeClose;
 #ifdef SYNTHETIC_VOLUME
     std::vector<Decimal> mRelativeVolume;
+    std::vector<Decimal> mOriginalRelativeVolume;
 #endif
     Decimal mFirstOpen;
 #ifdef SYNTHETIC_VOLUME
@@ -602,6 +647,13 @@ public:
     IntradaySyntheticTimeSeriesImpl& operator=(IntradaySyntheticTimeSeriesImpl&& other) noexcept = default;
 
     void shuffleFactors(RandomMersenne& randGenerator) override {
+        // Reset all working state to the empirical baseline so each call is
+        // an independent draw rather than a permutation of the previous one.
+        mDailyNormalizedBars = mOriginalDailyNormalizedBars;
+        mOvernightGaps       = mOriginalOvernightGaps;
+        std::iota(mDayIndices.begin(), mDayIndices.end(), 0u);
+
+        // Now shuffle from the clean baseline.
         for (auto& dayBars : mDailyNormalizedBars) {
             inplaceShuffle(dayBars, randGenerator);
         }
@@ -724,7 +776,12 @@ private:
         }
 
         mDayIndices.resize(mDailyNormalizedBars.size());
-        std::iota(mDayIndices.begin(), mDayIndices.end(), 0u); 
+        std::iota(mDayIndices.begin(), mDayIndices.end(), 0u);
+
+        // Snapshot the empirical baseline so every shuffle draws from the
+        // same original factors rather than from the previous permutation.
+        mOriginalDailyNormalizedBars = mDailyNormalizedBars;
+        mOriginalOvernightGaps       = mOvernightGaps;
     }
 
     std::shared_ptr<OHLCTimeSeries<Decimal, LookupPolicy>> buildIntradayInternal() {
@@ -832,10 +889,15 @@ private:
     Decimal mMinimumTickDiv2;
     Decimal mFirstOpen;
 
-    std::vector<std::vector<OHLCTimeSeriesEntry<Decimal>>> mDailyNormalizedBars; 
+    // Working (permuted) state — overwritten on each shuffleFactors() call.
+    std::vector<std::vector<OHLCTimeSeriesEntry<Decimal>>> mDailyNormalizedBars;
     std::vector<OHLCTimeSeriesEntry<Decimal>> mBasisDayBars;
     std::vector<Decimal> mOvernightGaps;
     std::vector<size_t> mDayIndices;
+
+    // Immutable empirical baseline — set once in initIntradayDataInternal(), never mutated.
+    std::vector<std::vector<OHLCTimeSeriesEntry<Decimal>>> mOriginalDailyNormalizedBars;
+    std::vector<Decimal> mOriginalOvernightGaps;
 };
 
 
