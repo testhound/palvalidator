@@ -330,7 +330,7 @@ namespace palvalidator
             raw.getSkewSq() / AutoBootstrapConfiguration::kRefSkewSq);
           
           // Get weights
-          const double w_order = 1.0;
+          const double w_order = AutoBootstrapConfiguration::kOrderingPenaltyWeight;
           const double w_center = m_weights.getCenterShiftWeight();
           const double w_skew = m_weights.getSkewWeight();
           const double w_length = m_weights.getLengthWeight();
@@ -376,7 +376,7 @@ namespace palvalidator
 
 	static double computeBcaLengthOverflow(double length_penalty)
         {
-          const double threshold = AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold;
+          const double threshold = AutoBootstrapConfiguration::kBcaLengthOverflowThreshold;
           
           if (std::isfinite(length_penalty) && length_penalty > threshold)
           {
@@ -469,6 +469,14 @@ namespace palvalidator
 
           if (!passesEffectiveBGate(candidate))
             return false;
+
+          // PercentileT requires sufficient n for reliable inner bootstrap SE*
+          // estimation. Below kPercentileTMinSampleSize the double bootstrap
+          // converges to a biased-but-stable SE* that evades the inner-failure-
+          // rate gate and produces spuriously low penalties at small n.
+          if (candidate.getMethod() == MethodId::PercentileT &&
+              candidate.getN() < AutoBootstrapConfiguration::kPercentileTMinSampleSize)
+            return false;
           
           return true;
         }
@@ -493,6 +501,21 @@ namespace palvalidator
           if (std::fabs(candidate.getAccel()) >
               AutoBootstrapConfiguration::kBcaAHardLimit)
             return false;
+
+          // BCa jackknife acceleration is unreliable below kBcaMinSampleSize
+          // leave-one-out observations. The z0/accel hard gates handle
+          // pathological cases above this floor but cannot substitute for it.
+          if (candidate.getN() < AutoBootstrapConfiguration::kBcaMinSampleSize)
+            return false;
+
+          // High bootstrap skewness renders the Edgeworth expansion on which
+          // BCa is based unreliable. This is a hard gate, not a soft penalty:
+          // above kBcaSkewHardLimit the correction can overcorrect rather than
+          // improve, so BCa should not compete regardless of other scores.
+          if (std::isfinite(candidate.getSkewBoot()) &&
+              std::fabs(candidate.getSkewBoot()) >
+              AutoBootstrapConfiguration::kBcaSkewHardLimit)
+            return false;
           
           return true;
         }
@@ -508,8 +531,14 @@ namespace palvalidator
         using Candidate = typename AutoCIResult<Decimal>::Candidate;
         using MethodId = typename AutoCIResult<Decimal>::MethodId;
         
-        ImprovedTournamentSelector(const std::vector<Candidate>& candidates)
+        /// @param candidates    All scored candidates for this tournament round.
+        /// @param preferBcaOnTie When true (default), BCa wins on an exact score
+        ///                       tie. Pass false to treat BCa like any other method
+        ///                       in tie-breaking (first-considered wins).
+        explicit ImprovedTournamentSelector(const std::vector<Candidate>& candidates,
+                                            bool preferBcaOnTie = true)
           : m_candidates(candidates),
+            m_prefer_bca_on_tie(preferBcaOnTie),
             m_found_any(false),
             m_best_score(std::numeric_limits<double>::infinity()),
             m_tie_epsilon_used(0.0)
@@ -539,15 +568,19 @@ namespace palvalidator
           }
           else if (std::fabs(score - m_best_score) <= eps)
           {
-            // Tie: use method preference
-            const Candidate& current_winner = m_candidates[m_winner_idx.value()];
-            const int pBest = methodPreference(current_winner.getMethod());
-            const int pCur = methodPreference(candidate.getMethod());
-            
-            if (pCur < pBest)
+            // Tie: use method preference only when enabled, otherwise the
+            // first-considered candidate holds (stable, predictable behaviour).
+            if (m_prefer_bca_on_tie)
             {
-              m_best_score = score;
-              m_winner_idx = index;
+              const Candidate& current_winner = m_candidates[m_winner_idx.value()];
+              const int pBest = methodPreference(current_winner.getMethod());
+              const int pCur  = methodPreference(candidate.getMethod());
+              
+              if (pCur < pBest)
+              {
+                m_best_score = score;
+                m_winner_idx = index;
+              }
             }
           }
         }
@@ -592,6 +625,7 @@ namespace palvalidator
         }
         
         const std::vector<Candidate>& m_candidates;
+        bool m_prefer_bca_on_tie;
         bool m_found_any;
         double m_best_score;
         std::optional<std::size_t> m_winner_idx;

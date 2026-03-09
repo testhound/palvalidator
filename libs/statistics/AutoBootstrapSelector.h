@@ -20,6 +20,7 @@
 #include "CandidateReject.h"
 #include "BootstrapPenaltyCalculator.h"
 #include "AutoBootstrapScoring.h"
+#include "BootstrapException.h"
 
 namespace palvalidator
 {
@@ -89,9 +90,11 @@ namespace palvalidator
      *     - Indicates statistic or resampling scheme is inappropriate
      *
      * HARD REJECTION GATES:
-     *   - |z0| > 0.6: Hard gate (BCa not considered)
-     *   - |a| > 0.25: Hard gate (BCa not considered)
-     *   - Skewness penalty applied for |skew_boot| > 2.0 (soft penalty)
+     *   - |z0| > 0.6:          Hard gate (BCa not considered)
+     *   - |a| > 0.25:          Hard gate (BCa not considered)
+     *   - n < 8:               Hard gate (jackknife leaves too few LOO values)
+     *   - |skew_boot| > 3.0:   Hard gate (Edgeworth expansion unreliable)
+     *   - |skew_boot| ∈ (2,3]: Soft penalty applied (quadratic, see kBcaSkewPenaltyScale)
      *
      * REFERENCES:
      *   - Efron, B. (1987). "Better Bootstrap Confidence Intervals."
@@ -539,21 +542,24 @@ namespace palvalidator
          * @param bcaZ0Scale Scaling factor for BCa bias penalty (default 20.0).
          * @param bcaAScale Scaling factor for BCa acceleration penalty (default 100.0).
          */
-      ScoringWeights(double wCenterShift = 1.0,
-                     double wSkew        = 0.5,
-                     double wLength      = 0.25,
-                     double wStability   = 1.0,
-                     bool   enforcePos   = false,
+      ScoringWeights(double wCenterShift   = 1.0,
+                     double wSkew          = 0.5,
+                     double wLength        = 0.25,
+                     double wStability     = 1.0,
+                     bool   enforcePos     = false,
                      // BCa penalty scales (configurable)
-                     double bcaZ0Scale   = 20.0,
-                     double bcaAScale    = 100.0)
+                     double bcaZ0Scale     = 20.0,
+                     double bcaAScale      = 100.0,
+                     // Tie-breaking behaviour
+                     bool   preferBcaOnTie = true)
           : m_w_center_shift(wCenterShift),
             m_w_skew(wSkew),
             m_w_length(wLength),
             m_w_stability(wStability),
             m_enforce_positive(enforcePos),
             m_bca_z0_scale(bcaZ0Scale),
-            m_bca_a_scale(bcaAScale)
+            m_bca_a_scale(bcaAScale),
+            m_prefer_bca_on_tie(preferBcaOnTie)
         {}
 
         double getCenterShiftWeight() const
@@ -591,6 +597,13 @@ namespace palvalidator
 	  return m_bca_a_scale;
 	}
 
+        /// When true, BCa wins any exact score tie over lower-preference methods.
+        /// Set to false to treat BCa like any other method in tie-breaking.
+        bool preferBCaOnTie() const
+	{
+	  return m_prefer_bca_on_tie;
+	}
+
       private:
         double m_w_center_shift;
         double m_w_skew;
@@ -599,6 +612,7 @@ namespace palvalidator
         bool m_enforce_positive;
         double m_bca_z0_scale;
         double m_bca_a_scale;
+        bool   m_prefer_bca_on_tie;
       };
 
       /**
@@ -1280,10 +1294,11 @@ namespace palvalidator
        */
       static std::size_t selectWinnerIndex(const std::vector<Candidate>& enriched,
 					   const std::vector<RawComponents>& raw,
-					   double& tie_epsilon_used)
+					   double& tie_epsilon_used,
+					   bool preferBcaOnTie = true)
       {
         detail::CandidateGateKeeper<Decimal, RawComponents> gatekeeper;
-        detail::ImprovedTournamentSelector<Decimal> selector(enriched);
+        detail::ImprovedTournamentSelector<Decimal> selector(enriched, preferBcaOnTie);
         
         for (std::size_t i = 0; i < enriched.size(); ++i)
         {
@@ -1302,9 +1317,33 @@ namespace palvalidator
         
         if (!selector.hasWinner())
         {
-          throw std::runtime_error(
-            "AutoBootstrapSelector::select: no valid candidate "
-            "(all scores non-finite or domain-violating).");
+          // Build a detail string listing each method and the gates it failed,
+          // so the exception message is self-documenting in logs.
+          std::string detail;
+          detail.reserve(256);
+          detail += "Candidates attempted: ";
+          for (std::size_t i = 0; i < enriched.size(); ++i)
+          {
+            if (i > 0) detail += ", ";
+            detail += Result::methodIdToString(enriched[i].getMethod());
+            detail += "(score=";
+            const double s = enriched[i].getScore();
+            if (std::isfinite(s))
+            {
+              // format to 4 d.p. without <iomanip> dependency
+              char buf[32];
+              std::snprintf(buf, sizeof(buf), "%.4f", s);
+              detail += buf;
+            }
+            else
+            {
+              detail += "non-finite";
+            }
+            detail += ")";
+          }
+          throw StrategyAutoBootstrapException(
+            StrategyAutoBootstrapException::Reason::AllGatesFailed,
+            detail);
         }
         
         tie_epsilon_used = selector.getTieEpsilon();
@@ -1437,9 +1476,40 @@ namespace palvalidator
           {
             rejected_for_instability = true;
           }
-          
+
+          // n-gate: jackknife acceleration unreliable below minimum sample size
+          if (bca.getN() < AutoBootstrapConfiguration::kBcaMinSampleSize)
+          {
+            rejected_for_instability = true;
+          }
+
+          // Skew hard gate: Edgeworth expansion breaks down at extreme skewness
+          if (std::isfinite(bca.getSkewBoot()) &&
+              std::fabs(bca.getSkewBoot()) > AutoBootstrapConfiguration::kBcaSkewHardLimit)
+          {
+            rejected_for_instability = true;
+          }
+
+          // Effective-B gate: mirrors passesEffectiveBGate logic for BCa.
+          // Without this, a BCa candidate eliminated solely by low effective_B
+          // would leave all four rejection flags false while bca_chosen=false,
+          // silently misreporting in SelectionDiagnostics (Bug 2).
+          {
+            constexpr std::size_t kMinEffectiveAbsolute = 200;
+            const std::size_t requested_B = bca.getBOuter();
+            if (requested_B >= 2)
+            {
+              const std::size_t required_by_frac = static_cast<std::size_t>(
+                std::ceil(0.90 * static_cast<double>(requested_B)));
+              const std::size_t required =
+                std::max(kMinEffectiveAbsolute, required_by_frac);
+              if (bca.getEffectiveB() < required)
+                rejected_for_instability = true;
+            }
+          }
+
           if (bca.getLengthPenalty() >
-              AutoBootstrapConfiguration::kBcaLengthPenaltyThreshold)
+              AutoBootstrapConfiguration::kBcaLengthRejectionThreshold)
           {
             rejected_for_length = true;
           }
@@ -1478,8 +1548,9 @@ namespace palvalidator
       {
         if (candidates.empty())
         {
-          throw std::invalid_argument(
-            "AutoBootstrapSelector::select: no candidates provided.");
+          throw StrategyAutoBootstrapException(
+            StrategyAutoBootstrapException::Reason::NoCandidatesProvided,
+            "AutoBootstrapSelector::select() called with empty candidate list.");
         }
       }
 
@@ -1534,7 +1605,7 @@ namespace palvalidator
         // PHASE 3: Tournament selection
         // =====================================================================
         double tie_epsilon_used = 0.0;
-        std::size_t winner_idx = selectWinnerIndex(enriched, raw, tie_epsilon_used);
+        std::size_t winner_idx = selectWinnerIndex(enriched, raw, tie_epsilon_used, weights.preferBCaOnTie());
         
         // =====================================================================
         // PHASE 4: Assign ranks

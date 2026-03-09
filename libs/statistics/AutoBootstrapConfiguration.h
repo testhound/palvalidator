@@ -1,85 +1,155 @@
 #pragma once
 
+#include <cstddef>
+
 namespace AutoBootstrapConfiguration
 {
   // Coverage penalty multipliers (Percentile-specific)
-  constexpr double kUnderCoverageMultiplier = 10.0; ///< Under-coverage penalized 2× more than over
-  constexpr double kOverCoverageMultiplier  = 1.0; ///< Base penalty for exceeding nominal coverage
-  
+  constexpr double kUnderCoverageMultiplier = 10.0; ///< Under-coverage penalized 10× more than over
+  constexpr double kOverCoverageMultiplier  = 1.0;  ///< Base penalty for exceeding nominal coverage
+
   // Length bounds (normalized to ideal bootstrap interval length)
   constexpr double kLengthMin           = 0.8;  ///< Minimum 80% of ideal (anti-conservative cutoff)
   constexpr double kLengthMaxStandard   = 1.8;  ///< Max 1.8× ideal for BCa/Percentile-T
   constexpr double kLengthMaxMOutOfN    = 6.0;  ///< Max 6× ideal for M-out-of-N (wider allowed)
-  
+
   // Domain enforcement for strictly-positive statistics
-  constexpr double kPositiveLowerEpsilon = 1e-9;
+  constexpr double kPositiveLowerEpsilon   = 1e-9;
   constexpr double kDomainViolationPenalty = 1000.0;
-  
-  // BCa "rejection reason" diagnostics thresholds used in select()
-  
-  // Hard limits -- relaxed slightly to add safety headroom (see code review)
-  constexpr double kBcaZ0HardLimit = 0.6;   ///< Hard rejection at |z0| > 0.6 (Efron 1987)
-  constexpr double kBcaAHardLimit  = 0.25;  // relaxed from 0.2 -> 0.25
 
-  // Soft thresholds: beyond these values soft penalties start to apply
-  constexpr double kBcaZ0SoftThreshold = 0.25;
-  constexpr double kBcaASoftThreshold  = 0.10;
+  // ===========================================================================
+  // BCa HARD REJECTION LIMITS
+  //
+  // Methods that exceed these are disqualified from the tournament entirely,
+  // before penalty scoring is applied.
+  // ===========================================================================
 
-  // Penalty scaling defaults (can be overridden via ScoringWeights)
-  constexpr double kBcaZ0PenaltyScale = 20.0;
-  constexpr double kBcaAPenaltyScale  = 100.0;
+  constexpr double kBcaZ0HardLimit   = 0.6;   ///< Hard rejection: |z0|  > 0.6  (Efron 1987)
+  constexpr double kBcaAHardLimit    = 0.25;  ///< Hard rejection: |a|   > 0.25 (relaxed from 0.2)
+  constexpr double kBcaSkewHardLimit = 3.0;   ///< Hard rejection: |skew_boot| > 3.0 renders the
+                                              ///< Edgeworth expansion on which BCa is based
+                                              ///< unreliable. Consistent with the stricter accel
+                                              ///< threshold that already activates at |skew| > 3.0
+                                              ///< in penalty computation.
 
-  // Calculate the penalty threshold dynamically based on the hard limit and
-  // the soft-threshold. Threshold = (HardLimit - SoftThreshold)^2
-  constexpr double kBcaStabilityThreshold =
-    (kBcaZ0HardLimit - kBcaZ0SoftThreshold) * (kBcaZ0HardLimit - kBcaZ0SoftThreshold);
-  
-  constexpr double kBcaLengthPenaltyThreshold  = 1.0;
+  /// Minimum original sample size for a reliable BCa jackknife acceleration
+  /// estimate. Below this, the n leave-one-out values are too sparse to produce
+  /// a trustworthy acceleration parameter. The existing z0/accel hard gates
+  /// handle pathological cases above this floor.
+  /// Set to 8 so BCa can compete at the observed minimum of n=9 trades while
+  /// still being excluded for truly degenerate sample sizes.
+  constexpr std::size_t kBcaMinSampleSize = 8;
 
-  // Floating-point tie tolerance scale used in select()
+  // ===========================================================================
+  // PERCENTILE-T HARD REJECTION LIMITS
+  // ===========================================================================
+
+  /// Minimum original sample size for reliable inner bootstrap SE* estimation
+  /// in the double bootstrap. Below this threshold, the inner bootstrap
+  /// converges to a biased but numerically stable SE* estimate, evading the
+  /// inner-failure-rate stability gate while producing misleading intervals.
+  /// This causes PercentileT to win tournaments at small n not because its
+  /// intervals are good, but because its penalties are artificially low.
+  ///
+  /// At n >= 20 PercentileT competes legitimately and is expected to win
+  /// frequently (empirically ~59% for 50 <= n < 100, ~78% for n >= 100).
+  /// At n < 20 it self-disqualifies at the gating phase before scoring begins,
+  /// leaving BCa, Percentile, and MOutOfN to compete.
+  constexpr std::size_t kPercentileTMinSampleSize = 20;
+
+  // ===========================================================================
+  // BCa SOFT THRESHOLDS
+  //
+  // Beyond these values soft penalties begin to accrue, but the method is not
+  // immediately disqualified.
+  // ===========================================================================
+
+  constexpr double kBcaZ0SoftThreshold      = 0.25; ///< Soft penalty starts at |z0| > 0.25
+  constexpr double kBcaASoftThreshold       = 0.10; ///< Soft penalty starts at |a|  > 0.10
+  constexpr double kBcaAStrictSoftThreshold = 0.08; ///< Stricter accel soft threshold applied
+                                                    ///< when |skew_boot| > 3.0
+
+  // ===========================================================================
+  // BCa PENALTY SCALING
+  // ===========================================================================
+
+  constexpr double kBcaZ0PenaltyScale   = 20.0;  ///< Default z0 penalty scale (overridable via ScoringWeights)
+  constexpr double kBcaAPenaltyScale    = 100.0; ///< Default accel penalty scale (overridable via ScoringWeights)
+  constexpr double kBcaSkewThreshold    = 2.0;   ///< Skewness soft penalty starts beyond this magnitude
+  constexpr double kBcaSkewPenaltyScale = 5.0;   ///< Quadratic scaling factor for skewness penalty
+
+  // ===========================================================================
+  // BCa LENGTH PENALTY THRESHOLDS
+  //
+  // These two constants share the same numeric value (1.0) but serve distinct
+  // purposes and must be kept separate so they can evolve independently:
+  //
+  //   kBcaLengthOverflowThreshold  — used by ScoreNormalizer::computeBcaLengthOverflow()
+  //                                   to add an extra quadratic penalty to the tournament
+  //                                   score when BCa's length penalty exceeds this value.
+  //
+  //   kBcaLengthRejectionThreshold — used by AutoBootstrapSelector::analyzeBcaRejection()
+  //                                   purely as a diagnostic: records that BCa was
+  //                                   "rejected for length" in SelectionDiagnostics.
+  // ===========================================================================
+
+  constexpr double kBcaLengthOverflowThreshold  = 1.0; ///< Triggers BCa length overflow penalty in scoring
+  constexpr double kBcaLengthRejectionThreshold = 1.0; ///< Triggers BCa rejection diagnosis in analyzeBcaRejection
+  constexpr double kBcaLengthOverflowScale      = 2.0; ///< Quadratic scale applied to length overflow
+
+  // Floating-point tie tolerance scale used in ImprovedTournamentSelector
   constexpr double kRelativeTieEpsilonScale = 1e-10;
-  constexpr double kBcaSkewThreshold = 2.0;    // Start penalizing beyond this
-  constexpr double kBcaSkewPenaltyScale = 5.0; // Quadratic scaling factor
 
-  // PercentileT stability thresholds (from computePercentileTStability)
-  constexpr double kPercentileTOuterFailThreshold = 0.10;      ///< >10% outer resample failures
-  constexpr double kPercentileTInnerFailThreshold = 0.05;      ///< >5% inner SE failures
-  constexpr double kPercentileTMinEffectiveFraction = 0.70;    ///< Minimum 70% effective B
-  constexpr double kPercentileTOuterPenaltyScale = 100.0;      ///< Penalty scale for outer failures
-  constexpr double kPercentileTInnerPenaltyScale = 200.0;      ///< Penalty scale for inner failures
+  // ===========================================================================
+  // PERCENTILE-T STABILITY THRESHOLDS
+  // ===========================================================================
+
+  constexpr double kPercentileTOuterFailThreshold     = 0.10;  ///< >10% outer resample failures
+  constexpr double kPercentileTInnerFailThreshold     = 0.05;  ///< >5%  inner SE failures
+  constexpr double kPercentileTMinEffectiveFraction   = 0.70;  ///< Minimum 70% effective B
+  constexpr double kPercentileTOuterPenaltyScale      = 100.0; ///< Penalty scale for outer failures
+  constexpr double kPercentileTInnerPenaltyScale      = 200.0; ///< Penalty scale for inner failures
   constexpr double kPercentileTEffectiveBPenaltyScale = 50.0;  ///< Penalty scale for low effective B
-  constexpr double kBcaLengthOverflowScale = 2.0;
 
-  // ============================================================================
+  // ===========================================================================
   // NORMALIZATION REFERENCE VALUES
-  // ============================================================================
-  // These define "typical" penalty magnitudes for score normalization.
+  //
   // Raw penalties are divided by these reference values to put all penalty
   // types on a comparable scale in the tournament scoring.
-  // ============================================================================
+  // ===========================================================================
 
-  /// Ordering penalty reference: 10% coverage error squared
+  /// Ordering penalty reference: 10% coverage error squared.
   /// Rationale: A 10% deviation from nominal coverage (e.g., 85% actual vs 95%
   /// nominal) represents a "typical" ordering violation baseline.
   constexpr double kRefOrderingErrorSq = 0.10 * 0.10;  // = 0.01
 
-  /// Length penalty reference: ideal length error squared
+  /// Length penalty reference: ideal length error squared.
   /// Rationale: An interval exactly 1× the theoretical ideal width is optimal.
   /// Deviations from this are measured relative to 1.0.
   constexpr double kRefLengthErrorSq = 1.0 * 1.0;  // = 1.0
 
-  /// Stability penalty reference for BCa and Percentile-T
+  /// Stability penalty reference for BCa and Percentile-T.
   /// Rationale: A stability penalty of 0.25 represents moderate instability
   /// that is noticeable but not disqualifying.
   constexpr double kRefStability = 0.25;
- 
-  /// Center shift reference: 2 standard errors squared
+
+  /// Center shift reference: 2 standard errors squared.
   /// Rationale: A shift of 2 SE between bootstrap mean and point estimate
   /// represents "notable" bias that merits attention.
   constexpr double kRefCenterShiftSq = 2.0 * 2.0;  // = 4.0
 
-  /// Skewness reference: |skew| = 2.0 squared
+  /// Skewness reference: |skew| = 2.0 squared.
   /// Rationale: |skew| = 2.0 is the threshold where distributions are
   /// considered "highly skewed" and may violate BCa assumptions.
   constexpr double kRefSkewSq = 2.0 * 2.0;  // = 4.0
+
+  // ===========================================================================
+  // SCORING WEIGHTS
+  // ===========================================================================
+
+  /// Fixed weight for the ordering/coverage penalty component.
+  /// This is intentionally not user-configurable via ScoringWeights — ordering
+  /// accuracy is a baseline correctness requirement, not a tuning parameter.
+  constexpr double kOrderingPenaltyWeight = 1.0;
+
 } // namespace AutoBootstrapConfiguration

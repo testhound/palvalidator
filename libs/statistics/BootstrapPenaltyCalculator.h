@@ -165,9 +165,10 @@ namespace palvalidator
 
         // 2. ACCELERATION (a) PENALTY
         const double base_accel_threshold = AutoBootstrapConfiguration::kBcaASoftThreshold;
-        const double strict_accel_threshold_for_extreme_skew = 0.08;
+        const double strict_accel_threshold_for_extreme_skew =
+          AutoBootstrapConfiguration::kBcaAStrictSoftThreshold;
 
-        // Stricter threshold when distribution is highly skewed
+        // Stricter threshold when distribution is highly skewed (|skew| > 3.0)
         const double ACCEL_THRESHOLD = (std::abs(skew_boot) > 3.0)
           ? strict_accel_threshold_for_extreme_skew
           : base_accel_threshold;
