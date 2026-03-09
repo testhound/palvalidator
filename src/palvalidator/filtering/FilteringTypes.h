@@ -186,6 +186,15 @@ namespace palvalidator
         return mFailRegimeMixCount;
       }
 
+      /**
+       * @brief Get the number of strategies that failed bootstrap tournament
+       * @return Number of strategies where all bootstrap candidates failed hard gates
+       */
+      size_t getFailBootstrapCount() const
+      {
+        return mFailBootstrapCount;
+      }
+
       // ... existing incrementers ...
 
       /**
@@ -196,15 +205,24 @@ namespace palvalidator
         ++mFailRegimeMixCount;
       }
 
+      /**
+       * @brief Increment the bootstrap tournament failure count
+       */
+      void incrementFailBootstrapCount()
+      {
+        ++mFailBootstrapCount;
+      }
+
     private:
-      size_t mInsufficientCount;  ///< Number of strategies with insufficient sample size
-      size_t mFlaggedCount;       ///< Number of strategies flagged for divergence
-      size_t mFlagPassCount;      ///< Number of flagged strategies that passed robustness
-      size_t mFailLBoundCount;    ///< Number of strategies that failed L-bound checks
-      size_t mFailLVarCount;      ///< Number of strategies that failed L-variability checks
-      size_t mFailSplitCount;     ///< Number of strategies that failed split-sample checks
-      size_t mFailTailCount;      ///< Number of strategies that failed tail-risk check
-      size_t mFailRegimeMixCount;
+      size_t mInsufficientCount{0};  ///< Number of strategies with insufficient sample size
+      size_t mFlaggedCount{0};       ///< Number of strategies flagged for divergence
+      size_t mFlagPassCount{0};      ///< Number of flagged strategies that passed robustness
+      size_t mFailLBoundCount{0};    ///< Number of strategies that failed L-bound checks
+      size_t mFailLVarCount{0};      ///< Number of strategies that failed L-variability checks
+      size_t mFailSplitCount{0};     ///< Number of strategies that failed split-sample checks
+      size_t mFailTailCount{0};      ///< Number of strategies that failed tail-risk check
+      size_t mFailRegimeMixCount{0};
+      size_t mFailBootstrapCount{0}; ///< All bootstrap candidates failed hard gates
     };
 
     // -------------------------------------------------------------------------
@@ -377,7 +395,8 @@ namespace palvalidator
     enum class FilterDecisionType
     {
       Pass,
-      FailInsufficientData,
+      FailInsufficientData,  ///< Too few data points to run bootstrap at all
+      FailBootstrap,         ///< Bootstrap tournament ran but no method survived hard gates
       FailHurdle,
       FailRobustness,
       FailLSensitivity,

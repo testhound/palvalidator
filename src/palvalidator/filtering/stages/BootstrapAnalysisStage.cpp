@@ -20,6 +20,7 @@
 #include "StrategyAutoBootstrap.h"
 #include "CandidateReject.h"
 #include "AutoBootstrapSelector.h"
+#include "BootstrapException.h"
 
 namespace {
     std::atomic<uint64_t> g_nextRunID{1};
@@ -799,49 +800,60 @@ namespace palvalidator::filtering::stages
     os << "   [Bootstrap] AutoCI (GeoMean): running composite bootstrap engines"
        << " on precomputed log-bars...\n";
 
-    AutoCI result = autoGeo.run(logBars, &os);
+    try
+      {
+        AutoCI result = autoGeo.run(logBars, &os);
 
-    const Candidate& chosen = result.getChosenCandidate();
-    const Decimal    lbPer  = chosen.getLower();
+        const Candidate& chosen = result.getChosenCandidate();
+        const Decimal    lbPer  = chosen.getLower();
 
-    out.geoAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
-    out.geoAutoCIChosenScore       = chosen.getScore();
-    out.geoAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
-    out.geoAutoCILengthPenalty     = chosen.getLengthPenalty();
+        out.geoAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
+        out.geoAutoCIChosenScore       = chosen.getScore();
+        out.geoAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
+        out.geoAutoCILengthPenalty     = chosen.getLengthPenalty();
 
-    const auto& candidates = result.getCandidates();
-    bool hasBCa = false;
-    for (const auto& c : candidates)
-      if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
-    out.geoAutoCIHasBCaCandidate = hasBCa;
-    out.geoAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
-    out.geoAutoCINumCandidates   = candidates.size();
+        const auto& candidates = result.getCandidates();
+        bool hasBCa = false;
+        for (const auto& c : candidates)
+          if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
+        out.geoAutoCIHasBCaCandidate = hasBCa;
+        out.geoAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
+        out.geoAutoCINumCandidates   = candidates.size();
 
-    try {
-      out.medianGeo = Num(result.getBootstrapMedian());
-    } catch (...) {
-      out.medianGeo = std::nullopt;
-    }
+        try {
+          out.medianGeo = Num(result.getBootstrapMedian());
+        } catch (...) {
+          out.medianGeo = std::nullopt;
+        }
 
-    os << "   [Bootstrap] AutoCI (GeoMean):"
-       << " method=" << out.geoAutoCIChosenMethod
-       << "  LB(per)=" << lbPer
-       << "  CL=" << chosen.getCl()
-       << "  n=" << chosen.getN()
-       << "  B_eff=" << chosen.getEffectiveB()
-       << "  score=" << out.geoAutoCIChosenScore
-       << "  stab_penalty=" << out.geoAutoCIStabilityPenalty
-       << "  len_penalty=" << out.geoAutoCILengthPenalty
-       << "  hasBCa=" << (out.geoAutoCIHasBCaCandidate ? "true" : "false")
-       << "  BCaChosen=" << (out.geoAutoCIBCaChosen ? "true" : "false")
-       << "\n";
+        os << "   [Bootstrap] AutoCI (GeoMean):"
+           << " method=" << out.geoAutoCIChosenMethod
+           << "  LB(per)=" << lbPer
+           << "  CL=" << chosen.getCl()
+           << "  n=" << chosen.getN()
+           << "  B_eff=" << chosen.getEffectiveB()
+           << "  score=" << out.geoAutoCIChosenScore
+           << "  stab_penalty=" << out.geoAutoCIStabilityPenalty
+           << "  len_penalty=" << out.geoAutoCILengthPenalty
+           << "  hasBCa=" << (out.geoAutoCIHasBCaCandidate ? "true" : "false")
+           << "  BCaChosen=" << (out.geoAutoCIBCaChosen ? "true" : "false")
+           << "\n";
 
-    try {
-      if (mObserver)
-        reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::GeoMean, result);
-    } catch (...) {}
+        try {
+          if (mObserver)
+            reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::GeoMean, result);
+        } catch (...) {}
 
-    return lbPer;
+        return lbPer;
+      }
+    catch (const palvalidator::StrategyAutoBootstrapException& ex)
+      {
+        const std::string stratName =
+          ctx.strategy ? ctx.strategy->getStrategyName() : "unknown";
+        os << "   [Bootstrap] Tournament failure (bar-level GeoMean): "
+           << ex.getDetail() << "\n";
+        throw palvalidator::BootstrapStageException(ex, stratName);
+      }
   }
 
   // ---------------------------------------------------------------------------
@@ -916,7 +928,7 @@ namespace palvalidator::filtering::stages
 					   /*Basic*/       false,   // same
 					   /*Percentile*/  false,   // same
 					   /*MOutOfN*/     true,    // fixed-ratio path for trade-level
-					   /*PercentileT*/ false,    // distribution-free, appropriate for IID
+					   /*PercentileT*/ true,    // distribution-free, appropriate for IID
 					   /*BCa*/         true);   // distribution-free, appropriate for IID
 
 
@@ -934,51 +946,62 @@ namespace palvalidator::filtering::stages
     os << "   [Bootstrap] AutoCI trade-level (GeoMean): running bootstrap engines"
        << " on " << ctx.tradeLevelReturns.size() << " trades (log-bars pre-computed)...\n";
 
-    // run() receives logTrades; GeoMeanFromLogBarsStat::operator()(vector<Trade>)
-    // flattens them into a single log-bar vector and computes the geometric mean.
-    AutoCI result = autoGeo.run(logTrades, &os);
+    try
+      {
+        // run() receives logTrades; GeoMeanFromLogBarsStat::operator()(vector<Trade>)
+        // flattens them into a single log-bar vector and computes the geometric mean.
+        AutoCI result = autoGeo.run(logTrades, &os);
 
-    const Candidate& chosen = result.getChosenCandidate();
-    const Decimal    lbPer  = chosen.getLower();
+        const Candidate& chosen = result.getChosenCandidate();
+        const Decimal    lbPer  = chosen.getLower();
 
-    out.geoAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
-    out.geoAutoCIChosenScore       = chosen.getScore();
-    out.geoAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
-    out.geoAutoCILengthPenalty     = chosen.getLengthPenalty();
+        out.geoAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
+        out.geoAutoCIChosenScore       = chosen.getScore();
+        out.geoAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
+        out.geoAutoCILengthPenalty     = chosen.getLengthPenalty();
 
-    const auto& candidates = result.getCandidates();
-    bool hasBCa = false;
-    for (const auto& c : candidates)
-      if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
-    out.geoAutoCIHasBCaCandidate = hasBCa;
-    out.geoAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
-    out.geoAutoCINumCandidates   = candidates.size();
+        const auto& candidates = result.getCandidates();
+        bool hasBCa = false;
+        for (const auto& c : candidates)
+          if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
+        out.geoAutoCIHasBCaCandidate = hasBCa;
+        out.geoAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
+        out.geoAutoCINumCandidates   = candidates.size();
 
-    try {
-      out.medianGeo = Num(result.getBootstrapMedian());
-    } catch (...) {
-      out.medianGeo = std::nullopt;
-    }
+        try {
+          out.medianGeo = Num(result.getBootstrapMedian());
+        } catch (...) {
+          out.medianGeo = std::nullopt;
+        }
 
-    os << "   [Bootstrap] AutoCI trade-level (GeoMean):"
-       << " method=" << out.geoAutoCIChosenMethod
-       << "  LB(per)=" << lbPer
-       << "  CL=" << chosen.getCl()
-       << "  n=" << chosen.getN()
-       << "  B_eff=" << chosen.getEffectiveB()
-       << "  score=" << out.geoAutoCIChosenScore
-       << "  stab_penalty=" << out.geoAutoCIStabilityPenalty
-       << "  len_penalty=" << out.geoAutoCILengthPenalty
-       << "  hasBCa=" << (out.geoAutoCIHasBCaCandidate ? "true" : "false")
-       << "  BCaChosen=" << (out.geoAutoCIBCaChosen ? "true" : "false")
-       << "\n";
+        os << "   [Bootstrap] AutoCI trade-level (GeoMean):"
+           << " method=" << out.geoAutoCIChosenMethod
+           << "  LB(per)=" << lbPer
+           << "  CL=" << chosen.getCl()
+           << "  n=" << chosen.getN()
+           << "  B_eff=" << chosen.getEffectiveB()
+           << "  score=" << out.geoAutoCIChosenScore
+           << "  stab_penalty=" << out.geoAutoCIStabilityPenalty
+           << "  len_penalty=" << out.geoAutoCILengthPenalty
+           << "  hasBCa=" << (out.geoAutoCIHasBCaCandidate ? "true" : "false")
+           << "  BCaChosen=" << (out.geoAutoCIBCaChosen ? "true" : "false")
+           << "\n";
 
-    try {
-      if (mObserver)
-        reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::GeoMean, result);
-    } catch (...) {}
+        try {
+          if (mObserver)
+            reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::GeoMean, result);
+        } catch (...) {}
 
-    return lbPer;
+        return lbPer;
+      }
+    catch (const palvalidator::StrategyAutoBootstrapException& ex)
+      {
+        const std::string stratName =
+          ctx.strategy ? ctx.strategy->getStrategyName() : "unknown";
+        os << "   [Bootstrap] Tournament failure (trade-level GeoMean): "
+           << ex.getDetail() << "\n";
+        throw palvalidator::BootstrapStageException(ex, stratName);
+      }
   }
 
 
@@ -1169,53 +1192,64 @@ namespace palvalidator::filtering::stages
        << " on precomputed log-bars"
        << " (StopLoss assumption=" << (stopLossPct * 100.0) << "%)...\n";
 
-    AutoCI result = autoPF.run(logBars, &os);
+    try
+      {
+        AutoCI result = autoPF.run(logBars, &os);
 
-    const Candidate& chosen  = result.getChosenCandidate();
-    const Decimal    lbLogPF = chosen.getLower();
-    using mkc_timeseries::DecimalConstants;
-    const Decimal    lbPF    = std::exp(lbLogPF);
+        const Candidate& chosen  = result.getChosenCandidate();
+        const Decimal    lbLogPF = chosen.getLower();
+        using mkc_timeseries::DecimalConstants;
+        const Decimal    lbPF    = std::exp(lbLogPF);
 
-    out.pfAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
-    out.pfAutoCIChosenScore       = chosen.getScore();
-    out.pfAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
-    out.pfAutoCILengthPenalty     = chosen.getLengthPenalty();
-    out.pfAutoCIChosenSeBoot      = chosen.getSeBoot();
+        out.pfAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
+        out.pfAutoCIChosenScore       = chosen.getScore();
+        out.pfAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
+        out.pfAutoCILengthPenalty     = chosen.getLengthPenalty();
+        out.pfAutoCIChosenSeBoot      = chosen.getSeBoot();
 
-    const auto& candidates = result.getCandidates();
-    bool hasBCa = false;
-    for (const auto& c : candidates)
-      if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
-    out.pfAutoCIHasBCaCandidate = hasBCa;
-    out.pfAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
-    out.pfAutoCINumCandidates   = candidates.size();
+        const auto& candidates = result.getCandidates();
+        bool hasBCa = false;
+        for (const auto& c : candidates)
+          if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
+        out.pfAutoCIHasBCaCandidate = hasBCa;
+        out.pfAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
+        out.pfAutoCINumCandidates   = candidates.size();
 
-    try {
-      out.medianProfitFactor = Num(std::exp(result.getBootstrapMedian()));
-    } catch (...) {
-      out.medianProfitFactor = std::nullopt;
-    }
+        try {
+          out.medianProfitFactor = Num(std::exp(result.getBootstrapMedian()));
+        } catch (...) {
+          out.medianProfitFactor = std::nullopt;
+        }
 
-    os << "   [Bootstrap] AutoCI (PF):"
-       << " method=" << out.pfAutoCIChosenMethod
-       << "  LB(PF)=" << lbPF
-       << "  LB(logPF)=" << lbLogPF
-       << "  CL=" << chosen.getCl()
-       << "  n=" << chosen.getN()
-       << "  B_eff=" << chosen.getEffectiveB()
-       << "  score=" << out.pfAutoCIChosenScore
-       << "  stab_penalty=" << out.pfAutoCIStabilityPenalty
-       << "  len_penalty=" << out.pfAutoCILengthPenalty
-       << "  hasBCa=" << (out.pfAutoCIHasBCaCandidate ? "true" : "false")
-       << "  BCaChosen=" << (out.pfAutoCIBCaChosen ? "true" : "false")
-       << "\n";
+        os << "   [Bootstrap] AutoCI (PF):"
+           << " method=" << out.pfAutoCIChosenMethod
+           << "  LB(PF)=" << lbPF
+           << "  LB(logPF)=" << lbLogPF
+           << "  CL=" << chosen.getCl()
+           << "  n=" << chosen.getN()
+           << "  B_eff=" << chosen.getEffectiveB()
+           << "  score=" << out.pfAutoCIChosenScore
+           << "  stab_penalty=" << out.pfAutoCIStabilityPenalty
+           << "  len_penalty=" << out.pfAutoCILengthPenalty
+           << "  hasBCa=" << (out.pfAutoCIHasBCaCandidate ? "true" : "false")
+           << "  BCaChosen=" << (out.pfAutoCIBCaChosen ? "true" : "false")
+           << "\n";
 
-    try {
-      if (mObserver)
-        reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::ProfitFactor, result);
-    } catch (...) {}
+        try {
+          if (mObserver)
+            reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::ProfitFactor, result);
+        } catch (...) {}
 
-    return lbPF;
+        return lbPF;
+      }
+    catch (const palvalidator::StrategyAutoBootstrapException& ex)
+      {
+        const std::string stratName =
+          ctx.strategy ? ctx.strategy->getStrategyName() : "unknown";
+        os << "   [Bootstrap] Tournament failure (bar-level PF): "
+           << ex.getDetail() << "\n";
+        throw palvalidator::BootstrapStageException(ex, stratName);
+      }
   }
 
   // ---------------------------------------------------------------------------
@@ -1304,7 +1338,7 @@ namespace palvalidator::filtering::stages
       /*Basic*/       false,
       /*Percentile*/  false,
       /*MOutOfN*/     true,
-      /*PercentileT*/ false,
+      /*PercentileT*/ true,
       /*BCa*/         true);
 
     os << "   [Bootstrap] AutoCI trade-level (PF): passing stop loss of "
@@ -1332,55 +1366,66 @@ namespace palvalidator::filtering::stages
        << " on " << ctx.tradeLevelReturns.size() << " trades (log-bars pre-computed)"
        << " (StopLoss assumption=" << (stopLossPct * 100.0) << "%)...\n";
 
-    // run() receives logTrades; LogProfitFactorFromLogBarsStat_LogPF::operator()
-    // (vector<Trade>) flattens them and computes log(PF) directly.
-    AutoCI result = autoPF.run(logTrades, &os);
+    try
+      {
+        // run() receives logTrades; LogProfitFactorFromLogBarsStat_LogPF::operator()
+        // (vector<Trade>) flattens them and computes log(PF) directly.
+        AutoCI result = autoPF.run(logTrades, &os);
 
-    const Candidate& chosen  = result.getChosenCandidate();
-    const Decimal    lbLogPF = chosen.getLower();
-    using mkc_timeseries::DecimalConstants;
-    const Decimal    lbPF    = std::exp(lbLogPF);
+        const Candidate& chosen  = result.getChosenCandidate();
+        const Decimal    lbLogPF = chosen.getLower();
+        using mkc_timeseries::DecimalConstants;
+        const Decimal    lbPF    = std::exp(lbLogPF);
 
-    out.pfAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
-    out.pfAutoCIChosenScore       = chosen.getScore();
-    out.pfAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
-    out.pfAutoCILengthPenalty     = chosen.getLengthPenalty();
-    out.pfAutoCIChosenSeBoot      = chosen.getSeBoot();
+        out.pfAutoCIChosenMethod      = methodIdToString<Decimal>(result.getChosenMethod());
+        out.pfAutoCIChosenScore       = chosen.getScore();
+        out.pfAutoCIStabilityPenalty  = chosen.getStabilityPenalty();
+        out.pfAutoCILengthPenalty     = chosen.getLengthPenalty();
+        out.pfAutoCIChosenSeBoot      = chosen.getSeBoot();
 
-    const auto& candidates = result.getCandidates();
-    bool hasBCa = false;
-    for (const auto& c : candidates)
-      if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
-    out.pfAutoCIHasBCaCandidate = hasBCa;
-    out.pfAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
-    out.pfAutoCINumCandidates   = candidates.size();
+        const auto& candidates = result.getCandidates();
+        bool hasBCa = false;
+        for (const auto& c : candidates)
+          if (c.getMethod() == MethodId::BCa) { hasBCa = true; break; }
+        out.pfAutoCIHasBCaCandidate = hasBCa;
+        out.pfAutoCIBCaChosen       = (chosen.getMethod() == MethodId::BCa);
+        out.pfAutoCINumCandidates   = candidates.size();
 
-    try {
-      out.medianProfitFactor = Num(std::exp(result.getBootstrapMedian()));
-    } catch (...) {
-      out.medianProfitFactor = std::nullopt;
-    }
+        try {
+          out.medianProfitFactor = Num(std::exp(result.getBootstrapMedian()));
+        } catch (...) {
+          out.medianProfitFactor = std::nullopt;
+        }
 
-    os << "   [Bootstrap] AutoCI trade-level (PF):"
-       << " method=" << out.pfAutoCIChosenMethod
-       << "  LB(PF)=" << lbPF
-       << "  LB(logPF)=" << lbLogPF
-       << "  CL=" << chosen.getCl()
-       << "  n=" << chosen.getN()
-       << "  B_eff=" << chosen.getEffectiveB()
-       << "  score=" << out.pfAutoCIChosenScore
-       << "  stab_penalty=" << out.pfAutoCIStabilityPenalty
-       << "  len_penalty=" << out.pfAutoCILengthPenalty
-       << "  hasBCa=" << (out.pfAutoCIHasBCaCandidate ? "true" : "false")
-       << "  BCaChosen=" << (out.pfAutoCIBCaChosen ? "true" : "false")
-       << "\n";
+        os << "   [Bootstrap] AutoCI trade-level (PF):"
+           << " method=" << out.pfAutoCIChosenMethod
+           << "  LB(PF)=" << lbPF
+           << "  LB(logPF)=" << lbLogPF
+           << "  CL=" << chosen.getCl()
+           << "  n=" << chosen.getN()
+           << "  B_eff=" << chosen.getEffectiveB()
+           << "  score=" << out.pfAutoCIChosenScore
+           << "  stab_penalty=" << out.pfAutoCIStabilityPenalty
+           << "  len_penalty=" << out.pfAutoCILengthPenalty
+           << "  hasBCa=" << (out.pfAutoCIHasBCaCandidate ? "true" : "false")
+           << "  BCaChosen=" << (out.pfAutoCIBCaChosen ? "true" : "false")
+           << "\n";
 
-    try {
-      if (mObserver)
-        reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::ProfitFactor, result);
-    } catch (...) {}
+        try {
+          if (mObserver)
+            reportDiagnostics(ctx, palvalidator::diagnostics::MetricType::ProfitFactor, result);
+        } catch (...) {}
 
-    return lbPF;
+        return lbPF;
+      }
+    catch (const palvalidator::StrategyAutoBootstrapException& ex)
+      {
+        const std::string stratName =
+          ctx.strategy ? ctx.strategy->getStrategyName() : "unknown";
+        os << "   [Bootstrap] Tournament failure (trade-level PF): "
+           << ex.getDetail() << "\n";
+        throw palvalidator::BootstrapStageException(ex, stratName);
+      }
   }
 
   
@@ -1472,6 +1517,12 @@ namespace palvalidator::filtering::stages
         result.annualizedLowerBoundGeo =
           Annualizer<Num>::annualize_one(lbGeoPer, annParams.barsPerYear);
       }
+    catch (const palvalidator::BootstrapStageException&)
+      {
+        // Tournament failure: no trustworthy CI was producible.
+        // Re-throw so the caller knows this strategy cannot be evaluated.
+        throw;
+      }
     catch (const std::exception& e)
       {
         os << "   [Bootstrap] ERROR: AutoCI (GeoMean) failed: "
@@ -1506,6 +1557,11 @@ namespace palvalidator::filtering::stages
             result.pfDuelRatioValid = false;              // no duel anymore
             result.pfDuelRatio      = qnan();             // unused
           }
+      }
+    catch (const palvalidator::BootstrapStageException&)
+      {
+        // Tournament failure: re-throw so the caller treats this strategy as a failure.
+        throw;
       }
     catch (const std::exception& e)
       {
