@@ -336,18 +336,23 @@ namespace mkc_timeseries
 	static thread_local std::shared_ptr<Portfolio<Decimal>>   tls_portfolio;
 	static thread_local std::shared_ptr<BackTester<Decimal>>  tls_bt;
 
-	if (!tls_cache) {
-	  // Build cache from the *baseline* security; cache will swap series per permutation
-	  tls_cache = std::make_unique<CacheType>(theSecurity);
-	}
-	if (!tls_portfolio) {
-	  // Build one portfolio per worker (copy/clone baseline ONCE)
-	  tls_portfolio = std::make_shared<Portfolio<Decimal>>(*originalPortfolio);
-	}
-	if (!tls_bt) {
-	  // Clone the configured BackTester ONCE per worker (date ranges, engine setup, etc.)
-	  tls_bt = theBackTester->clone();
-	}
+	// Sentinel: raw pointer of the security this thread's TLS objects were built from.
+	// If runPermutationTest is called again with a different security (different
+	// instrument or OOS window), all three TLS objects must be rebuilt — they each
+	// embed the bar count, price levels, and date range of the original security.
+	static thread_local const Security<Decimal>* tls_security_key = nullptr;
+
+	if (tls_security_key != theSecurity.get())
+	  {
+	    // Security has changed (or this is first use): rebuild all three together.
+	    // They are mutually dependent — cache owns the synthetic series, portfolio
+	    // holds the security, and the backtester is cloned from this invocation's
+	    // theBackTester which encodes the matching date range.
+	    tls_cache     = std::make_unique<CacheType>(theSecurity);
+	    tls_portfolio = std::make_shared<Portfolio<Decimal>>(*originalPortfolio);
+	    tls_bt        = theBackTester->clone();
+	    tls_security_key = theSecurity.get();
+	  }
 
 	// 1) Build synthetic series into the reusable per-thread Security
 	auto& synSec = tls_cache->shuffleAndRebuild(tls_rng);  // swaps new series into the same Security instance

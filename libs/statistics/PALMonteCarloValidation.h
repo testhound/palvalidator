@@ -387,8 +387,10 @@ namespace mkc_timeseries
       Executor executor;
       size_t total = vecPatterns.size();
 
+      uint32_t chunkHintOneStrategyPerTask = 1u;
+      
       // 3) Parallel backtests and MCPT with observer pattern
-      concurrency::parallel_for(
+      concurrency::parallel_for_chunked(
         total, executor,
         [&](size_t idx) {
           auto pattern = vecPatterns[idx];
@@ -435,8 +437,8 @@ namespace mkc_timeseries
 
           std::lock_guard<std::mutex> lock(strategyMutex);
           this->mStrategySelectionPolicy.addStrategy(res, strategy);
-        }
-      );
+        },
+	chunkHintOneStrategyPerTask);
 
       // 4) Apply multiple testing correction (with family partitioning if requested)
       // All policies now support the partitionByFamily parameter
