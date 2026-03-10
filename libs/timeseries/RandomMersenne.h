@@ -94,9 +94,12 @@ public:
      *
      * @return A random unsigned 32-bit integer within the specified range.
      */
-    uint32 DrawNumberExclusive(uint32 exclusiveUpperBound)
+    uint32 DrawNumberExclusive(size_t exclusiveUpperBound)
     {
-        return pcg_extras::bounded_rand (mRandGen.engine(), exclusiveUpperBound);
+      assert(exclusiveUpperBound <= std::numeric_limits<uint32_t>::max()
+             && "exclusiveUpperBound exceeds uint32 range");
+      return pcg_extras::bounded_rand(mRandGen.engine(),
+                                      static_cast<uint32_t>(exclusiveUpperBound));
     }
 
 private:
