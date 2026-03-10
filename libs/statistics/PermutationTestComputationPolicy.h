@@ -320,8 +320,8 @@ namespace mkc_timeseries
       if (!originalPortfolio)
 	throw std::runtime_error("DefaultPermuteMarketChangesPolicy::runPermutationTest: Portfolio is null");
 
-      // Atomics for valid/extreme counts (unchanged)
-      std::atomic<uint32_t> validPerms{0}, extremeCount{0};
+      // Atomics for valid/extreme/failed counts
+      std::atomic<uint32_t> validPerms{0}, extremeCount{0}, failedPerms{0};
 
       // Optional summary collector (unchanged contract)
       _PermutationTestStatisticsCollectionPolicy testStatCollector;
@@ -329,54 +329,72 @@ namespace mkc_timeseries
 
       // ---- Parallel work: TLS cache/portfolio/RNG + one-time BackTester clone per worker ----
 
-      auto work = [=, &validPerms, &extremeCount, &testStatCollector, &testStatMutex](uint32_t /*permIndex*/) {
+      auto work = [=, &validPerms, &extremeCount, &failedPerms, &testStatCollector, &testStatMutex](uint32_t /*permIndex*/) {
 	// --- thread-local state (initialized once per worker thread) ---
-	static thread_local RandomMersenne                        tls_rng;
-	static thread_local std::unique_ptr<CacheType>               tls_cache;
-	static thread_local std::shared_ptr<Portfolio<Decimal>>   tls_portfolio;
-	static thread_local std::shared_ptr<BackTester<Decimal>>  tls_bt;
+	static thread_local RandomMersenne                       tls_rng;
+	static thread_local std::unique_ptr<CacheType>           tls_cache;
+	static thread_local std::shared_ptr<Portfolio<Decimal>>  tls_portfolio;
+	static thread_local std::shared_ptr<BackTester<Decimal>> tls_bt;
 
-	if (!tls_cache) {
-	  // Build cache from the *baseline* security; cache will swap series per permutation
-	  tls_cache = std::make_unique<CacheType>(theSecurity);
-	}
-	if (!tls_portfolio) {
-	  // Build one portfolio per worker (copy/clone baseline ONCE)
-	  tls_portfolio = std::make_shared<Portfolio<Decimal>>(*originalPortfolio);
-	}
-	if (!tls_bt) {
-	  // Clone the configured BackTester ONCE per worker (date ranges, engine setup, etc.)
-	  tls_bt = theBackTester->clone();
+	// Sentinel: if the security changes between runPermutationTest calls on the
+	// same thread, all three TLS objects must be rebuilt together.
+	static thread_local const Security<Decimal>* tls_security_key = nullptr;
+
+	if (tls_security_key != theSecurity.get()) {
+	  tls_cache        = std::make_unique<CacheType>(theSecurity);
+	  tls_portfolio    = std::make_shared<Portfolio<Decimal>>(*originalPortfolio);
+	  tls_bt           = theBackTester->clone();
+	  tls_security_key = theSecurity.get();
 	}
 
-	// 1) Build synthetic series into the reusable per-thread Security
-	auto& synSec = tls_cache->shuffleAndRebuild(tls_rng);  // swaps new series into the same Security instance
-
-	// 2) Swap that Security into the per-thread portfolio (C++17 insert_or_assign inside)
-	tls_portfolio->replaceSecurity(synSec);
-
-	// 3) Create a fresh strategy for this permutation (fresh broker state),
-	//    then reuse the already-cloned per-thread BackTester by swapping the strategy in.
-	auto clonedStrat = aStrategy->clone_shallow(tls_portfolio);
-	tls_bt->setSingleStrategy(clonedStrat);
-	tls_bt->backtest();
-
-	// 4) Compute permutation statistic (unchanged contract) from the *reused* tls_bt
-	const Decimal testStat = BackTestResultPolicy::getPermutationTestStatistic(tls_bt);
-
-	// 5) Notify observers (unchanged)
-	this->notifyObservers(*tls_bt, testStat);
-
-	// 6) Atomics: valid/extreme counts (unchanged)
-	validPerms.fetch_add(1, std::memory_order_relaxed);
-	if (testStat >= baseLineTestStat) {
-	  extremeCount.fetch_add(1, std::memory_order_relaxed);
-	}
-
-	// 7) Update optional summary collector (unchanged)
+	try
 	{
-	  std::lock_guard<std::mutex> guard(testStatMutex);
-	  testStatCollector.updateTestStatistic(testStat);
+	  // 1) Build synthetic series into the reusable per-thread Security
+	  auto& synSec = tls_cache->shuffleAndRebuild(tls_rng);
+
+	  // 2) Swap that Security into the per-thread portfolio
+	  tls_portfolio->replaceSecurity(synSec);
+
+	  // 3) Create a fresh strategy for this permutation (fresh broker state),
+	  //    then reuse the already-cloned per-thread BackTester by swapping the strategy in.
+	  auto clonedStrat = aStrategy->clone_shallow(tls_portfolio);
+	  tls_bt->setSingleStrategy(clonedStrat);
+	  tls_bt->backtest();
+
+	  // 4) Compute permutation statistic from the *reused* tls_bt
+	  const Decimal testStat = BackTestResultPolicy::getPermutationTestStatistic(tls_bt);
+
+	  // 5) Notify observers
+	  this->notifyObservers(*tls_bt, testStat);
+
+	  // 6) Atomics: valid/extreme counts
+	  validPerms.fetch_add(1, std::memory_order_relaxed);
+	  if (testStat >= baseLineTestStat)
+	    extremeCount.fetch_add(1, std::memory_order_relaxed);
+
+	  // 7) Update optional summary collector
+	  {
+	    std::lock_guard<std::mutex> guard(testStatMutex);
+	    testStatCollector.updateTestStatistic(testStat);
+	  }
+	}
+	catch (const std::exception& ex)
+	{
+	  // Count the failed permutation so the caller can detect systematic failures.
+	  failedPerms.fetch_add(1, std::memory_order_relaxed);
+	  std::cerr << "DefaultPermuteMarketChangesPolicy: permutation failed: "
+		    << ex.what() << '\n';
+
+	  // Invalidate TLS sentinel so the next permutation on this thread rebuilds
+	  // all three objects from scratch — the cache, portfolio, or backtester may
+	  // be in a partially-modified state after the exception.
+	  tls_security_key = nullptr;
+	}
+	catch (...)
+	{
+	  failedPerms.fetch_add(1, std::memory_order_relaxed);
+	  std::cerr << "DefaultPermuteMarketChangesPolicy: permutation failed with unknown exception\n";
+	  tls_security_key = nullptr;
 	}
       };
 
@@ -384,12 +402,50 @@ namespace mkc_timeseries
       Executor executor{};
       concurrency::parallel_for_chunked(numPermutations, executor, work);
 
-      // ---- Final aggregation (unchanged) ----------------------------------------
+      // ---- Failure diagnostic -----------------------------------------------
+      // If a significant fraction of permutations failed, the p-value is computed
+      // from too few samples to be reliable. Warn loudly rather than return a
+      // silently wrong result.
+      const uint32_t failed = failedPerms.load(std::memory_order_relaxed);
+      if (failed > 0)
+      {
+	const uint32_t attempted = numPermutations;
+	const double   failRate  = static_cast<double>(failed) / attempted;
+	std::cerr << "DefaultPermuteMarketChangesPolicy: " << failed << " of "
+		  << attempted << " permutations failed ("
+		  << static_cast<int>(failRate * 100.0) << "%).\n";
+	if (failRate > 0.05)
+	  throw std::runtime_error(
+	    "DefaultPermuteMarketChangesPolicy::runPermutationTest: "
+	    "more than 5% of permutations failed — p-value is unreliable");
+      }
+
+      // ---- Final aggregation -------------------------------------------------------
       const uint32_t valid = validPerms.load(std::memory_order_relaxed);
-      if (valid == 0) {
-	// no informative draws → cannot reject null
-	return _PermutationTestResultPolicy::createReturnValue(
-							       Decimal(1), testStatCollector.getTestStat(), baseLineTestStat);
+      if (valid == 0)
+	{
+	  // Distinguish between two root causes so the caller can act appropriately.
+	  if (failed == numPermutations)
+	    {
+	      // Every permutation threw — the try/catch absorbed all of them.
+	      // The failure diagnostic above will already have printed details.
+	      std::cerr << "DefaultPermuteMarketChangesPolicy: no valid permutations — "
+			<< "all " << numPermutations << " permutations failed with exceptions. "
+			<< "Returning p-value of 1 (cannot reject null).\n";
+	    }
+	  else
+	    {
+	      // No exceptions but nothing was counted as valid — logically unreachable
+	      // given the current control flow; likely indicates a bug.
+	      std::cerr << "DefaultPermuteMarketChangesPolicy: no valid permutations — "
+			<< failed << " of " << numPermutations << " failed with exceptions, "
+			<< "but the remaining " << (numPermutations - failed)
+			<< " produced no valid counts. This may indicate a bug. "
+			<< "Returning p-value of 1 (cannot reject null).\n";
+	    }
+	  return _PermutationTestResultPolicy::createReturnValue(Decimal(1),
+								 testStatCollector.getTestStat(),
+								 baseLineTestStat);
       }
 
       const uint32_t extreme = extremeCount.load(std::memory_order_relaxed);

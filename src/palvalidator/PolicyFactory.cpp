@@ -183,11 +183,11 @@ namespace statistics
     DefaultPermuteMarketChangesPolicy<Num, PolicyType<Num>,
 				      PValueReturnPolicy<Num>,
 				      PermutationTestingNullTestStatisticPolicy<Num>,
-				      concurrency::ThreadPoolExecutor<>,
+				      concurrency::SingleThreadExecutor,
 				      WilsonPValueComputationPolicy<Num>,
 				      SyntheticNullModel::N0_PairedDay>
     >;
-    PALMonteCarloValidation<Num, UnadjustedMcpt, UnadjustedPValueStrategySelection, concurrency::StdAsyncExecutor> validation;
+    PALMonteCarloValidation<Num, UnadjustedMcpt, UnadjustedPValueStrategySelection, concurrency::ThreadPoolExecutor<>> validation;
     
   public:
     explicit UnadjustedValidationWrapper(unsigned long p, bool sameDayExits = false)
