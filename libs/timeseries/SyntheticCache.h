@@ -144,6 +144,33 @@ namespace mkc_timeseries
       EodSyntheticTimeSeriesImpl_N0<Decimal, LookupPolicy, RoundingPolicy> m_impl;
     };
 
+    // EOD adapter (N2: block-days shuffle — contiguous blocks permuted atomically,
+    // preserving local volatility clustering up to block length L).
+    // L is estimated data-adaptively from the ACF of squared close-to-close
+    // returns at construction time via shuffle_detail::computeBlockSize.
+    class EodImplN2 final : public ImplIface
+    {
+    public:
+      EodImplN2(const SeriesT& base, const Decimal& tick, const Decimal& tickDiv2)
+        : m_impl(base, tick, tickDiv2,
+                 BlockShufflePolicy(shuffle_detail::computeBlockSize(base)))
+      {}
+
+      void shuffleFactors(RandomMersenne& rng) override
+      {
+        m_impl.shuffleFactors(rng);
+      }
+
+      std::shared_ptr<const SeriesT> buildSeries() override
+      {
+        return m_impl.buildSeries();
+      }
+
+    private:
+      EodSyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy,
+                                 BlockShufflePolicy> m_impl;
+    };
+
     // Intraday adapter (unchanged)
     class IntradayImpl final : public ImplIface {
     public:
@@ -173,7 +200,7 @@ namespace mkc_timeseries
 	  if constexpr (NullModel == SyntheticNullModel::N0_PairedDay)
 	    m_impl = std::make_unique<EodImplN0>(base, tick, tickDiv2);
 	  else if constexpr (NullModel == SyntheticNullModel::N2_BlockDays)
-	    throw std::logic_error("SyntheticCache: N2_BlockDays not yet implemented");
+	    m_impl = std::make_unique<EodImplN2>(base, tick, tickDiv2);
 	  else
 	    m_impl = std::make_unique<EodImpl>(base, tick, tickDiv2);
 	}
