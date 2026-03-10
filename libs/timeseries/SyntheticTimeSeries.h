@@ -22,6 +22,8 @@
 #include "DecimalConstants.h"
 #include "number.h"
 #include "RoundingPolicies.h"
+#include "TimeSeriesIndicators.h"
+#include "StatUtils.h"
 
 namespace mkc_timeseries
 {
@@ -40,7 +42,7 @@ namespace mkc_timeseries
   {
     N1_MaxDestruction = 0,  // independent shuffles of gaps and intraday shapes
     N0_PairedDay      = 1,  // shuffle day-units intact: (gap, H/L/C[, Volume]) together
-    N2_BlockDays      = 2   // (reserved) shuffle blocks of day-units; not yet implemented
+    N2_BlockDays      = 2   // shuffle contiguous blocks of day-units; preserves local volatility regimes
   };
 
   // ============================================================
@@ -121,7 +123,7 @@ namespace mkc_timeseries
   // detail utilities
   // ============================================================
 
-  namespace detail
+  namespace shuffle_detail
   {
     /**
      * @brief Fisher-Yates in-place shuffle of v[firstShufflable .. v.size()-1].
@@ -173,7 +175,68 @@ namespace mkc_timeseries
       return idx;
     }
 
-  } // namespace detail
+    /**
+     * @brief Estimate a statistically appropriate block size for N2_BlockDays permutation.
+     *
+     * @details
+     * Computes close-to-close percentage returns, squares them to obtain a proxy for
+     * realised variance, then uses the ACF of squared returns to identify how many
+     * days of volatility clustering should be preserved in each block.
+     *
+     * Pipeline:
+     *   1. Extract closing prices via OHLCTimeSeries::CloseTimeSeries().
+     *   2. Compute 1-period ROC (= simple % return * 100) via RocSeries(..., 1).
+     *   3. Square each return — ACF of r² captures GARCH-like volatility clustering.
+     *      The 100x scaling from RocSeries cancels identically in the ACF formula
+     *      (numerator and denominator both scale by 100^4; ratio is unchanged).
+     *   4. Compute ACF of squared returns up to maxBlock lags.
+     *   5. Find the largest lag where |ρ| exceeds the 2/sqrt(n) Bartlett noise band.
+     *   6. Clamp result to [minBlock, maxBlock].
+     *
+     * If the series has fewer than 4 return observations, minBlock is returned
+     * immediately without attempting the ACF estimate.
+     *
+     * @tparam Decimal       Numeric type for the time series.
+     * @tparam LookupPolicy  Lookup policy for the OHLCTimeSeries.
+     * @param series         Source EOD daily series.
+     * @param minBlock       Minimum allowable block size (default: 3 trading days).
+     * @param maxBlock       Maximum allowable block size (default: 20 trading days).
+     * @return               Block length L clamped to [minBlock, maxBlock].
+     */
+    template <class Decimal, class LookupPolicy>
+    size_t computeBlockSize(
+        const OHLCTimeSeries<Decimal, LookupPolicy>& series,
+        unsigned minBlock = 3,
+        unsigned maxBlock = 20)
+    {
+      // Step 1+2: close series → 1-period percentage returns (×100, scale-invariant for ACF)
+      auto rocSeries = RocSeries(series.CloseTimeSeries(),
+                                 static_cast<uint32_t>(1));
+      const size_t n = rocSeries.getNumEntries();
+
+      if (n < 4)
+        return static_cast<size_t>(minBlock);
+
+      // Step 3: square each return — volatility ACF, not mean-return ACF
+      std::vector<Decimal> squaredReturns;
+      squaredReturns.reserve(n);
+      for (auto it = rocSeries.beginRandomAccess();
+           it != rocSeries.endRandomAccess(); ++it)
+      {
+        const Decimal r = it->getValue();
+        squaredReturns.push_back(r * r);
+      }
+
+      // Step 4+5+6: ACF → block length suggestion with daily-appropriate bounds
+      const auto acf = StatUtils<Decimal>::computeACF(
+          squaredReturns, static_cast<size_t>(maxBlock));
+
+      return static_cast<size_t>(
+          StatUtils<Decimal>::suggestStationaryBlockLengthFromACF(
+              acf, n, minBlock, maxBlock));
+    }
+
+  } // namespace shuffle_detail
 
   // ============================================================
   // EOD Shuffle Policies
@@ -208,7 +271,7 @@ namespace mkc_timeseries
 #endif
 
       // --- Pass 1: shuffle overnight gaps independently ---
-      detail::fisherYatesSubrange(open, 1, rng);
+      shuffle_detail::fisherYatesSubrange(open, 1, rng);
 
       // --- Pass 2: shuffle intraday day-shape tuples (H/L/C[/V]) with one shared
       //             permutation so each day's internal OHLC relationship is preserved.
@@ -217,7 +280,7 @@ namespace mkc_timeseries
       //             array -- important at 10,000 permutation-test iterations. ---
       if (n > 2)
       {
-        const auto perm = detail::generatePermutation(n, 1, rng);
+        const auto perm = shuffle_detail::generatePermutation(n, 1, rng);
 
         const auto tmpHigh  = high;
         const auto tmpLow   = low;
@@ -273,7 +336,7 @@ namespace mkc_timeseries
       // Output vectors are pre-allocated and all writes are fused into a single
       // loop: perm[k] is loaded once per k and reused for all arrays, avoiding
       // the repeated indirect loads of separate per-array passes.
-      const auto perm = detail::generatePermutation(n, 1, rng);
+      const auto perm = shuffle_detail::generatePermutation(n, 1, rng);
 
       std::vector<Decimal> newOpen(n), newHigh(n), newLow(n), newClose(n);
 #ifdef SYNTHETIC_VOLUME
@@ -313,6 +376,135 @@ namespace mkc_timeseries
                                  std::move(newLow),  std::move(newClose));
 #endif
     }
+  };
+
+  /**
+   * @struct BlockShufflePolicy
+   * @brief N2 "Block Days" shuffle: contiguous blocks of day-units permuted as atomic units.
+   *
+   * @details
+   * Day-units within each block retain their original relative order — only the
+   * order of blocks is randomised. This preserves local volatility clustering and
+   * regime persistence up to the block length L while still destroying long-range
+   * predictive structure that a strategy could exploit.
+   *
+   * The whole day-unit (gt, ht, lt, ct[, vt]) always travels together, so the
+   * overnight gap is never decoupled from its day's intraday shape (contrast with
+   * N1 IndependentShufflePolicy which separates gaps from shapes).
+   *
+   * The anchor day (index 0) is always fixed, consistent with N0 and N1.
+   *
+   * Boundary handling: if (n-1) is not evenly divisible by L, the final block
+   * contains the remainder days and is shorter than L.  It participates in the
+   * shuffle on equal footing with full-length blocks.
+   *
+   * Unlike IndependentShufflePolicy and PairedDayShufflePolicy, this policy is
+   * stateful (carries mBlockSize). The block size is computed data-adaptively from
+   * the ACF of squared close-to-close returns inside shuffle_detail::computeBlockSize and
+   * injected by the SyntheticTimeSeries constructor — callers never set it directly.
+   */
+  struct BlockShufflePolicy
+  {
+    /// Construct with an explicit block size. blockSize=0 is silently promoted to 1
+    /// (degenerates to N0 single-day behaviour; a safe no-op fallback).
+    explicit BlockShufflePolicy(size_t blockSize)
+      : mBlockSize(blockSize > 0 ? blockSize : 1)
+    {}
+
+    /// Default constructor required for the mPolicy{} member initialiser in
+    /// EodSyntheticTimeSeriesImpl when ShufflePolicy = BlockShufflePolicy.
+    /// Block size of 1 degenerates to N0 behaviour (safe fallback only;
+    /// the SyntheticTimeSeries constructor always supplies a real block size).
+    BlockShufflePolicy()
+      : mBlockSize(1)
+    {}
+
+    BlockShufflePolicy(const BlockShufflePolicy&)                = default;
+    BlockShufflePolicy& operator=(const BlockShufflePolicy&)     = default;
+    BlockShufflePolicy(BlockShufflePolicy&&) noexcept            = default;
+    BlockShufflePolicy& operator=(BlockShufflePolicy&&) noexcept = default;
+
+    size_t getBlockSize() const { return mBlockSize; }
+
+    template <class Decimal>
+    EodFactors<Decimal> apply(const EodFactors<Decimal>& orig,
+                              RandomMersenne&             rng) const
+    {
+      const size_t n = orig.size();
+      if (n <= 2)
+        return orig;  // too few bars to permute; return a copy
+
+      // Shuffleable range is [1..n-1]; index 0 is the anchor day (never moved).
+      const size_t shuffleableCount = n - 1;
+      const size_t L                = mBlockSize;
+
+      // Partition [1..n-1] into ceil(shuffleableCount / L) contiguous blocks.
+      // blockOrder[b] is the source block index; after shuffling, block b's
+      // day-units are read from absolute indices [1 + blockOrder[b]*L ..
+      // min(1 + blockOrder[b]*L + L, n) - 1].
+      const size_t numBlocks = (shuffleableCount + L - 1) / L;  // ceiling division
+
+      std::vector<size_t> blockOrder(numBlocks);
+      std::iota(blockOrder.begin(), blockOrder.end(), size_t{0});
+      // Shuffle ALL block indices (no anchor; the day-0 anchor is handled separately).
+      shuffle_detail::fisherYatesSubrange(blockOrder, 0, rng);
+
+      // Source factor arrays
+      const auto& srcOpen  = orig.getOpen();
+      const auto& srcHigh  = orig.getHigh();
+      const auto& srcLow   = orig.getLow();
+      const auto& srcClose = orig.getClose();
+#ifdef SYNTHETIC_VOLUME
+      const auto& srcVolume = orig.getVolume();
+#endif
+
+      // Pre-allocate output vectors
+      std::vector<Decimal> newOpen(n), newHigh(n), newLow(n), newClose(n);
+#ifdef SYNTHETIC_VOLUME
+      std::vector<Decimal> newVolume(n);
+#endif
+
+      // Anchor day: always fixed at position 0, open factor always == 1.
+      newOpen[0]  = DecimalConstants<Decimal>::DecimalOne;
+      newHigh[0]  = srcHigh[0];
+      newLow[0]   = srcLow[0];
+      newClose[0] = srcClose[0];
+#ifdef SYNTHETIC_VOLUME
+      newVolume[0] = srcVolume[0];
+#endif
+
+      // Write blocks in shuffled order into positions [1..n-1].
+      size_t destIdx = 1;
+      for (size_t b = 0; b < numBlocks; ++b)
+      {
+        const size_t srcBlockIdx = blockOrder[b];
+        const size_t blockStart  = 1 + srcBlockIdx * L;         // inclusive, in src space
+        const size_t blockEnd    = std::min(blockStart + L, n); // exclusive, in src space
+
+        for (size_t s = blockStart; s < blockEnd; ++s, ++destIdx)
+        {
+          newOpen[destIdx]  = srcOpen[s];
+          newHigh[destIdx]  = srcHigh[s];
+          newLow[destIdx]   = srcLow[s];
+          newClose[destIdx] = srcClose[s];
+#ifdef SYNTHETIC_VOLUME
+          newVolume[destIdx] = srcVolume[s];
+#endif
+        }
+      }
+
+#ifdef SYNTHETIC_VOLUME
+      return EodFactors<Decimal>(std::move(newOpen),  std::move(newHigh),
+                                 std::move(newLow),   std::move(newClose),
+                                 std::move(newVolume));
+#else
+      return EodFactors<Decimal>(std::move(newOpen), std::move(newHigh),
+                                 std::move(newLow),  std::move(newClose));
+#endif
+    }
+
+  private:
+    size_t mBlockSize;
   };
 
   // ============================================================
@@ -660,12 +852,18 @@ namespace mkc_timeseries
    * "Max Destruction" behaviour exactly, so all existing callers that pass three
    * explicit template arguments are completely unaffected.
    *
+   * Stateless policies (IndependentShufflePolicy, PairedDayShufflePolicy) are
+   * default-constructed via mPolicy{} at no cost. Stateful policies (BlockShufflePolicy)
+   * must be supplied via the four-argument constructor.
+   *
    * @tparam Decimal        Numeric type for price and factor data.
    * @tparam LookupPolicy   Lookup policy for the generated OHLCTimeSeries.
    * @tparam RoundingPolicy Policy to enforce tick-size validity.
-   * @tparam ShufflePolicy  Stateless struct exposing
-   *                        `static EodFactors<Decimal> apply(const EodFactors<Decimal>&,
-   *                                                          RandomMersenne&)`.
+   * @tparam ShufflePolicy  Struct exposing
+   *                        `EodFactors<Decimal> apply(const EodFactors<Decimal>&,
+   *                                                   RandomMersenne&) const`.
+   *                        Must be default-constructible (stateless policies) or
+   *                        supplied explicitly (stateful policies like BlockShufflePolicy).
    *                        Defaults to IndependentShufflePolicy (N1).
    */
   template <class Decimal,
@@ -678,7 +876,19 @@ namespace mkc_timeseries
     using Base = EodSyntheticTimeSeriesImplBase<Decimal, LookupPolicy, RoundingPolicy>;
 
   public:
-    using Base::Base; // inherit the three-argument constructor
+    /// Three-argument constructor: inherited from base.
+    /// mPolicy is default-constructed — correct for stateless policies (N0, N1).
+    using Base::Base;
+
+    /// Four-argument constructor: used when ShufflePolicy carries state (e.g. BlockShufflePolicy).
+    /// The policy instance is move-constructed so BlockShufflePolicy's mBlockSize is captured.
+    EodSyntheticTimeSeriesImpl(const OHLCTimeSeries<Decimal, LookupPolicy>& series,
+                               const Decimal& tick,
+                               const Decimal& tickDiv2,
+                               ShufflePolicy  policy)
+      : Base(series, tick, tickDiv2),
+        mPolicy(std::move(policy))
+    {}
 
     EodSyntheticTimeSeriesImpl(const EodSyntheticTimeSeriesImpl&)                = default;
     EodSyntheticTimeSeriesImpl& operator=(const EodSyntheticTimeSeriesImpl&)     = default;
@@ -694,7 +904,8 @@ namespace mkc_timeseries
      */
     void shuffleFactors(RandomMersenne& rng) override
     {
-      this->mWorking = ShufflePolicy::template apply<Decimal>(this->mOriginal, rng);
+      // Instance call works for both stateless (N0/N1) and stateful (N2) policies.
+      this->mWorking = mPolicy.template apply<Decimal>(this->mOriginal, rng);
     }
 
     std::unique_ptr<ISyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>>
@@ -702,6 +913,11 @@ namespace mkc_timeseries
     {
       return std::make_unique<EodSyntheticTimeSeriesImpl>(*this);
     }
+
+  private:
+    /// Policy instance. Default-constructible for stateless policies (N0, N1);
+    /// explicitly initialised via the 4-arg constructor for BlockShufflePolicy (N2).
+    ShufflePolicy mPolicy{};
   };
 
   /**
@@ -1099,13 +1315,6 @@ namespace mkc_timeseries
 
       if (!isIntraday)
       {
-        // FIX #1: N2_BlockDays previously fell through silently to N1 behaviour.
-        // Now it triggers a hard compile-time error so callers know the model they
-        // requested is not yet implemented rather than getting N1 results silently.
-        static_assert(NullModel != SyntheticNullModel::N2_BlockDays,
-                      "SyntheticNullModel::N2_BlockDays is not yet implemented. "
-                      "Use N1_MaxDestruction or N0_PairedDay.");
-
         if constexpr (NullModel == SyntheticNullModel::N0_PairedDay)
         {
           mPimpl = std::make_unique<
@@ -1113,9 +1322,22 @@ namespace mkc_timeseries
                                        PairedDayShufflePolicy>>(
               mSourceTimeSeriesCopy, mMinimumTick, mMinimumTickDiv2);
         }
+        else if constexpr (NullModel == SyntheticNullModel::N2_BlockDays)
+        {
+          // Block size is estimated from the ACF of squared close-to-close returns
+          // of the source series.  This keeps all statistical logic encapsulated:
+          // callers simply select N2_BlockDays and the appropriate L is computed
+          // automatically.  See shuffle_detail::computeBlockSize for the full pipeline.
+          const size_t L = shuffle_detail::computeBlockSize(mSourceTimeSeriesCopy);
+          mPimpl = std::make_unique<
+            EodSyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy,
+                                       BlockShufflePolicy>>(
+              mSourceTimeSeriesCopy, mMinimumTick, mMinimumTickDiv2,
+              BlockShufflePolicy(L));
+        }
         else
         {
-          // N1_MaxDestruction (default).
+          // N1_MaxDestruction (default): independent shuffles of gaps and intraday shapes.
           mPimpl = std::make_unique<
             EodSyntheticTimeSeriesImpl<Decimal, LookupPolicy, RoundingPolicy>>(
               mSourceTimeSeriesCopy, mMinimumTick, mMinimumTickDiv2);

@@ -1,8 +1,8 @@
 // SyntheticTimeSeriesNewPoliciesTest.cpp
 //
 // Unit tests for:
-//   - detail::fisherYatesSubrange
-//   - detail::generatePermutation
+//   - shuffle_detail::fisherYatesSubrange
+//   - shuffle_detail::generatePermutation
 //   - EodFactors<Decimal>
 //   - IndependentShufflePolicy
 //   - PairedDayShufflePolicy
@@ -180,43 +180,43 @@ TEST_CASE("EodFactors: move semantics leave source empty", "[EodFactors]")
 }
 
 // ============================================================
-// Section 2: detail::fisherYatesSubrange
+// Section 2: shuffle_detail::fisherYatesSubrange
 // ============================================================
 
-TEST_CASE("detail::fisherYatesSubrange: empty vector does not crash", "[detail][FisherYates]")
+TEST_CASE("shuffle_detail::fisherYatesSubrange: empty vector does not crash", "[detail][FisherYates]")
 {
   std::vector<int> v;
   RandomMersenne rng;
-  REQUIRE_NOTHROW(detail::fisherYatesSubrange(v, 0u, rng));
+  REQUIRE_NOTHROW(shuffle_detail::fisherYatesSubrange(v, 0u, rng));
   REQUIRE(v.empty());
 }
 
-TEST_CASE("detail::fisherYatesSubrange: no-op when n < firstShufflable+2", "[detail][FisherYates]")
+TEST_CASE("shuffle_detail::fisherYatesSubrange: no-op when n < firstShufflable+2", "[detail][FisherYates]")
 {
   // n=3, firstShufflable=2 → n(3) < firstShufflable+2(4) → nothing shuffled
   std::vector<int> v = {10, 20, 30};
   const auto expected = v;
   RandomMersenne rng;
-  detail::fisherYatesSubrange(v, 2u, rng);
+  shuffle_detail::fisherYatesSubrange(v, 2u, rng);
   REQUIRE(v == expected);
 }
 
-TEST_CASE("detail::fisherYatesSubrange: single shufflable element is unchanged", "[detail][FisherYates]")
+TEST_CASE("shuffle_detail::fisherYatesSubrange: single shufflable element is unchanged", "[detail][FisherYates]")
 {
   // n=2, firstShufflable=1 → only one shufflable element — trivially fixed
   std::vector<int> v = {5, 7};
   const auto expected = v;
   RandomMersenne rng;
-  detail::fisherYatesSubrange(v, 1u, rng);
+  shuffle_detail::fisherYatesSubrange(v, 1u, rng);
   REQUIRE(v == expected);
 }
 
-TEST_CASE("detail::fisherYatesSubrange: anchor elements [0, firstShufflable) are unchanged", "[detail][FisherYates]")
+TEST_CASE("shuffle_detail::fisherYatesSubrange: anchor elements [0, firstShufflable) are unchanged", "[detail][FisherYates]")
 {
   // firstShufflable=1: only index 0 is anchored
   std::vector<int> v = {99, 1, 2, 3, 4, 5, 6, 7};
   RandomMersenne rng;
-  detail::fisherYatesSubrange(v, 1u, rng);
+  shuffle_detail::fisherYatesSubrange(v, 1u, rng);
 
   REQUIRE(v[0] == 99);
 
@@ -225,12 +225,12 @@ TEST_CASE("detail::fisherYatesSubrange: anchor elements [0, firstShufflable) are
   REQUIRE(suffix == std::vector<int>({1, 2, 3, 4, 5, 6, 7}));
 }
 
-TEST_CASE("detail::fisherYatesSubrange: two anchor elements are both preserved", "[detail][FisherYates]")
+TEST_CASE("shuffle_detail::fisherYatesSubrange: two anchor elements are both preserved", "[detail][FisherYates]")
 {
   // firstShufflable=2: indices 0 and 1 are anchored
   std::vector<int> v = {11, 22, 3, 4, 5, 6};
   RandomMersenne rng;
-  detail::fisherYatesSubrange(v, 2u, rng);
+  shuffle_detail::fisherYatesSubrange(v, 2u, rng);
 
   REQUIRE(v[0] == 11);
   REQUIRE(v[1] == 22);
@@ -240,53 +240,53 @@ TEST_CASE("detail::fisherYatesSubrange: two anchor elements are both preserved",
   REQUIRE(suffix == std::vector<int>({3, 4, 5, 6}));
 }
 
-TEST_CASE("detail::fisherYatesSubrange: result is always a valid permutation of input", "[detail][FisherYates]")
+TEST_CASE("shuffle_detail::fisherYatesSubrange: result is always a valid permutation of input", "[detail][FisherYates]")
 {
   std::vector<int> original = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
   auto v = original;
   RandomMersenne rng;
-  detail::fisherYatesSubrange(v, 1u, rng);
+  shuffle_detail::fisherYatesSubrange(v, 1u, rng);
   REQUIRE(std::is_permutation(v.begin(), v.end(), original.begin()));
 }
 
-TEST_CASE("detail::fisherYatesSubrange: repeated calls produce different orderings", "[detail][FisherYates]")
+TEST_CASE("shuffle_detail::fisherYatesSubrange: repeated calls produce different orderings", "[detail][FisherYates]")
 {
   // With 10 shufflable elements the chance of getting the same order twice is negligible.
   std::vector<int> base = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   RandomMersenne rng;
   auto v1 = base;
   auto v2 = base;
-  detail::fisherYatesSubrange(v1, 1u, rng);
-  detail::fisherYatesSubrange(v2, 1u, rng);
+  shuffle_detail::fisherYatesSubrange(v1, 1u, rng);
+  shuffle_detail::fisherYatesSubrange(v2, 1u, rng);
   // At least one of the two calls should differ from the base — both being
   // the identity simultaneously is astronomically unlikely.
   REQUIRE((v1 != base || v2 != base));
 }
 
 // ============================================================
-// Section 3: detail::generatePermutation
+// Section 3: shuffle_detail::generatePermutation
 // ============================================================
 
-TEST_CASE("detail::generatePermutation: n=0 returns empty vector", "[detail][generatePermutation]")
+TEST_CASE("shuffle_detail::generatePermutation: n=0 returns empty vector", "[detail][generatePermutation]")
 {
   RandomMersenne rng;
-  auto perm = detail::generatePermutation(0u, 0u, rng);
+  auto perm = shuffle_detail::generatePermutation(0u, 0u, rng);
   REQUIRE(perm.empty());
 }
 
-TEST_CASE("detail::generatePermutation: identity when n < firstShufflable+2", "[detail][generatePermutation]")
+TEST_CASE("shuffle_detail::generatePermutation: identity when n < firstShufflable+2", "[detail][generatePermutation]")
 {
   // n=3, firstShufflable=2 → n(3) < 4 → identity
   RandomMersenne rng;
-  auto perm = detail::generatePermutation(3u, 2u, rng);
+  auto perm = shuffle_detail::generatePermutation(3u, 2u, rng);
   REQUIRE(perm == std::vector<size_t>({0u, 1u, 2u}));
 }
 
-TEST_CASE("detail::generatePermutation: anchor indices [0, firstShufflable) are identity-mapped", "[detail][generatePermutation]")
+TEST_CASE("shuffle_detail::generatePermutation: anchor indices [0, firstShufflable) are identity-mapped", "[detail][generatePermutation]")
 {
   RandomMersenne rng;
   const size_t n = 8u, firstShuffle = 2u;
-  auto perm = detail::generatePermutation(n, firstShuffle, rng);
+  auto perm = shuffle_detail::generatePermutation(n, firstShuffle, rng);
 
   REQUIRE(perm.size() == n);
   // Anchored portion must be [0, 1]
@@ -294,11 +294,11 @@ TEST_CASE("detail::generatePermutation: anchor indices [0, firstShufflable) are 
     REQUIRE(perm[i] == i);
 }
 
-TEST_CASE("detail::generatePermutation: result is a valid permutation of [0, n)", "[detail][generatePermutation]")
+TEST_CASE("shuffle_detail::generatePermutation: result is a valid permutation of [0, n)", "[detail][generatePermutation]")
 {
   RandomMersenne rng;
   const size_t n = 10u;
-  auto perm = detail::generatePermutation(n, 1u, rng);
+  auto perm = shuffle_detail::generatePermutation(n, 1u, rng);
 
   REQUIRE(perm.size() == n);
   // perm[0] fixed to 0
@@ -311,15 +311,15 @@ TEST_CASE("detail::generatePermutation: result is a valid permutation of [0, n)"
   REQUIRE(sorted == expected);
 }
 
-TEST_CASE("detail::generatePermutation: shuffled portion differs from identity across calls", "[detail][generatePermutation]")
+TEST_CASE("shuffle_detail::generatePermutation: shuffled portion differs from identity across calls", "[detail][generatePermutation]")
 {
   RandomMersenne rng;
   const size_t n = 8u;
   bool anyDifferent = false;
-  auto first = detail::generatePermutation(n, 1u, rng);
+  auto first = shuffle_detail::generatePermutation(n, 1u, rng);
   for (int attempt = 0; attempt < 30 && !anyDifferent; ++attempt)
   {
-    auto next = detail::generatePermutation(n, 1u, rng);
+    auto next = shuffle_detail::generatePermutation(n, 1u, rng);
     if (next != first) anyDifferent = true;
   }
   REQUIRE(anyDifferent);

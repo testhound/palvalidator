@@ -802,3 +802,423 @@ TEST_CASE("SyntheticCache: Weekly timeframe uses EOD implementation",
     REQUIRE(it->getLowValue() <= std::min(it->getOpenValue(), it->getCloseValue()));
   }
 }
+
+// ============================================================================
+// N2_BlockDays MODEL
+// ============================================================================
+
+// Convenience alias matching the N0 pattern used above.
+template <class Decimal>
+using CacheN2 = SyntheticCache<
+  Decimal,
+  LogNLookupPolicy<Decimal>,
+  NoRounding,
+  SyntheticNullModel::N2_BlockDays>;
+
+TEST_CASE("SyntheticCache N2: construction does not throw", "[SyntheticCache][N2]")
+{
+  // Verifies that EodImplN2 is constructed without error and that
+  // computeBlockSize runs successfully on a real series without throwing.
+  using DT = DecimalType;
+  auto baseSeries = makeDailySeries();
+  auto baseSec    = std::make_shared<EquitySecurity<DT>>("N2CTOR", "N2 Ctor Test", baseSeries);
+
+  REQUIRE_NOTHROW([&]{ CacheN2<DT> tmp(baseSec); }());
+}
+
+TEST_CASE("SyntheticCache N2: shuffleAndRebuild returns non-null Security", "[SyntheticCache][N2]")
+{
+  using DT = DecimalType;
+  auto baseSeries = makeDailySeries();
+  auto baseSec    = std::make_shared<EquitySecurity<DT>>("N2SYM", "N2 Basic Test", baseSeries);
+
+  CacheN2<DT> cache(baseSec);
+  RandomMersenne rng;
+  rng.seed_u64(0xFEED2222u);
+
+  auto& sec = cache.shuffleAndRebuild(rng);
+  REQUIRE(sec);
+  REQUIRE(sec->getTimeSeries());
+}
+
+TEST_CASE("SyntheticCache N2: Security object is reused across shuffles", "[SyntheticCache][N2]")
+{
+  // The defining characteristic of SyntheticCache is that one Security object
+  // is reused and its time series pointer is swapped per call.  This must hold
+  // for N2 exactly as it does for N0 and N1.
+  using DT = DecimalType;
+  auto baseSeries = makeDailySeries();
+  auto baseSec    = std::make_shared<EquitySecurity<DT>>("N2REUSE", "N2 Reuse Test", baseSeries);
+
+  CacheN2<DT> cache(baseSec);
+  RandomMersenne rng;
+  rng.seed_u64(0xBEEFCAFEu);
+
+  auto& sec1       = cache.shuffleAndRebuild(rng);
+  auto* addrAfter1 = sec1.get();
+  auto  ts1        = sec1->getTimeSeries();
+  REQUIRE(ts1);
+
+  auto& sec2 = cache.shuffleAndRebuild(rng);
+  REQUIRE(sec2.get() == addrAfter1);   // same Security object reused
+  auto ts2 = sec2->getTimeSeries();
+  REQUIRE(ts2);
+  REQUIRE(ts2 != ts1);                 // series pointer was swapped
+}
+
+TEST_CASE("SyntheticCache N2: synthetic series preserves structural metadata", "[SyntheticCache][N2]")
+{
+  using DT = DecimalType;
+  auto baseSeries = makeDailySeries();
+  auto baseSec    = std::make_shared<EquitySecurity<DT>>("N2META", "N2 Meta Test", baseSeries);
+
+  CacheN2<DT> cache(baseSec);
+  RandomMersenne rng;
+  rng.seed_u64(0x4E2A2u);
+
+  auto& sec = cache.shuffleAndRebuild(rng);
+  auto  ts  = sec->getTimeSeries();
+  REQUIRE(ts);
+
+  REQUIRE(ts->getNumEntries() == baseSeries->getNumEntries());
+  REQUIRE(ts->getTimeFrame()  == baseSeries->getTimeFrame());
+  REQUIRE(ts->getFirstDate()  == baseSeries->getFirstDate());
+  REQUIRE(ts->getLastDate()   == baseSeries->getLastDate());
+}
+
+TEST_CASE("SyntheticCache N2: every bar satisfies H >= O, H >= C, L <= O, L <= C", "[SyntheticCache][N2]")
+{
+  using DT = DecimalType;
+  auto baseSeries = makeDailySeries();
+  auto baseSec    = std::make_shared<EquitySecurity<DT>>("N2OHLC", "N2 OHLC Test", baseSeries);
+
+  CacheN2<DT> cache(baseSec);
+  RandomMersenne rng;
+  rng.seed_u64(0x04C2u);
+
+  // Check invariants across several independent shuffles.
+  for (int iter = 0; iter < 20; ++iter)
+  {
+    auto& sec = cache.shuffleAndRebuild(rng);
+    auto  ts  = sec->getTimeSeries();
+    REQUIRE(ts);
+
+    for (auto it = ts->beginSortedAccess(); it != ts->endSortedAccess(); ++it)
+    {
+      REQUIRE(it->getHighValue() >= std::max(it->getOpenValue(), it->getCloseValue()));
+      REQUIRE(it->getLowValue()  <= std::min(it->getOpenValue(), it->getCloseValue()));
+      REQUIRE(it->getOpenValue()  > DecimalConstants<DT>::DecimalZero);
+      REQUIRE(it->getHighValue()  > DecimalConstants<DT>::DecimalZero);
+      REQUIRE(it->getLowValue()   > DecimalConstants<DT>::DecimalZero);
+      REQUIRE(it->getCloseValue() > DecimalConstants<DT>::DecimalZero);
+    }
+  }
+}
+
+TEST_CASE("SyntheticCache N2: OHLC day-unit 4-tuple multiset is preserved (permutation property)", "[SyntheticCache][N2]")
+{
+  // N2 is a permutation of blocks; every original day-unit still appears in the
+  // output exactly once. The sorted multiset of (gap, H/O, L/O, C/O) 4-tuples
+  // must therefore be identical to the original — the same invariant that N0 satisfies.
+  using DT = DecimalType;
+
+  auto day_factors = [](const OHLCTimeSeries<DT>& ts) {
+    std::vector<std::tuple<DT,DT,DT,DT>> v;
+    bool first = true;
+    DT prevClose{};
+    for (auto it = ts.beginSortedAccess(); it != ts.endSortedAccess(); ++it)
+    {
+      if (first) { first = false; prevClose = it->getCloseValue(); continue; }
+      const DT O = it->getOpenValue();
+      v.emplace_back(O / prevClose,
+                     it->getHighValue()  / O,
+                     it->getLowValue()   / O,
+                     it->getCloseValue() / O);
+      prevClose = it->getCloseValue();
+    }
+    return v;
+  };
+
+  auto as_multiset = [](std::vector<std::tuple<DT,DT,DT,DT>> v) {
+    std::sort(v.begin(), v.end());
+    return v;
+  };
+
+  auto baseSeries  = makeDailySeries();
+  const auto orig_ms = as_multiset(day_factors(*baseSeries));
+
+  auto baseSec = std::make_shared<EquitySecurity<DT>>("N2PERM", "N2 Permutation Test", baseSeries);
+  CacheN2<DT> cache(baseSec);
+  RandomMersenne rng;
+  rng.seed_u64(0xE42u);
+
+  for (int iter = 0; iter < 10; ++iter)
+  {
+    auto& sec = cache.shuffleAndRebuild(rng);
+    auto  ts  = sec->getTimeSeries();
+    REQUIRE(ts);
+    REQUIRE(as_multiset(day_factors(*ts)) == orig_ms);
+  }
+}
+
+TEST_CASE("SyntheticCache N2: many consecutive shuffles maintain stability", "[SyntheticCache][N2][Stability]")
+{
+  using DT = DecimalType;
+  auto baseSeries = makeDailySeries();
+  auto baseSec    = std::make_shared<EquitySecurity<DT>>("N2STAB", "N2 Stability Test", baseSeries);
+
+  CacheN2<DT> cache(baseSec);
+  RandomMersenne rng;
+  rng.seed_u64(0x5AB1E2u);
+
+  for (size_t i = 0; i < 100; ++i)
+  {
+    auto& sec = cache.shuffleAndRebuild(rng);
+    auto  ts  = sec->getTimeSeries();
+    REQUIRE(ts);
+    REQUIRE(ts->getNumEntries() == baseSeries->getNumEntries());
+    REQUIRE(ts->getTimeFrame()  == TimeFrame::DAILY);
+
+    for (auto it = ts->beginSortedAccess(); it != ts->endSortedAccess(); ++it)
+    {
+      REQUIRE(it->getHighValue() >= std::max(it->getOpenValue(), it->getCloseValue()));
+      REQUIRE(it->getLowValue()  <= std::min(it->getOpenValue(), it->getCloseValue()));
+    }
+  }
+}
+
+TEST_CASE("SyntheticCache N2: resetFromBase reinitialises impl and block size correctly", "[SyntheticCache][N2][Reset]")
+{
+  // resetFromBase must recompute computeBlockSize against the new series and
+  // produce valid output — the block size from the old series is discarded.
+  using DT = DecimalType;
+
+  auto series1 = makeDailySeries();   // 8 bars
+  auto sec1    = std::make_shared<EquitySecurity<DT>>("N2RST1", "N2 Reset Base 1", series1);
+
+  CacheN2<DT> cache(sec1);
+  RandomMersenne rng;
+  rng.seed_u64(0xE5E72u);
+
+  auto& r1 = cache.shuffleAndRebuild(rng);
+  REQUIRE(r1->getTimeSeries()->getNumEntries() == 8u);
+
+  // Build a second, larger base series (14 bars) with different price levels.
+  auto series2 = std::make_shared<OHLCTimeSeries<DT>>(TimeFrame::DAILY, TradingVolume::SHARES);
+  const char* dates2[] = {
+    "20220103","20220104","20220105","20220106","20220107",
+    "20220110","20220111","20220112","20220113","20220114",
+    "20220118","20220119","20220120","20220121"
+  };
+  for (int i = 0; i < 14; ++i)
+  {
+    DT open = DT("150.00") + DT(i * 2);
+    series2->addEntry(*createEquityEntry(dates2[i],
+                                        num::toString(open),
+                                        num::toString(open + DT("2.00")),
+                                        num::toString(open - DT("1.00")),
+                                        num::toString(open + DT("0.80")),
+                                        2000000));
+  }
+  auto sec2 = std::make_shared<EquitySecurity<DT>>("N2RST2", "N2 Reset Base 2", series2);
+
+  cache.resetFromBase(sec2);
+
+  auto& r2 = cache.shuffleAndRebuild(rng);
+  auto  ts2 = r2->getTimeSeries();
+  REQUIRE(ts2);
+  REQUIRE(ts2->getNumEntries() == 14u);
+  REQUIRE(ts2->getTimeFrame()  == TimeFrame::DAILY);
+
+  for (auto it = ts2->beginSortedAccess(); it != ts2->endSortedAccess(); ++it)
+  {
+    REQUIRE(it->getHighValue() >= std::max(it->getOpenValue(), it->getCloseValue()));
+    REQUIRE(it->getLowValue()  <= std::min(it->getOpenValue(), it->getCloseValue()));
+  }
+}
+
+// ============================================================================
+// N2 BEHAVIORAL COMPARISONS
+// ============================================================================
+
+TEST_CASE("SyntheticCache N2: day-unit atomicity is preserved (gap travels with H/L/C, like N0)", "[SyntheticCache][N2][Comparison]")
+{
+  // N2, like N0, always permutes whole day-units (gap + H/L/C together).
+  // Over many shuffles, the source index derived from the gap must always match
+  // the source index derived from the H/O ratio — they come from the same original
+  // day. A mismatch count of zero is required (contrast with N1 where mismatches
+  // are expected because gap and H/L/C are shuffled independently).
+  using DT = DecimalType;
+
+  // Extract (gap, H/O) pairs from a series as raw vectors indexed from day 1.
+  auto extractGapAndHoRatio = [](const OHLCTimeSeries<DT>& ts) {
+    std::vector<std::pair<DT,DT>> v;
+    bool first = true;
+    DT prevClose{};
+    for (auto it = ts.beginSortedAccess(); it != ts.endSortedAccess(); ++it)
+    {
+      if (first) { first = false; prevClose = it->getCloseValue(); continue; }
+      const DT O = it->getOpenValue();
+      v.emplace_back(O / prevClose, it->getHighValue() / O);
+      prevClose = it->getCloseValue();
+    }
+    return v;
+  };
+
+  auto baseSeries = makeDailySeries();
+  auto baseSec    = std::make_shared<EquitySecurity<DT>>("N2ATOM", "N2 Atomicity Test", baseSeries);
+  const auto origPairs = extractGapAndHoRatio(*baseSeries);
+
+  CacheN2<DT> cache(baseSec);
+  RandomMersenne rng;
+  rng.seed_u64(0xA70D2u);
+
+  int mismatchCount = 0;
+  for (int trial = 0; trial < 200; ++trial)
+  {
+    auto& sec    = cache.shuffleAndRebuild(rng);
+    auto  ts     = sec->getTimeSeries();
+    auto  synPairs = extractGapAndHoRatio(*ts);
+
+    REQUIRE(synPairs.size() == origPairs.size());
+
+    for (const auto& [synGap, synHoRatio] : synPairs)
+    {
+      // Find which original day this gap came from.
+      auto itGap = std::find_if(origPairs.begin(), origPairs.end(),
+                                [&](const auto& p) { return p.first == synGap; });
+      // Find which original day this H/O ratio came from.
+      auto itHo = std::find_if(origPairs.begin(), origPairs.end(),
+                                [&](const auto& p) { return p.second == synHoRatio; });
+
+      if (itGap != origPairs.end() && itHo != origPairs.end())
+      {
+        if (std::distance(origPairs.begin(), itGap) !=
+            std::distance(origPairs.begin(), itHo))
+          ++mismatchCount;
+      }
+    }
+  }
+  // N2, like N0, never decouples gap from H/L/C — zero mismatches required.
+  REQUIRE(mismatchCount == 0);
+}
+
+TEST_CASE("SyntheticCache N2 vs N1: N2 preserves day-unit atomicity; N1 does not", "[SyntheticCache][N2][N1][Comparison]")
+{
+  // N2 keeps the overnight gap paired with its day's intraday shape (same as N0).
+  // N1 shuffles them independently, so mismatches are expected.
+  // This test confirms that the SyntheticCache N2 path is wired to the correct
+  // implementation — not accidentally using the N1 EodImpl.
+  using DT = DecimalType;
+  using CacheN1 = SyntheticCache<DT, LogNLookupPolicy<DT>, NoRounding, SyntheticNullModel::N1_MaxDestruction>;
+
+  auto baseSeries = makeDailySeries();
+  auto baseSecN2  = std::make_shared<EquitySecurity<DT>>("N2CMP", "N2 Compare",  baseSeries);
+  auto baseSecN1  = std::make_shared<EquitySecurity<DT>>("N1CMP", "N1 Compare",  baseSeries);
+
+  CacheN2<DT> cacheN2(baseSecN2);
+  CacheN1     cacheN1(baseSecN1);
+
+  auto extractGapAndHoRatio = [](const OHLCTimeSeries<DT>& ts) {
+    std::vector<std::pair<DT,DT>> v;
+    bool first = true; DT prevClose{};
+    for (auto it = ts.beginSortedAccess(); it != ts.endSortedAccess(); ++it)
+    {
+      if (first) { first = false; prevClose = it->getCloseValue(); continue; }
+      const DT O = it->getOpenValue();
+      v.emplace_back(O / prevClose, it->getHighValue() / O);
+      prevClose = it->getCloseValue();
+    }
+    return v;
+  };
+
+  const auto origPairs = extractGapAndHoRatio(*baseSeries);
+
+  // --- N2: must never decouple gap from H/O ---
+  {
+    RandomMersenne rng; rng.seed_u64(0xC0A2B1u);
+    int mismatchCount = 0;
+    for (int trial = 0; trial < 200; ++trial)
+    {
+      auto& sec    = cacheN2.shuffleAndRebuild(rng);
+      auto  synPairs = extractGapAndHoRatio(*sec->getTimeSeries());
+      for (const auto& [g, h] : synPairs)
+      {
+        auto itG = std::find_if(origPairs.begin(), origPairs.end(),
+                                [&](const auto& p){ return p.first == g; });
+        auto itH = std::find_if(origPairs.begin(), origPairs.end(),
+                                [&](const auto& p){ return p.second == h; });
+        if (itG != origPairs.end() && itH != origPairs.end())
+          if (std::distance(origPairs.begin(), itG) != std::distance(origPairs.begin(), itH))
+            ++mismatchCount;
+      }
+    }
+    REQUIRE(mismatchCount == 0);
+  }
+
+  // --- N1: must sometimes decouple gap from H/O ---
+  {
+    RandomMersenne rng; rng.seed_u64(0xC0A2B1u);
+    int mismatchCount = 0;
+    for (int trial = 0; trial < 200; ++trial)
+    {
+      auto& sec    = cacheN1.shuffleAndRebuild(rng);
+      auto  synPairs = extractGapAndHoRatio(*sec->getTimeSeries());
+      for (const auto& [g, h] : synPairs)
+      {
+        auto itG = std::find_if(origPairs.begin(), origPairs.end(),
+                                [&](const auto& p){ return p.first == g; });
+        auto itH = std::find_if(origPairs.begin(), origPairs.end(),
+                                [&](const auto& p){ return p.second == h; });
+        if (itG != origPairs.end() && itH != origPairs.end())
+          if (std::distance(origPairs.begin(), itG) != std::distance(origPairs.begin(), itH))
+            ++mismatchCount;
+      }
+    }
+    REQUIRE(mismatchCount > 0);   // N1 must exhibit decoupling
+  }
+}
+
+TEST_CASE("SyntheticCache N2 vs N0: N2 output differs from N0 output", "[SyntheticCache][N2][N0][Comparison]")
+{
+  // With the same RNG state, N2 (block-level granularity) and N0 (per-day
+  // granularity) apply structurally different algorithms and must produce
+  // different series. Over enough trials at least one pair will differ.
+  using DT = DecimalType;
+  using CacheN0 = SyntheticCache<DT, LogNLookupPolicy<DT>, NoRounding, SyntheticNullModel::N0_PairedDay>;
+
+  auto baseSeries = makeDailySeries();
+  auto baseSecN2  = std::make_shared<EquitySecurity<DT>>("N2VS", "N2 vs N0 N2", baseSeries);
+  auto baseSecN0  = std::make_shared<EquitySecurity<DT>>("N0VS", "N2 vs N0 N0", baseSeries);
+
+  CacheN2<DT> cacheN2(baseSecN2);
+  CacheN0     cacheN0(baseSecN0);
+
+  bool anyDiff = false;
+  for (int trial = 0; trial < 50 && !anyDiff; ++trial)
+  {
+    RandomMersenne rng;
+    rng.seed_u64(static_cast<uint64_t>(0xBA5E0000 + trial));
+
+    auto& secN2 = cacheN2.shuffleAndRebuild(rng);
+    rng.seed_u64(static_cast<uint64_t>(0xBA5E0000 + trial));  // reset to same seed
+    auto& secN0 = cacheN0.shuffleAndRebuild(rng);
+
+    auto tsN2 = secN2->getTimeSeries();
+    auto tsN0 = secN0->getTimeSeries();
+    REQUIRE(tsN2->getNumEntries() == tsN0->getNumEntries());
+
+    auto itN2 = tsN2->beginSortedAccess();
+    auto itN0 = tsN0->beginSortedAccess();
+    for (; itN2 != tsN2->endSortedAccess(); ++itN2, ++itN0)
+    {
+      if (itN2->getOpenValue()  != itN0->getOpenValue() ||
+          itN2->getCloseValue() != itN0->getCloseValue())
+      {
+        anyDiff = true;
+        break;
+      }
+    }
+  }
+  REQUIRE(anyDiff);
+}
