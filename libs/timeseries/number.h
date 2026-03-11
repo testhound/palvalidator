@@ -249,7 +249,7 @@ namespace num
   inline Decimal RoundDownToTick(Decimal price, Decimal tick)
   {
     static const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
-    Decimal rem = price % tick;              // rem has sign of price for decimal/int types :contentReference[oaicite:1]{index=1}
+    Decimal rem = price % tick;
 
     // Normalize remainder into [0, tick)
     if (rem < zero)
