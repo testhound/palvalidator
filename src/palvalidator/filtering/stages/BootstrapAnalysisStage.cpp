@@ -788,7 +788,7 @@ namespace palvalidator::filtering::stages
     std::vector<Decimal> logBars =
       Stat::makeLogGrowthSeries(ctx.highResReturns, ruin_eps);
 
-    Sampler geoSampler(/*winsor_small_n=*/false);
+    Sampler geoSampler(true, false);
     StrategyAutoBootstrap<Decimal, Sampler, Resampler> autoGeo(
     		       mBootstrapFactory,
     		       *ctx.clonedStrategy,
@@ -933,7 +933,7 @@ namespace palvalidator::filtering::stages
 
 
     // Disable winsorization for geometric mean statistics
-    Sampler geoSampler(false);
+    Sampler geoSampler(true, false);
     
     StrategyAutoBootstrap<Decimal, Sampler, Resampler, TradeType> autoGeo(
 				       mBootstrapFactory,
