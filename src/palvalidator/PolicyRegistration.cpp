@@ -1,8 +1,9 @@
 #include "PolicyRegistration.h"
 
-namespace statistics {
-
-void initializePolicyRegistry() {
+namespace statistics
+{
+  void initializePolicyRegistry()
+  {
     // Register all available computation policies with comprehensive metadata
     
     // Basic Policies
@@ -236,8 +237,31 @@ void initializePolicyRegistry() {
         "1.0.0",
         "MKC Associates",
         {"bootstrap", "sharpe-ratio", "risk-adjusted", "confidence", "recommended"},
-        {"Sufficient sample size", "Bootstrap libraries"}
-    );
-}
+        {"Sufficient sample size", "Bootstrap libraries"});
+
+    registerPolicyWithMetadata<mkc_timeseries::GeoMeanPolicy>(
+							      "GeoMeanPolicy",
+							      "Geometric Mean Return",
+							      "Permutation test statistic based on the geometric mean of bar-by-bar returns",
+							      "recommended",
+							      false,
+							      "1.0.0",
+							      "MKC Associates",
+							      {"geometric-mean", "returns", "compounding"},
+							      {"Minimum 9 trades", "Minimum 10 bars"}
+							      );
+
+registerPolicyWithMetadata<mkc_timeseries::MeanLogReturnPolicy>(
+								"MeanLogReturnPolicy",
+								"Mean Log Return",
+								"Permutation test statistic based on mean log return; log-space equivalent of GeoMeanPolicy with identical p-values",
+								"recommended",
+								false,
+								"1.0.0",
+								"MKC Associates",
+								{"mean-log-return", "log-space", "compounding"},
+								{"Minimum 9 trades", "Minimum 10 bars"}
+								);
+  }
 
 } // namespace statistics

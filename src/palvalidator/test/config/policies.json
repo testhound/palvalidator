@@ -1,14 +1,16 @@
 {
   "computation_policies": {
     "enabled": [
-      "RobustProfitFactorPolicy",
-      "AllHighResLogPFPolicy",
-      "GatedPerformanceScaledPalPolicy",
-      "BootStrappedProfitFactorPolicy",
-      "BootStrappedLogProfitFactorPolicy",
-      "BootStrappedProfitabilityPFPolicy",
-      "BootStrappedLogProfitabilityPFPolicy",
-      "BootStrappedSharpeRatioPolicy"
+	"RobustProfitFactorPolicy",
+	"AllHighResLogPFPolicy",
+	"GatedPerformanceScaledPalPolicy",
+	"BootStrappedProfitFactorPolicy",
+	"BootStrappedLogProfitFactorPolicy",
+	"BootStrappedProfitabilityPFPolicy",
+	"BootStrappedLogProfitabilityPFPolicy",
+	"BootStrappedSharpeRatioPolicy",
+	"GeoMeanPolicy",
+	"MeanLogReturnPolicy"
     ],
     "default": "BootStrappedLogProfitFactorPolicy",
     "groups": {

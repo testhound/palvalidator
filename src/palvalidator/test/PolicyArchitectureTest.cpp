@@ -30,7 +30,7 @@ TEST_CASE("Policy Registry Basic Functionality", "[PolicyArchitecture][Registry]
     auto availablePolicies = PolicyRegistry::getAvailablePolicies();
     
     // Should have all 19 policies registered
-    REQUIRE(availablePolicies.size() == 19);
+    REQUIRE(availablePolicies.size() == 21);
     
     // Check that specific policies are available
     REQUIRE(PolicyRegistry::isPolicyAvailable("GatedPerformanceScaledPalPolicy"));
@@ -41,6 +41,8 @@ TEST_CASE("Policy Registry Basic Functionality", "[PolicyArchitecture][Registry]
     REQUIRE(PolicyRegistry::isPolicyAvailable("BootStrappedProfitabilityPFPolicy"));
     REQUIRE(PolicyRegistry::isPolicyAvailable("BootStrappedLogProfitabilityPFPolicy"));
     REQUIRE(PolicyRegistry::isPolicyAvailable("BootStrappedSharpeRatioPolicy"));
+    REQUIRE(PolicyRegistry::isPolicyAvailable("GeoMeanPolicy"));
+    REQUIRE(PolicyRegistry::isPolicyAvailable("MeanLogReturnPolicy"));    
     
     // Check that non-existent policy is not available
     REQUIRE_FALSE(PolicyRegistry::isPolicyAvailable("NonExistentPolicy"));
