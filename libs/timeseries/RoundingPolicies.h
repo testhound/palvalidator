@@ -19,15 +19,36 @@ namespace mkc_timeseries
     {
       return price;
     }
+
+    static Decimal roundHigh(const Decimal& price, const Decimal&, const Decimal&)
+    {
+      return price;
+    }
+
+    static Decimal roundLow (const Decimal& price, const Decimal&, const Decimal&)
+    {
+      return price;
+    }
   };
 
   template <class Decimal>
-  struct TickRounding {
+  struct TickRounding
+  {
     static Decimal round(const Decimal& price,
 			 const Decimal& tick,
 			 const Decimal& tickDiv2)
     {
       return num::Round2Tick(price, tick, tickDiv2);
+    }
+
+    static Decimal roundHigh(const Decimal& price, const Decimal& tick, const Decimal&)
+    {
+      return num::RoundUpToTick(price, tick);
+    }
+
+    static Decimal roundLow(const Decimal& price, const Decimal& tick, const Decimal&)
+    {
+      return num::RoundDownToTick(price, tick);
     }
   };
 
