@@ -126,3 +126,160 @@ TEST_CASE("Round2Tick aligns prices to each factory security's tick", "[number][
         }
     }
 }
+
+TEST_CASE("RoundDownToTick floors price to the nearest lower tick multiple", "[number]") {
+    DefaultNumber tick = createDecimal("0.05");
+
+    SECTION("price already on a tick boundary is unchanged") {
+        DefaultNumber price = createDecimal("10.10");
+        REQUIRE(num::RoundDownToTick(price, tick) == createDecimal("10.10"));
+    }
+
+    SECTION("price just above a tick boundary rounds down") {
+        DefaultNumber price = createDecimal("10.01");
+        // 10.01 % 0.05 = 0.01 => floor to 10.00
+        REQUIRE(num::RoundDownToTick(price, tick) == createDecimal("10.00"));
+    }
+
+    SECTION("price just below the next tick boundary rounds down, not up") {
+        DefaultNumber price = createDecimal("10.04");
+        // 0.04 < 0.05 => floor to 10.00, even though it is close to 10.05
+        REQUIRE(num::RoundDownToTick(price, tick) == createDecimal("10.00"));
+    }
+
+    SECTION("price at exact half-tick rounds down, not up") {
+        DefaultNumber price = createDecimal("10.025");
+        // 0.025 is exactly half of 0.05 => floor to 10.00
+        REQUIRE(num::RoundDownToTick(price, tick) == createDecimal("10.00"));
+    }
+
+    SECTION("remainder is always stripped regardless of how large the price is") {
+        DefaultNumber price = createDecimal("1234.57");
+        // 1234.57 % 0.05 = 0.02 => floor to 1234.55
+        REQUIRE(num::RoundDownToTick(price, tick) == createDecimal("1234.55"));
+    }
+
+    SECTION("negative price floors away from zero (true floor semantics)") {
+        DefaultNumber price = createDecimal("-10.03");
+        // true floor: next lower multiple of 0.05 below -10.03 is -10.05
+        REQUIRE(num::RoundDownToTick(price, tick) == createDecimal("-10.05"));
+    }
+
+    SECTION("negative price already on a tick boundary is unchanged") {
+        DefaultNumber price = createDecimal("-10.05");
+        REQUIRE(num::RoundDownToTick(price, tick) == createDecimal("-10.05"));
+    }
+
+    SECTION("works with a larger tick size") {
+        DefaultNumber largeTick = createDecimal("0.25");
+        DefaultNumber price     = createDecimal("10.37");
+        // 10.37 % 0.25 = 0.12 => floor to 10.25
+        REQUIRE(num::RoundDownToTick(price, largeTick) == createDecimal("10.25"));
+    }
+
+    SECTION("works with tick size of 1") {
+        DefaultNumber wholeTick = createDecimal("1.00");
+        DefaultNumber price     = createDecimal("7.99");
+        REQUIRE(num::RoundDownToTick(price, wholeTick) == createDecimal("7.00"));
+    }
+}
+
+TEST_CASE("RoundUpToTick ceils price to the nearest higher tick multiple", "[number]") {
+    DefaultNumber tick = createDecimal("0.05");
+
+    SECTION("price already on a tick boundary is unchanged") {
+        DefaultNumber price = createDecimal("10.10");
+        REQUIRE(num::RoundUpToTick(price, tick) == createDecimal("10.10"));
+    }
+
+    SECTION("price just above a tick boundary rounds up") {
+        DefaultNumber price = createDecimal("10.01");
+        // next multiple of 0.05 above 10.01 is 10.05
+        REQUIRE(num::RoundUpToTick(price, tick) == createDecimal("10.05"));
+    }
+
+    SECTION("price just below the next tick boundary rounds up") {
+        DefaultNumber price = createDecimal("10.04");
+        // next multiple of 0.05 above 10.04 is 10.05
+        REQUIRE(num::RoundUpToTick(price, tick) == createDecimal("10.05"));
+    }
+
+    SECTION("price at exact half-tick rounds up to the next boundary") {
+        DefaultNumber price = createDecimal("10.025");
+        // 10.025 is not on a tick boundary => ceil to 10.05
+        REQUIRE(num::RoundUpToTick(price, tick) == createDecimal("10.05"));
+    }
+
+    SECTION("remainder is always rounded up regardless of how large the price is") {
+        DefaultNumber price = createDecimal("1234.57");
+        // 1234.57 % 0.05 = 0.02 => ceil to 1234.60
+        REQUIRE(num::RoundUpToTick(price, tick) == createDecimal("1234.60"));
+    }
+
+    SECTION("negative price rounds up toward zero (true ceil semantics)") {
+        DefaultNumber price = createDecimal("-10.03");
+        // true ceil: next higher multiple of 0.05 above -10.03 is -10.00
+        REQUIRE(num::RoundUpToTick(price, tick) == createDecimal("-10.00"));
+    }
+
+    SECTION("negative price already on a tick boundary is unchanged") {
+        DefaultNumber price = createDecimal("-10.05");
+        REQUIRE(num::RoundUpToTick(price, tick) == createDecimal("-10.05"));
+    }
+
+    SECTION("works with a larger tick size") {
+        DefaultNumber largeTick = createDecimal("0.25");
+        DefaultNumber price     = createDecimal("10.13");
+        // next multiple of 0.25 above 10.13 is 10.25
+        REQUIRE(num::RoundUpToTick(price, largeTick) == createDecimal("10.25"));
+    }
+
+    SECTION("works with tick size of 1") {
+        DefaultNumber wholeTick = createDecimal("1.00");
+        DefaultNumber price     = createDecimal("7.01");
+        REQUIRE(num::RoundUpToTick(price, wholeTick) == createDecimal("8.00"));
+    }
+}
+
+TEST_CASE("RoundDownToTick and RoundUpToTick are consistent with each other", "[number]") {
+    DefaultNumber tick = createDecimal("0.05");
+
+    SECTION("for a price on a boundary both functions agree") {
+        DefaultNumber price = createDecimal("10.15");
+        REQUIRE(num::RoundDownToTick(price, tick) == num::RoundUpToTick(price, tick));
+    }
+
+    SECTION("for an off-boundary price, RoundDown < price < RoundUp") {
+        DefaultNumber price = createDecimal("10.03");
+        DefaultNumber down  = num::RoundDownToTick(price, tick);
+        DefaultNumber up    = num::RoundUpToTick(price, tick);
+
+        REQUIRE(down < price);
+        REQUIRE(price < up);
+
+        // The gap between down and up must equal exactly one tick
+        REQUIRE((up - down) == tick);
+    }
+
+    SECTION("RoundDown result is always a clean multiple of tick") {
+        std::vector<DefaultNumber> prices = {
+            createDecimal("10.01"), createDecimal("10.03"),
+            createDecimal("10.07"), createDecimal("99.99"),
+        };
+        for (auto& p : prices) {
+            DefaultNumber down = num::RoundDownToTick(p, tick);
+            REQUIRE(down % tick == createDecimal("0.00"));
+        }
+    }
+
+    SECTION("RoundUp result is always a clean multiple of tick") {
+        std::vector<DefaultNumber> prices = {
+            createDecimal("10.01"), createDecimal("10.03"),
+            createDecimal("10.07"), createDecimal("99.99"),
+        };
+        for (auto& p : prices) {
+            DefaultNumber up = num::RoundUpToTick(p, tick);
+            REQUIRE(up % tick == createDecimal("0.00"));
+        }
+    }
+}
