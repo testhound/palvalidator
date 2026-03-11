@@ -792,17 +792,24 @@ namespace mkc_timeseries
         const Decimal preciseCloseOfDay = preciseOpenOfDay * relClose[i];
 
         Decimal open  = RoundingPolicy<Decimal>::round(preciseOpenOfDay,
-                          mMinimumTick, mMinimumTickDiv2);
-        Decimal high  = RoundingPolicy<Decimal>::round(preciseOpenOfDay * relHigh[i],
-                          mMinimumTick, mMinimumTickDiv2);
-        Decimal low   = RoundingPolicy<Decimal>::round(preciseOpenOfDay * relLow[i],
-                          mMinimumTick, mMinimumTickDiv2);
+						       mMinimumTick, mMinimumTickDiv2);
+        Decimal high  = RoundingPolicy<Decimal>::roundHigh(preciseOpenOfDay * relHigh[i],
+							   mMinimumTick, mMinimumTickDiv2);
+        Decimal low   = RoundingPolicy<Decimal>::roundLow(preciseOpenOfDay * relLow[i],
+							  mMinimumTick, mMinimumTickDiv2);
         Decimal close = RoundingPolicy<Decimal>::round(preciseCloseOfDay,
-                          mMinimumTick, mMinimumTickDiv2);
+						       mMinimumTick, mMinimumTickDiv2);
 
         high = std::max({high, open, close});
         low  = std::min({low,  open, close});
 
+	if (!(high >= low))
+	  {
+	    const Decimal anchor = std::max(open, close);
+	    high = anchor;
+	    low  = anchor;
+	  }
+	
         preciseChainPrice = preciseCloseOfDay;
 
 #ifdef SYNTHETIC_VOLUME

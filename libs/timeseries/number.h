@@ -168,11 +168,11 @@ namespace num
   {
     static const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
     Decimal rem;
-    if constexpr (std::is_floating_point_v<Decimal>) {
+
+    if constexpr (std::is_floating_point_v<Decimal>)
       rem = std::fmod(price, tick);
-    } else {
+    else
       rem = price % tick;
-    }
 
     // The core rounding logic:
     // 1. (price - rem): This effectively rounds 'price' down to the nearest multiple of 'tick'.
@@ -245,6 +245,25 @@ namespace num
     return Round2Tick<DefaultNumber>(price, tick, tickDiv2);
   }
 
+  template<typename Decimal>
+  inline Decimal RoundDownToTick(Decimal price, Decimal tick)
+  {
+    static const Decimal zero = DecimalConstants<Decimal>::DecimalZero;
+    Decimal rem = price % tick;
+
+    // Normalize remainder into [0, tick)
+    if (rem < zero)
+      rem += tick;
+
+    return price - rem;                      // true floor to multiple-of-tick
+  }
+
+  template<typename Decimal>
+  inline Decimal RoundUpToTick(Decimal price, Decimal tick)
+  {
+    const Decimal down = RoundDownToTick(price, tick);
+    return (down == price) ? price : (down + tick);
+  }
 } // namespace num
 
 #endif // NUMBER_H
