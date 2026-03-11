@@ -106,7 +106,9 @@ PolicyConfiguration PolicyConfiguration::createDefault() {
         "BootStrappedLogProfitFactorPolicy",
         "BootStrappedProfitabilityPFPolicy",
         "BootStrappedLogProfitabilityPFPolicy",
-        "BootStrappedSharpeRatioPolicy"
+        "BootStrappedSharpeRatioPolicy",
+	"GeoMeanPolicy",
+	"MeanLogReturnPolicy"
     };
     
     config.defaultPolicy_ = "BootStrappedLogProfitFactorPolicy";
@@ -114,7 +116,7 @@ PolicyConfiguration PolicyConfiguration::createDefault() {
     // Set policy settings to show experimental policies by default
     config.policySettings_.filterExperimental = false;
     config.policySettings_.showDescriptions = true;
-    config.policySettings_.interactiveMode = false;
+    config.policySettings_.interactiveMode = true;
     
     // Create default groups
     config.policyGroups_["recommended"] = PolicyGroup(

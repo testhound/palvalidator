@@ -717,6 +717,53 @@ namespace statistics
     return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::BootStrappedSharpeRatioPolicy>>(permutations, sameDayExits);
   }
 
+  // GeoMeanPolicy
+  template<>
+  std::unique_ptr<ValidationInterface>
+  PolicyFactory::createMastersValidationWrapper<mkc_timeseries::GeoMeanPolicy>(unsigned long permutations)
+  { return std::make_unique<MastersValidationWrapper<mkc_timeseries::GeoMeanPolicy>>(permutations); }
+
+  template<>
+  std::unique_ptr<ValidationInterface>
+  PolicyFactory::createRomanoWolfValidationWrapper<mkc_timeseries::GeoMeanPolicy>(unsigned long permutations)
+  { return std::make_unique<RomanoWolfValidationWrapper<mkc_timeseries::GeoMeanPolicy>>(permutations); }
+
+  template<>
+  std::unique_ptr<ValidationInterface>
+  PolicyFactory::createBenjaminiHochbergValidationWrapper<mkc_timeseries::GeoMeanPolicy>(unsigned long permutations,
+											 double falseDiscoveryRate)
+  { return std::make_unique<BenjaminiHochbergValidationWrapper<mkc_timeseries::GeoMeanPolicy>>(permutations, Num(falseDiscoveryRate)); }
+
+  template<>
+  std::unique_ptr<ValidationInterface>
+  PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::GeoMeanPolicy>(unsigned long permutations, bool sameDayExits)
+  { return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::GeoMeanPolicy>>(permutations, sameDayExits); }
+
+  // MeanLogReturnPolicy
+  template<>
+  std::unique_ptr<ValidationInterface>
+  PolicyFactory::createMastersValidationWrapper<mkc_timeseries::MeanLogReturnPolicy>(unsigned long permutations)
+  { return std::make_unique<MastersValidationWrapper<mkc_timeseries::MeanLogReturnPolicy>>(permutations); }
+  
+  template<>
+  std::unique_ptr<ValidationInterface>
+  PolicyFactory::createRomanoWolfValidationWrapper<mkc_timeseries::MeanLogReturnPolicy>(unsigned long permutations)
+  { return std::make_unique<RomanoWolfValidationWrapper<mkc_timeseries::MeanLogReturnPolicy>>(permutations); }
+
+  template<>
+  std::unique_ptr<ValidationInterface>
+  PolicyFactory::createBenjaminiHochbergValidationWrapper<mkc_timeseries::MeanLogReturnPolicy>(
+											       unsigned long permutations, double falseDiscoveryRate)
+  { return std::make_unique<BenjaminiHochbergValidationWrapper<mkc_timeseries::MeanLogReturnPolicy>>(permutations, Num(falseDiscoveryRate)); }
+
+  template<>
+  std::unique_ptr<ValidationInterface>
+  PolicyFactory::createUnadjustedValidationWrapper<mkc_timeseries::MeanLogReturnPolicy>(unsigned long permutations, bool sameDayExits)
+  {
+    return std::make_unique<UnadjustedValidationWrapper<mkc_timeseries::MeanLogReturnPolicy>>(permutations,
+											      sameDayExits);
+  }
+
   // Public factory methods
   std::unique_ptr<ValidationInterface> PolicyFactory::createMastersValidation(
 									      const std::string& policyName,
