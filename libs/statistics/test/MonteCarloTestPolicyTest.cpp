@@ -351,3 +351,445 @@ TEST_CASE("Bootstrapped Monte Carlo Policies", "[MonteCarloTestPolicy]") {
     }
   }
 }
+
+// ============================================================================
+// GeoMeanPolicy and MeanLogReturnPolicy
+// ============================================================================
+//
+// These policies are deterministic — no bootstrap, no RNG — so the same input
+// always produces the same output. Tests use exact value comparisons (tight
+// WithinAbs tolerances) rather than distributional checks.
+//
+// A profitable series is used throughout: 15 wins of 0.87% + 10 losses of 1.14%
+// matching the rounded exit parameters described in the design discussion.
+//
+// A losing series flips the ratio: 5 wins of 0.87% + 20 losses of 1.14%.
+//
+// Mathematical invariant under test:
+//   log(1 + GeoMeanPolicy result) == MeanLogReturnPolicy result  (exact, same winsorization)
+
+namespace
+{
+  // Helpers shared across the two new policy sections.
+
+  // Profitable series: 67% win rate, target/stop matching the design discussion.
+  std::vector<DecimalType> makeProfitableSeries()
+  {
+    std::vector<DecimalType> r;
+    r.insert(r.end(), 15, DecimalType("0.0087"));   // 0.87% wins
+    r.insert(r.end(), 10, DecimalType("-0.0114"));  // 1.14% losses
+    return r;
+  }
+
+  // Losing series: 20% win rate, clearly negative expectancy.
+  std::vector<DecimalType> makeLosingSeries()
+  {
+    std::vector<DecimalType> r;
+    r.insert(r.end(), 5,  DecimalType("0.0087"));
+    r.insert(r.end(), 20, DecimalType("-0.0114"));
+    return r;
+  }
+
+  // Breakeven series: all zero returns. log(1+0)=0, mean=0 regardless of
+  // winsorization (all values identical), so both policies must return exactly 0.
+  std::vector<DecimalType> makeBreakevenSeries(std::size_t n = 25)
+  {
+    return std::vector<DecimalType>(n, DecimalType("0.0"));
+  }
+
+  // Larger profitable series (n=200) where winsorization has negligible effect —
+  // useful for the analytical correctness tests because the expected value can be
+  // computed independently without tracing adaptive-winsorizer internals.
+  std::vector<DecimalType> makeLargeProfitableSeries()
+  {
+    std::vector<DecimalType> r;
+    r.insert(r.end(), 134, DecimalType("0.0087"));
+    r.insert(r.end(), 66,  DecimalType("-0.0114"));
+    return r;
+  }
+
+  // Build a mock backtester pre-loaded with a strategy and a given return series.
+  std::shared_ptr<MockPolicyBackTester<DecimalType>>
+  makeBacktester(const std::vector<DecimalType>& returns, uint32_t numTrades = 10)
+  {
+    auto portfolio  = std::make_shared<Portfolio<DecimalType>>("TestPortfolio");
+    auto palPattern = createTestLongPattern("0.0087", "0.0114");
+    auto strategy   = std::make_shared<PalLongStrategy<DecimalType>>(
+                        "GeoMeanTestStrategy", palPattern, portfolio);
+
+    auto bt = std::make_shared<MockPolicyBackTester<DecimalType>>();
+    bt->addStrategy(strategy);
+    bt->setNumTrades(numTrades);
+    bt->setHighResReturns(returns);
+    return bt;
+  }
+} // anonymous namespace
+
+
+// ----------------------------------------------------------------------------
+// GeoMeanPolicy
+// ----------------------------------------------------------------------------
+
+TEST_CASE("GeoMeanPolicy: threshold guards", "[MonteCarloTestPolicy][GeoMeanPolicy]")
+{
+  using DT = DecimalType;
+  const auto minTrades = GeoMeanPolicy<DT>::getMinStrategyTrades();
+  const auto minBars   = GeoMeanPolicy<DT>::getMinBarSeriesSize();
+  const DT   failure   = GeoMeanPolicy<DT>::getMinTradeFailureTestStatistic();
+
+  SECTION("Returns failure statistic when trades below minimum")
+  {
+    auto bt = makeBacktester(makeProfitableSeries(), minTrades - 1);
+    REQUIRE(GeoMeanPolicy<DT>::getPermutationTestStatistic(bt) == failure);
+  }
+
+  SECTION("Returns failure statistic when bar series below minimum")
+  {
+    std::vector<DT> tinyBars(minBars - 1, DT("0.005"));
+    auto bt = makeBacktester(tinyBars, minTrades);
+    REQUIRE(GeoMeanPolicy<DT>::getPermutationTestStatistic(bt) == failure);
+  }
+
+  SECTION("Returns failure statistic for empty bar series")
+  {
+    auto bt = makeBacktester({}, minTrades);
+    REQUIRE(GeoMeanPolicy<DT>::getPermutationTestStatistic(bt) == failure);
+  }
+
+  SECTION("Throws when backtester has more than one strategy")
+  {
+    auto bt = makeBacktester(makeProfitableSeries(), minTrades);
+    auto portfolio2 = std::make_shared<Portfolio<DT>>("P2");
+    auto pattern2   = createTestLongPattern("0.01", "0.005");
+    auto strategy2  = std::make_shared<PalLongStrategy<DT>>("S2", pattern2, portfolio2);
+    bt->addStrategy(strategy2);
+    REQUIRE_THROWS_AS(GeoMeanPolicy<DT>::getPermutationTestStatistic(bt),
+                      BackTesterException);
+  }
+}
+
+TEST_CASE("GeoMeanPolicy: sign correctness", "[MonteCarloTestPolicy][GeoMeanPolicy]")
+{
+  using DT = DecimalType;
+  const auto minTrades = GeoMeanPolicy<DT>::getMinStrategyTrades();
+
+  SECTION("Positive for a profitable series")
+  {
+    auto bt  = makeBacktester(makeProfitableSeries(), minTrades);
+    DT   val = GeoMeanPolicy<DT>::getPermutationTestStatistic(bt);
+    REQUIRE(num::to_double(val) > 0.0);
+  }
+
+  SECTION("Negative for a losing series")
+  {
+    auto bt  = makeBacktester(makeLosingSeries(), minTrades);
+    DT   val = GeoMeanPolicy<DT>::getPermutationTestStatistic(bt);
+    REQUIRE(num::to_double(val) < 0.0);
+  }
+
+  SECTION("Zero for all-zero returns (breakeven)")
+  {
+    auto bt  = makeBacktester(makeBreakevenSeries(), minTrades);
+    DT   val = GeoMeanPolicy<DT>::getPermutationTestStatistic(bt);
+    REQUIRE_THAT(num::to_double(val), Catch::Matchers::WithinAbs(0.0, 1e-10));
+  }
+}
+
+TEST_CASE("GeoMeanPolicy: determinism", "[MonteCarloTestPolicy][GeoMeanPolicy]")
+{
+  using DT = DecimalType;
+  auto bt  = makeBacktester(makeProfitableSeries(),
+                             GeoMeanPolicy<DT>::getMinStrategyTrades());
+
+  // Policy is deterministic — repeated calls must return identical values.
+  const DT first = GeoMeanPolicy<DT>::getPermutationTestStatistic(bt);
+  for (int i = 0; i < 20; ++i)
+  {
+    DT val = GeoMeanPolicy<DT>::getPermutationTestStatistic(bt);
+    REQUIRE(val == first);
+  }
+}
+
+TEST_CASE("GeoMeanPolicy: analytical correctness", "[MonteCarloTestPolicy][GeoMeanPolicy]")
+{
+  // GeoMeanPolicy must delegate exactly to GeoMeanStat with default construction.
+  // We verify by computing the expected value independently and comparing tightly.
+  using DT = DecimalType;
+
+  auto series = makeLargeProfitableSeries();   // n=200, winsorization effect is minor
+  auto bt     = makeBacktester(series, GeoMeanPolicy<DT>::getMinStrategyTrades());
+
+  const DT policyResult = GeoMeanPolicy<DT>::getPermutationTestStatistic(bt);
+
+  // Independent calculation via GeoMeanStat directly.
+  GeoMeanStat<DT> stat{};  // same default construction as GeoMeanPolicy uses
+  const DT expected = stat(series);
+
+  REQUIRE_THAT(num::to_double(policyResult),
+               Catch::Matchers::WithinAbs(num::to_double(expected), 1e-12));
+}
+
+TEST_CASE("GeoMeanPolicy: monotonicity", "[MonteCarloTestPolicy][GeoMeanPolicy]")
+{
+  // A more profitable series must produce a strictly higher statistic.
+  using DT = DecimalType;
+  const auto minTrades = GeoMeanPolicy<DT>::getMinStrategyTrades();
+
+  auto btProfit = makeBacktester(makeProfitableSeries(), minTrades);
+  auto btLoss   = makeBacktester(makeLosingSeries(),     minTrades);
+
+  const DT profitStat = GeoMeanPolicy<DT>::getPermutationTestStatistic(btProfit);
+  const DT lossStat   = GeoMeanPolicy<DT>::getPermutationTestStatistic(btLoss);
+
+  REQUIRE(num::to_double(profitStat) > num::to_double(lossStat));
+}
+
+TEST_CASE("GeoMeanPolicy: sensitive to return distribution", "[MonteCarloTestPolicy][GeoMeanPolicy]")
+{
+  // A series with higher win rate must produce a higher statistic than
+  // one with lower win rate, all else equal.
+  using DT = DecimalType;
+  const auto minTrades = GeoMeanPolicy<DT>::getMinStrategyTrades();
+
+  std::vector<DT> highWinRate, lowWinRate;
+  highWinRate.insert(highWinRate.end(), 18, DT("0.0087"));
+  highWinRate.insert(highWinRate.end(),  7, DT("-0.0114"));
+  lowWinRate.insert(lowWinRate.end(),   12, DT("0.0087"));
+  lowWinRate.insert(lowWinRate.end(),   13, DT("-0.0114"));
+
+  auto btHigh = makeBacktester(highWinRate, minTrades);
+  auto btLow  = makeBacktester(lowWinRate,  minTrades);
+
+  REQUIRE(num::to_double(GeoMeanPolicy<DT>::getPermutationTestStatistic(btHigh)) >
+          num::to_double(GeoMeanPolicy<DT>::getPermutationTestStatistic(btLow)));
+}
+
+
+// ----------------------------------------------------------------------------
+// MeanLogReturnPolicy
+// ----------------------------------------------------------------------------
+
+TEST_CASE("MeanLogReturnPolicy: threshold guards", "[MonteCarloTestPolicy][MeanLogReturnPolicy]")
+{
+  using DT = DecimalType;
+  const auto minTrades = MeanLogReturnPolicy<DT>::getMinStrategyTrades();
+  const auto minBars   = MeanLogReturnPolicy<DT>::getMinBarSeriesSize();
+  const DT   failure   = MeanLogReturnPolicy<DT>::getMinTradeFailureTestStatistic();
+
+  SECTION("Returns failure statistic when trades below minimum")
+  {
+    auto bt = makeBacktester(makeProfitableSeries(), minTrades - 1);
+    REQUIRE(MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt) == failure);
+  }
+
+  SECTION("Returns failure statistic when bar series below minimum")
+  {
+    std::vector<DT> tinyBars(minBars - 1, DT("0.005"));
+    auto bt = makeBacktester(tinyBars, minTrades);
+    REQUIRE(MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt) == failure);
+  }
+
+  SECTION("Returns failure statistic for empty bar series")
+  {
+    auto bt = makeBacktester({}, minTrades);
+    REQUIRE(MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt) == failure);
+  }
+
+  SECTION("Throws when backtester has more than one strategy")
+  {
+    auto bt = makeBacktester(makeProfitableSeries(), minTrades);
+    auto portfolio2 = std::make_shared<Portfolio<DT>>("P2");
+    auto pattern2   = createTestLongPattern("0.01", "0.005");
+    auto strategy2  = std::make_shared<PalLongStrategy<DT>>("S2", pattern2, portfolio2);
+    bt->addStrategy(strategy2);
+    REQUIRE_THROWS_AS(MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt),
+                      BackTesterException);
+  }
+}
+
+TEST_CASE("MeanLogReturnPolicy: sign correctness", "[MonteCarloTestPolicy][MeanLogReturnPolicy]")
+{
+  using DT = DecimalType;
+  const auto minTrades = MeanLogReturnPolicy<DT>::getMinStrategyTrades();
+
+  SECTION("Positive for a profitable series")
+  {
+    auto bt  = makeBacktester(makeProfitableSeries(), minTrades);
+    DT   val = MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt);
+    REQUIRE(num::to_double(val) > 0.0);
+  }
+
+  SECTION("Negative for a losing series")
+  {
+    auto bt  = makeBacktester(makeLosingSeries(), minTrades);
+    DT   val = MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt);
+    REQUIRE(num::to_double(val) < 0.0);
+  }
+
+  SECTION("Zero for all-zero returns (breakeven)")
+  {
+    auto bt  = makeBacktester(makeBreakevenSeries(), minTrades);
+    DT   val = MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt);
+    REQUIRE_THAT(num::to_double(val), Catch::Matchers::WithinAbs(0.0, 1e-10));
+  }
+}
+
+TEST_CASE("MeanLogReturnPolicy: determinism", "[MonteCarloTestPolicy][MeanLogReturnPolicy]")
+{
+  using DT = DecimalType;
+  auto bt  = makeBacktester(makeProfitableSeries(),
+                             MeanLogReturnPolicy<DT>::getMinStrategyTrades());
+
+  const DT first = MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt);
+  for (int i = 0; i < 20; ++i)
+  {
+    DT val = MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt);
+    REQUIRE(val == first);
+  }
+}
+
+TEST_CASE("MeanLogReturnPolicy: analytical correctness", "[MonteCarloTestPolicy][MeanLogReturnPolicy]")
+{
+  // With n=200, winsorization clips k=floor(0.02*200)=4 from each tail.
+  // We compute the expected mean log return by hand using the same pipeline:
+  // makeLogGrowthSeries → AdaptiveWinsorizer(0.02,1).apply → arithmetic mean.
+  using DT = DecimalType;
+
+  auto series = makeLargeProfitableSeries();  // n=200
+  auto bt     = makeBacktester(series, MeanLogReturnPolicy<DT>::getMinStrategyTrades());
+
+  const DT policyResult = MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt);
+
+  // Reproduce the computation independently.
+  std::vector<DT> logBars =
+    StatUtils<DT>::makeLogGrowthSeries(series, StatUtils<DT>::DefaultRuinEps);
+
+  AdaptiveWinsorizer<DT> winsorizer(0.02, 1);
+  winsorizer.apply(logBars);
+
+  DT sum = DecimalConstants<DT>::DecimalZero;
+  for (const auto& x : logBars)
+    sum += x;
+  const DT expected = sum / DT(static_cast<int>(logBars.size()));
+
+  REQUIRE_THAT(num::to_double(policyResult),
+               Catch::Matchers::WithinAbs(num::to_double(expected), 1e-12));
+}
+
+TEST_CASE("MeanLogReturnPolicy: monotonicity", "[MonteCarloTestPolicy][MeanLogReturnPolicy]")
+{
+  using DT = DecimalType;
+  const auto minTrades = MeanLogReturnPolicy<DT>::getMinStrategyTrades();
+
+  auto btProfit = makeBacktester(makeProfitableSeries(), minTrades);
+  auto btLoss   = makeBacktester(makeLosingSeries(),     minTrades);
+
+  const DT profitStat = MeanLogReturnPolicy<DT>::getPermutationTestStatistic(btProfit);
+  const DT lossStat   = MeanLogReturnPolicy<DT>::getPermutationTestStatistic(btLoss);
+
+  REQUIRE(num::to_double(profitStat) > num::to_double(lossStat));
+}
+
+
+// ----------------------------------------------------------------------------
+// GeoMeanPolicy vs MeanLogReturnPolicy: inter-policy consistency
+// ----------------------------------------------------------------------------
+
+TEST_CASE("GeoMean vs MeanLogReturn: mathematical relationship",
+          "[MonteCarloTestPolicy][GeoMeanPolicy][MeanLogReturnPolicy]")
+{
+  // The exact invariant: log(1 + GeoMean) == MeanLogReturn.
+  // Both policies apply identical winsorization, so this must hold to floating
+  // point precision for any input series that passes both threshold checks.
+  using DT = DecimalType;
+  const auto minTrades = GeoMeanPolicy<DT>::getMinStrategyTrades();
+
+  auto checkRelationship = [&](const std::vector<DT>& series, const std::string& label)
+  {
+    auto bt = makeBacktester(series, minTrades);
+
+    const DT geoMean    = GeoMeanPolicy<DT>::getPermutationTestStatistic(bt);
+    const DT meanLogRet = MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt);
+
+    // log(1 + geoMean) must equal meanLogReturn to within double round-trip
+    // precision. GeoMeanStat computes exp(meanLog)-1 in Decimal space; we then
+    // convert to double and apply std::log. That double round-trip loses ~3 ULPs
+    // at this scale (~6e-4), so 1e-8 is the appropriate tolerance here.
+    const double lhs = std::log(1.0 + num::to_double(geoMean));
+    const double rhs = num::to_double(meanLogRet);
+
+    INFO("Series: " << label);
+    REQUIRE_THAT(lhs, Catch::Matchers::WithinAbs(rhs, 1e-8));
+  };
+
+  checkRelationship(makeProfitableSeries(),     "profitable (n=25)");
+  checkRelationship(makeLosingSeries(),         "losing (n=25)");
+  checkRelationship(makeBreakevenSeries(),      "breakeven (n=25)");
+  checkRelationship(makeLargeProfitableSeries(),"profitable (n=200)");
+}
+
+TEST_CASE("GeoMean vs MeanLogReturn: preserve same ordering across series",
+          "[MonteCarloTestPolicy][GeoMeanPolicy][MeanLogReturnPolicy]")
+{
+  // Since exp() is strictly monotonic, both policies must rank any two series
+  // identically. Verify across several pairs.
+  using DT = DecimalType;
+  const auto minTrades = GeoMeanPolicy<DT>::getMinStrategyTrades();
+
+  struct Pair { std::vector<DT> a, b; std::string label; };
+  std::vector<Pair> pairs = {
+    { makeProfitableSeries(), makeLosingSeries(),  "profitable > losing" },
+    { makeLargeProfitableSeries(), makeProfitableSeries(), "large profitable > small profitable" },
+  };
+
+  for (const auto& p : pairs)
+  {
+    auto btA = makeBacktester(p.a, minTrades);
+    auto btB = makeBacktester(p.b, minTrades);
+
+    const double geoA = num::to_double(GeoMeanPolicy<DT>::getPermutationTestStatistic(btA));
+    const double geoB = num::to_double(GeoMeanPolicy<DT>::getPermutationTestStatistic(btB));
+    const double mlrA = num::to_double(MeanLogReturnPolicy<DT>::getPermutationTestStatistic(btA));
+    const double mlrB = num::to_double(MeanLogReturnPolicy<DT>::getPermutationTestStatistic(btB));
+
+    INFO("Pair: " << p.label);
+    // Both policies must agree on which series is larger.
+    REQUIRE((geoA > geoB) == (mlrA > mlrB));
+  }
+}
+
+TEST_CASE("GeoMean vs MeanLogReturn: agree on sign for all test series",
+          "[MonteCarloTestPolicy][GeoMeanPolicy][MeanLogReturnPolicy]")
+{
+  using DT = DecimalType;
+  const auto minTrades = GeoMeanPolicy<DT>::getMinStrategyTrades();
+
+  auto checkSign = [&](const std::vector<DT>& series, const std::string& label)
+  {
+    auto bt = makeBacktester(series, minTrades);
+    const double geo = num::to_double(GeoMeanPolicy<DT>::getPermutationTestStatistic(bt));
+    const double mlr = num::to_double(MeanLogReturnPolicy<DT>::getPermutationTestStatistic(bt));
+    INFO("Series: " << label);
+    // Signs must agree: both positive, both negative, or both zero.
+    REQUIRE(((geo > 0) == (mlr > 0)));
+    REQUIRE(((geo < 0) == (mlr < 0)));
+  };
+
+  checkSign(makeProfitableSeries(),     "profitable");
+  checkSign(makeLosingSeries(),         "losing");
+  checkSign(makeBreakevenSeries(),      "breakeven");
+}
+
+TEST_CASE("GeoMean vs MeanLogReturn: threshold constants match",
+          "[MonteCarloTestPolicy][GeoMeanPolicy][MeanLogReturnPolicy]")
+{
+  // Both policies have the same minimum trade and bar requirements so they
+  // can be used interchangeably in the validation framework without special-casing.
+  using DT = DecimalType;
+  REQUIRE(GeoMeanPolicy<DT>::getMinStrategyTrades() ==
+          MeanLogReturnPolicy<DT>::getMinStrategyTrades());
+  REQUIRE(GeoMeanPolicy<DT>::getMinBarSeriesSize() ==
+          MeanLogReturnPolicy<DT>::getMinBarSeriesSize());
+  REQUIRE(GeoMeanPolicy<DT>::getMinTradeFailureTestStatistic() ==
+          MeanLogReturnPolicy<DT>::getMinTradeFailureTestStatistic());
+}

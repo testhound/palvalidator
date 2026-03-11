@@ -203,6 +203,151 @@ namespace mkc_timeseries
   }
 };
   
+/**
+   * @class GeoMeanPolicy
+   * @brief Permutation test statistic based on the geometric mean of bar-by-bar returns.
+   *
+   * Uses GeoMeanStat with its adaptive winsorization to compute the per-bar geometric
+   * mean from the high-resolution return series. This directly answers the null hypothesis
+   * question: "did these patterns create real compounded wealth growth that random bar
+   * ordering would not?"
+   *
+   * No bootstrap is applied here. The permutation loop itself generates the null
+   * distribution — bootstrapping inside getPermutationTestStatistic would be called
+   * once per permutation (typically 2000+ times per strategy) at unacceptable cost.
+   *
+   * The statistic is positive when the strategy compounds profitably and negative
+   * when it destroys capital. The neutral (failure) value of zero corresponds to
+   * no compounded edge, which is the correct threshold for comparison against the
+   * permuted null distribution.
+   *
+   * Relationship to MeanLogReturnPolicy: geometric mean = exp(mean log return) - 1.
+   * Both policies produce identical p-values since exp() is strictly monotonic.
+   * Prefer MeanLogReturnPolicy when raw additive comparison across strategies is
+   * desired; prefer GeoMeanPolicy when the result needs to be interpreted as a
+   * per-bar percentage return.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber)
+   */
+  template <class Decimal>
+  class GeoMeanPolicy
+  {
+  public:
+    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
+    {
+      if (bt->getNumStrategies() != 1)
+        throw BackTesterException(
+          "GeoMeanPolicy::getPermutationTestStatistic - expected one strategy, got "
+          + std::to_string(bt->getNumStrategies()));
+
+      const uint32_t numTrades = bt->getNumTrades();
+      if (numTrades < getMinStrategyTrades())
+        return getMinTradeFailureTestStatistic();
+
+      auto strat = *(bt->beginStrategies());
+      std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
+
+      if (barSeries.size() < getMinBarSeriesSize())
+        return getMinTradeFailureTestStatistic();
+
+      GeoMeanStat<Decimal> stat(true, false);
+      return stat(barSeries);
+    }
+
+    /// Minimum closed trades required before the statistic is meaningful.
+    static unsigned int getMinStrategyTrades() { return 9; }
+
+    /// Minimum bar-series length required for statistical stability.
+    static unsigned int getMinBarSeriesSize() { return 10; }
+
+    /// Neutral value returned when minimum thresholds are not met.
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
+    }
+  };
+
+  /**
+   * @class MeanLogReturnPolicy
+   * @brief Permutation test statistic based on the mean log return of bar-by-bar returns.
+   *
+   * Computes mean log return as (1/n) * sum(log(1 + r_i)), which is the log-space
+   * equivalent of geometric mean. It is the quantity that GeoMeanStat computes
+   * internally before the exp() back-transform.
+   *
+   * Advantages over GeoMeanPolicy for permutation testing:
+   * - Additive: mean log returns can be averaged and compared directly across
+   *   strategies and permutations without unit conversion
+   * - Marginally faster: avoids the exp() call that GeoMeanPolicy requires
+   * - Numerically stable: operates entirely in log-space
+   *
+   * P-values produced are identical to GeoMeanPolicy because exp() is strictly
+   * monotonic — ranking permutations by mean log return gives the same order as
+   * ranking by geometric mean.
+   *
+   * The statistic is positive when the strategy has a positive compounded edge
+   * and negative when it destroys capital. Zero is the breakeven threshold,
+   * matching the getMinTradeFailureTestStatistic() sentinel value.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber)
+   */
+  template <class Decimal>
+  class MeanLogReturnPolicy
+  {
+  public:
+    static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
+    {
+      if (bt->getNumStrategies() != 1)
+        throw BackTesterException(
+          "MeanLogReturnPolicy::getPermutationTestStatistic - expected one strategy, got "
+          + std::to_string(bt->getNumStrategies()));
+
+      const uint32_t numTrades = bt->getNumTrades();
+      if (numTrades < getMinStrategyTrades())
+        return getMinTradeFailureTestStatistic();
+
+      auto strat = *(bt->beginStrategies());
+      std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
+
+      if (barSeries.size() < getMinBarSeriesSize())
+        return getMinTradeFailureTestStatistic();
+
+      // Convert to log-space using the same ruin clipping as GeoMeanStat.
+      // makeLogGrowthSeries clips growth at DefaultRuinEps before log(),
+      // matching the clip_ruin=true default of GeoMeanStat.
+      const std::vector<Decimal> logBars =
+        StatUtils<Decimal>::makeLogGrowthSeries(barSeries,
+                                                StatUtils<Decimal>::DefaultRuinEps);
+
+      if (logBars.empty())
+        return getMinTradeFailureTestStatistic();
+
+      AdaptiveWinsorizer<Decimal> winsorizer(0.0, 1);
+      std::vector<Decimal> winsorized = logBars;
+      winsorizer.apply(winsorized);
+
+      // Mean log return: (1/n) * sum(log(1 + r_i))
+      // This is the pre-exp quantity inside GeoMeanStat::operator().
+      const Decimal sum = std::accumulate(
+        winsorized.begin(), winsorized.end(),
+        DecimalConstants<Decimal>::DecimalZero);
+
+      return sum / Decimal(winsorized.size());
+    }
+
+    /// Minimum closed trades required before the statistic is meaningful.
+    static unsigned int getMinStrategyTrades() { return 9; }
+
+    /// Minimum bar-series length required for statistical stability.
+    static unsigned int getMinBarSeriesSize() { return 10; }
+
+    /// Neutral value returned when minimum thresholds are not met.
+    static Decimal getMinTradeFailureTestStatistic()
+    {
+      return DecimalConstants<Decimal>::DecimalZero;
+    }
+  };
+
   template <class Decimal>
   class BootStrappedSharpeRatioPolicy
   {
