@@ -551,16 +551,12 @@ TEST_CASE("NormalDistribution::criticalValue convenience function",
                 == Approx(2.575829303548901).margin(1e-9));
     }
 
-    SECTION("Invalid confidence levels return infinity (noexcept)")
+    SECTION("Invalid confidence levels return NaN (noexcept)")
     {
-        REQUIRE(NormalDistribution::criticalValue(0.0) 
-                == std::numeric_limits<double>::infinity());
-        REQUIRE(NormalDistribution::criticalValue(1.0) 
-                == std::numeric_limits<double>::infinity());
-        REQUIRE(NormalDistribution::criticalValue(-0.5) 
-                == std::numeric_limits<double>::infinity());
-        REQUIRE(NormalDistribution::criticalValue(1.5) 
-                == std::numeric_limits<double>::infinity());
+        REQUIRE(std::isnan(NormalDistribution::criticalValue(0.0)));
+        REQUIRE(std::isnan(NormalDistribution::criticalValue(1.0)));
+        REQUIRE(std::isnan(NormalDistribution::criticalValue(-0.5)));
+        REQUIRE(std::isnan(NormalDistribution::criticalValue(1.5)));
     }
 
     SECTION("Consistency with inverseNormalCdf")
@@ -850,33 +846,33 @@ TEST_CASE("compute_empirical_cdf: boundary cases",
 TEST_CASE("compute_empirical_cdf: works with integer types",
           "[EmpiricalCdf][types][integer]")
 {
-    SECTION("int container, int query - returns int (with integer division)")
+    SECTION("int container, int query - returns correct double proportion")
     {
         const std::vector<int> int_data = {1, 5, 3, 8, 2, 5};
         
-        // Note: With integer types, integer division occurs, so results are truncated
-        REQUIRE(compute_empirical_cdf(int_data, 0) == 0);    // 0/6 = 0
-        REQUIRE(compute_empirical_cdf(int_data, 2) == 0);    // 2/6 = 0 (integer division)
-        REQUIRE(compute_empirical_cdf(int_data, 5) == 0);    // 4/6 = 0 (integer division)
-        REQUIRE(compute_empirical_cdf(int_data, 8) == 1);    // 6/6 = 1
-        REQUIRE(compute_empirical_cdf(int_data, 10) == 1);   // 6/6 = 1
+        // Returns double proportions - no integer truncation
+        REQUIRE(compute_empirical_cdf(int_data, 0) == Approx(0.0));
+        REQUIRE(compute_empirical_cdf(int_data, 2) == Approx(2.0/6.0));
+        REQUIRE(compute_empirical_cdf(int_data, 5) == Approx(5.0/6.0));  // 1,5,3,2,5 all ≤ 5
+        REQUIRE(compute_empirical_cdf(int_data, 8) == Approx(1.0));
+        REQUIRE(compute_empirical_cdf(int_data, 10) == Approx(1.0));
     }
 
-    SECTION("int container, double query - still returns int")
+    SECTION("int container, double query - returns double proportion")
     {
         const std::vector<int> int_data = {1, 2, 3, 4, 5};
         
-        // Return type is container value type (int), so integer division occurs
-        REQUIRE(compute_empirical_cdf(int_data, 2.5) == 0);  // 2/5 = 0
-        REQUIRE(compute_empirical_cdf(int_data, 3.7) == 0);  // 3/5 = 0
+        // Return type is double regardless of container type
+        REQUIRE(compute_empirical_cdf(int_data, 2.5) == Approx(0.4));
+        REQUIRE(compute_empirical_cdf(int_data, 3.7) == Approx(0.6));
     }
 
     SECTION("long container")
     {
         const std::vector<long> long_data = {100L, 200L, 300L, 400L, 500L};
         
-        REQUIRE(compute_empirical_cdf(long_data, 250L) == 0L);  // 2/5 = 0 (integer division)
-        REQUIRE(compute_empirical_cdf(long_data, 500L) == 1L);  // 5/5 = 1
+        REQUIRE(compute_empirical_cdf(long_data, 250L) == Approx(0.4));  // 2/5
+        REQUIRE(compute_empirical_cdf(long_data, 500L) == Approx(1.0));  // 5/5
     }
 }
 
@@ -1284,17 +1280,17 @@ TEST_CASE("compute_empirical_cdf: works with dec::decimal types",
             decimal<2>(200)   // 2.00
         };
         
-        decimal<2> F = compute_empirical_cdf(prices, decimal<2>(200));
+        double F = compute_empirical_cdf(prices, decimal<2>(200));
         // 3 out of 5 values ≤ 2.00
-        REQUIRE(F.getAsDouble() == Approx(0.6));
+        REQUIRE(F == Approx(0.6));
         
         F = compute_empirical_cdf(prices, decimal<2>(180));
         // 2 out of 5 values ≤ 1.80
-        REQUIRE(F.getAsDouble() == Approx(0.4));
+        REQUIRE(F == Approx(0.4));
         
         F = compute_empirical_cdf(prices, decimal<2>(400));
         // All 5 values ≤ 4.00
-        REQUIRE(F.getAsDouble() == Approx(1.0));
+        REQUIRE(F == Approx(1.0));
     }
     
     SECTION("decimal<4> high precision")
@@ -1307,9 +1303,9 @@ TEST_CASE("compute_empirical_cdf: works with dec::decimal types",
             decimal<4>(10200)    // 1.0200
         };
         
-        decimal<4> F = compute_empirical_cdf(rates, decimal<4>(10250));
+        double F = compute_empirical_cdf(rates, decimal<4>(10250));
         // 3 out of 5 values ≤ 1.0250
-        REQUIRE(F.getAsDouble() == Approx(0.6));
+        REQUIRE(F == Approx(0.6));
     }
     
     SECTION("decimal<0> integer-like behavior")
@@ -1322,11 +1318,10 @@ TEST_CASE("compute_empirical_cdf: works with dec::decimal types",
             decimal<0>(50)
         };
         
-        decimal<0> F = compute_empirical_cdf(counts, decimal<0>(30));
+        double F = compute_empirical_cdf(counts, decimal<0>(30));
         // 3 out of 5 values ≤ 30
-        // With decimal<0> (0 decimal places), division behaves like integer division
-        // So 3/5 rounds to 1 (since decimal uses rounding, not truncation)
-        REQUIRE(F.getAsDouble() == Approx(1.0));
+        // Returns correct proportion 0.6 (not truncated by integer/fixed-point division)
+        REQUIRE(F == Approx(0.6));
     }
     
     SECTION("decimal with duplicates")
@@ -1340,34 +1335,34 @@ TEST_CASE("compute_empirical_cdf: works with dec::decimal types",
             decimal<2>(300)   // 3.00
         };
         
-        decimal<2> F = compute_empirical_cdf(data, decimal<2>(200));
+        double F = compute_empirical_cdf(data, decimal<2>(200));
         // 3 out of 6 values ≤ 2.00
-        REQUIRE(F.getAsDouble() == Approx(0.5));
+        REQUIRE(F == Approx(0.5));
         
         F = compute_empirical_cdf(data, decimal<2>(300));
         // All 6 values ≤ 3.00
-        REQUIRE(F.getAsDouble() == Approx(1.0));
+        REQUIRE(F == Approx(1.0));
     }
     
     SECTION("Empty decimal container")
     {
         const std::vector<decimal<2>> empty;
-        decimal<2> F = compute_empirical_cdf(empty, decimal<2>(100));
-        REQUIRE(F.getAsDouble() == 0.0);
+        double F = compute_empirical_cdf(empty, decimal<2>(100));
+        REQUIRE(F == 0.0);
     }
     
     SECTION("Single decimal element")
     {
         const std::vector<decimal<2>> single = {decimal<2>(500)};  // 5.00
         
-        decimal<2> F = compute_empirical_cdf(single, decimal<2>(499));
-        REQUIRE(F.getAsDouble() == 0.0);
+        double F = compute_empirical_cdf(single, decimal<2>(499));
+        REQUIRE(F == 0.0);
         
         F = compute_empirical_cdf(single, decimal<2>(500));
-        REQUIRE(F.getAsDouble() == 1.0);
+        REQUIRE(F == 1.0);
         
         F = compute_empirical_cdf(single, decimal<2>(501));
-        REQUIRE(F.getAsDouble() == 1.0);
+        REQUIRE(F == 1.0);
     }
 }
 
@@ -1390,8 +1385,8 @@ TEST_CASE("compute_empirical_cdf: decimal type properties",
         
         for (std::size_t i = 1; i < test_points.size(); ++i)
         {
-            decimal<2> F1 = compute_empirical_cdf(data, test_points[i-1]);
-            decimal<2> F2 = compute_empirical_cdf(data, test_points[i]);
+            double F1 = compute_empirical_cdf(data, test_points[i-1]);
+            double F2 = compute_empirical_cdf(data, test_points[i]);
             REQUIRE(F2 >= F1);
         }
     }
@@ -1405,9 +1400,9 @@ TEST_CASE("compute_empirical_cdf: decimal type properties",
         
         for (int x_val = -1000; x_val <= 1000; x_val += 100)
         {
-            decimal<2> F = compute_empirical_cdf(data, decimal<2>(x_val));
-            REQUIRE(F >= decimal<2>(0));
-            REQUIRE(F <= decimal<2>(100));  // 1.00 in decimal<2>
+            double F = compute_empirical_cdf(data, decimal<2>(x_val));
+            REQUIRE(F >= 0.0);
+            REQUIRE(F <= 1.0);
         }
     }
 }
@@ -1436,14 +1431,13 @@ TEST_CASE("compute_empirical_cdf: decimal bootstrap use case",
         decimal<2> theta_hat(10000);  // 100.00
         
         // Compute proportion of bootstrap stats ≤ theta_hat
-        decimal<2> prop = compute_empirical_cdf(bootstrap_means, theta_hat);
+        double prop = compute_empirical_cdf(bootstrap_means, theta_hat);
         
         // Should be 0.5 (5 out of 10 values ≤ 100.00: 99.50, 99.80, 99.90, 100.00, 99.60)
-        REQUIRE(prop.getAsDouble() == Approx(0.5));
+        REQUIRE(prop == Approx(0.5));
         
-        // For integration with normal quantile, convert to double
-        double prop_double = prop.getAsDouble();
-        double z0 = compute_normal_quantile(prop_double);
+        // prop is already double, pass directly to compute_normal_quantile
+        double z0 = compute_normal_quantile(prop);
         
         // At p=0.5, z0 should be exactly 0 (no bias)
         REQUIRE(z0 == 0.0);
@@ -1469,10 +1463,10 @@ TEST_CASE("compute_empirical_cdf: decimal bootstrap use case",
         // Sorted: -1.50, -0.80, -0.20, 0.30, 0.60, 0.90, 1.20, 1.40, 1.80, 2.50
         
         decimal<2> fifth_percentile = returns[0];  // -1.50%
-        decimal<2> F = compute_empirical_cdf(returns, fifth_percentile);
+        double F = compute_empirical_cdf(returns, fifth_percentile);
         
         // Should be 0.1 (1 out of 10)
-        REQUIRE(F.getAsDouble() == Approx(0.1));
+        REQUIRE(F == Approx(0.1));
     }
 }
 
@@ -1491,13 +1485,13 @@ TEST_CASE("compute_empirical_cdf: mixed precision decimal containers",
             decimal<6>(1000000)    // 1.000000 (duplicate)
         };
         
-        decimal<6> F = compute_empirical_cdf(precise_values, decimal<6>(1000000));
+        double F = compute_empirical_cdf(precise_values, decimal<6>(1000000));
         // 3 out of 5 values ≤ 1.000000
-        REQUIRE(F.getAsDouble() == Approx(0.6));
+        REQUIRE(F == Approx(0.6));
         
         F = compute_empirical_cdf(precise_values, decimal<6>(999999));
         // 1 out of 5 values ≤ 0.999999
-        REQUIRE(F.getAsDouble() == Approx(0.2));
+        REQUIRE(F == Approx(0.2));
     }
 }
 
@@ -1513,34 +1507,35 @@ TEST_CASE("compute_empirical_cdf: return type verification",
         REQUIRE(result == Approx(0.666666).margin(1e-5));
     }
     
-    SECTION("float container returns float")
+    SECTION("float container returns double")
     {
         const std::vector<float> data = {1.0f, 2.0f, 3.0f};
         auto result = compute_empirical_cdf(data, 2.0f);
-        static_assert(std::is_same<decltype(result), float>::value,
-                      "Return type should be float for float container");
-        REQUIRE(result == Approx(0.666666f).margin(1e-5f));
+        static_assert(std::is_same<decltype(result), double>::value,
+                      "Return type should be double for float container");
+        REQUIRE(result == Approx(0.666666).margin(1e-5));
     }
     
-    SECTION("int container returns int")
+    SECTION("int container returns double (not truncated)")
     {
         const std::vector<int> data = {1, 2, 3, 4, 5, 6};
         auto result = compute_empirical_cdf(data, 3);
-        static_assert(std::is_same<decltype(result), int>::value,
-                      "Return type should be int for int container");
-        REQUIRE(result == 0);  // 3/6 = 0 with integer division
+        static_assert(std::is_same<decltype(result), double>::value,
+                      "Return type should be double for int container");
+        // 3/6 = 0.5 exactly (was 0 with the old integer-division bug)
+        REQUIRE(result == Approx(0.5));
     }
     
-    SECTION("decimal<2> container returns decimal<2>")
+    SECTION("decimal<2> container returns double")
     {
         using dec::decimal;
         const std::vector<decimal<2>> data = {
             decimal<2>(100), decimal<2>(200), decimal<2>(300)
         };
         auto result = compute_empirical_cdf(data, decimal<2>(200));
-        static_assert(std::is_same<decltype(result), decimal<2>>::value,
-                      "Return type should be decimal<2> for decimal<2> container");
-        // decimal<2> has only 2 decimal places, so 2/3 rounds to 0.67
-        REQUIRE(result.getAsDouble() == Approx(0.67).margin(1e-5));
+        static_assert(std::is_same<decltype(result), double>::value,
+                      "Return type should be double for decimal<2> container");
+        // 2/3 as double, not truncated to decimal<2> precision
+        REQUIRE(result == Approx(0.666666).margin(1e-5));
     }
 }
