@@ -644,6 +644,28 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Configures the tail ratio used to place the finite display bound
+     * on the irrelevant side of a one-sided BCa interval.
+     *
+     * The irrelevant-side quantile is computed as alpha / ratio.  A larger
+     * value pushes that bound deeper into the tail (more extreme).  This
+     * setting has no effect on two-sided intervals, and no effect on the
+     * meaningful bound of a one-sided interval.
+     *
+     * @param ratio  Must be >= 2.0.  Default is 1000.0.
+     * @throws std::invalid_argument if ratio < 2.0.
+     */
+    void setOneSidedTailRatio(double ratio)
+    {
+      if (ratio < 2.0)
+        throw std::invalid_argument(
+          "BCaBootStrap: one-sided tail ratio must be >= 2.0.");
+      m_one_sided_tail_ratio = ratio;
+    }
+
+    double getOneSidedTailRatio() const { return m_one_sided_tail_ratio; }
+
+    /**
      * @brief Returns the original sample size n.
      *
      * For bar-level bootstrapping (SampleType = Decimal) this is the number of
@@ -664,10 +686,38 @@ namespace mkc_timeseries
       return m_bootstrapStats;
     }
 
-    static double computeExtremeQuantile(double alpha, bool is_upper)
+    /**
+     * @brief Returns a pragmatic finite display bound for one-sided BCa intervals.
+     *
+     * CONVENTION — NOT textbook BCa:
+     * A textbook one-sided BCa interval is half-open: one endpoint is the
+     * BCa-adjusted quantile for the relevant tail, and the other side is
+     * conceptually ±∞ (or the sample extremum).  This class instead returns a
+     * *finite* bound on the "irrelevant" side for display and reporting
+     * purposes.
+     *
+     * For ONE_SIDED_LOWER: only getLowerBound() is statistically meaningful.
+     * getUpperBound() is a finite placeholder for +∞, computed by pushing the
+     * irrelevant tail to alpha / tail_ratio (default: alpha / 1000).
+     * Callers should ignore getUpperBound() in this mode, and vice-versa for
+     * ONE_SIDED_UPPER.
+     *
+     * This method is static so it can be called without an instance (e.g. in
+     * unit tests).  Internal BCa computation passes m_one_sided_tail_ratio
+     * explicitly so the configurable value is honoured at runtime.
+     *
+     * @param alpha       The tail probability for the meaningful side.
+     * @param is_upper    true  → compute the extreme upper display bound
+     *                    false → compute the extreme lower display bound
+     * @param tail_ratio  Divisor applied to alpha (default 1000).  A larger
+     *                    value pushes the display bound deeper into the tail.
+     * @return A quantile probability for the extreme/irrelevant side.
+     */
+    static double computeExtremeQuantile(double alpha,
+                                         bool   is_upper,
+                                         double tail_ratio = 1000.0) noexcept
     {
-      constexpr double EXTREME_TAIL_RATIO = 1000.0;
-      const double extreme_tail_prob = alpha / EXTREME_TAIL_RATIO;
+      const double extreme_tail_prob = alpha / tail_ratio;
       return is_upper ? (1.0 - extreme_tail_prob) : extreme_tail_prob;
     }
 
@@ -678,8 +728,13 @@ namespace mkc_timeseries
     // m_returns is now std::vector<SampleType>. When SampleType = Decimal this
     // is identical to the original. When SampleType = Trade<Decimal> it holds
     // the trade population from which bootstrap resamples are drawn.
+    //
+    // NOTE: stored by value (not reference) to prevent dangling-reference UB
+    // under lazy evaluation. ensureCalculated() may defer calculateBCaBounds()
+    // until the first accessor call, by which time a caller-owned vector could
+    // have gone out of scope. Owning the copy eliminates that hazard entirely.
     // -------------------------------------------------------------------------
-    const std::vector<SampleType>& m_returns;
+    const std::vector<SampleType> m_returns;
     unsigned int                   m_num_resamples;
     double                         m_confidence_level;
     StatFn                         m_statistic;
@@ -701,6 +756,12 @@ namespace mkc_timeseries
     Decimal              m_accel;
     std::vector<Decimal> m_bootstrapStats;   // bootstrap θ*'s (unsorted)
     IntervalType         m_interval_type;
+
+    // Controls how far into the extreme tail the finite "display bound" is
+    // placed on the irrelevant side of a one-sided BCa interval.
+    // See computeExtremeQuantile() for full convention documentation.
+    // Default: 1000 (alpha / 1000).  Exposed via setOneSidedTailRatio().
+    double               m_one_sided_tail_ratio{1000.0};
 
     // Test hooks
     void setStatistic(const Decimal& theta) { m_theta_hat = theta; }
@@ -739,7 +800,7 @@ namespace mkc_timeseries
     /**
      * @brief Core BCa computation.
      *
-     * This implementation is unchanged from the original except for two lines:
+     * Changes from the original implementation:
      *
      *   1. The resampler call produces std::vector<SampleType> rather than
      *      std::vector<Decimal>. When SampleType = Decimal this is identical.
@@ -749,6 +810,17 @@ namespace mkc_timeseries
      *   2. The jackknife call is now resolved against the templated jackknife
      *      on IIDResampler (or StationaryBlockResampler), which deduces the
      *      return type as Decimal regardless of SampleType.
+     *
+     *   3. count_equal is tracked alongside count_less and the mid-rank tie
+     *      correction is applied when computing z0, making BCa correct for
+     *      discrete statistics (e.g. consecutive losers, win-rate).
+     *
+     *   4. The |a| < 1e-12 short-circuit in the BCa percentile formula has
+     *      been removed. The full formula is always used (when z0 is finite),
+     *      which naturally reduces to the correct BC result when a ≈ 0.
+     *
+     *   5. m_theta_hat is no longer overwritten in the degenerate all-equal
+     *      path; it retains the value computed from the original sample.
      *
      * All z0, acceleration, and bound calculations operate on std::vector<Decimal>
      * and are unaffected by the SampleType generalization.
@@ -765,9 +837,20 @@ namespace mkc_timeseries
       m_theta_hat = m_statistic(m_returns);
 
       // (2) Bootstrap replicates
+      //
+      // We track both count_less (θ*_b < θ̂) and count_equal (θ*_b == θ̂) so
+      // that step (3) can apply the mid-rank tie correction for z0.  For
+      // continuous statistics (geometric mean, profit factor) count_equal will
+      // essentially always be zero and the correction has no effect.  For
+      // discrete statistics (consecutive losers, win-rate, integer P&L) many
+      // replicates may equal θ̂ exactly, and the strict-< definition
+      // systematically underestimates z0; the mid-rank correction
+      //   prop_less_adj = (count_less + 0.5 * count_equal) / B
+      // is the standard remedy (Efron & Tibshirani 1993, §14.3 footnote).
       std::vector<Decimal> boot_stats;
       boot_stats.reserve(m_num_resamples);
-      unsigned int count_less = 0;
+      unsigned int count_less  = 0;
+      unsigned int count_equal = 0;
 
       if constexpr (std::is_void_v<Provider>)
 	{
@@ -778,7 +861,8 @@ namespace mkc_timeseries
 	      // resample is std::vector<SampleType> (Decimal or Trade<Decimal>)
 	      std::vector<SampleType> resample = m_sampler(m_returns, n, rng);
 	      const Decimal stat_b = m_statistic(resample);
-	      if (stat_b < m_theta_hat) ++count_less;
+	      if      (stat_b <  m_theta_hat) ++count_less;
+	      else if (stat_b == m_theta_hat) ++count_equal;
 	      boot_stats.push_back(stat_b);
 	    }
 	}
@@ -790,7 +874,8 @@ namespace mkc_timeseries
 	      Rng rng = m_provider.make_engine(b);
 	      std::vector<SampleType> resample = m_sampler(m_returns, n, rng);
 	      const Decimal stat_b = m_statistic(resample);
-	      if (stat_b < m_theta_hat) ++count_less;
+	      if      (stat_b <  m_theta_hat) ++count_less;
+	      else if (stat_b == m_theta_hat) ++count_equal;
 	      boot_stats.push_back(stat_b);
 	    }
 	}
@@ -805,7 +890,12 @@ namespace mkc_timeseries
 	{
 	  m_lower_bound    = boot_stats[0];
 	  m_upper_bound    = boot_stats[0];
-	  m_theta_hat      = boot_stats[0];
+	  // m_theta_hat intentionally NOT overwritten: it was set correctly in
+	  // step (1) as m_statistic(m_returns) on the original sample. Replacing
+	  // it with boot_stats[0] (a replicate statistic) violates the invariant
+	  // that getMean() returns the observed statistic, not a bootstrap value.
+	  // In a truly degenerate case the two are numerically equal, but the
+	  // semantic distinction matters for diagnostics and subclass overrides.
 	  m_z0             = 0.0;
 	  m_accel          = DecimalConstants<Decimal>::DecimalZero;
 	  m_bootstrapStats = boot_stats;
@@ -816,8 +906,13 @@ namespace mkc_timeseries
       m_bootstrapStats = boot_stats;
 
       // (3) Bias-correction z0
+      // Apply mid-rank tie correction: credit each tied replicate as half a
+      // "less-than".  For continuous statistics count_equal ≈ 0 and this
+      // reduces to the classic formula.  For discrete statistics (e.g.
+      // consecutive losers) this prevents systematic downward bias in z0.
       const double prop_less_raw =
-	static_cast<double>(count_less) / static_cast<double>(m_num_resamples);
+	(static_cast<double>(count_less) + 0.5 * static_cast<double>(count_equal))
+	/ static_cast<double>(m_num_resamples);
       const double prop_less =
 	std::max(1e-10, std::min(1.0 - 1e-10, prop_less_raw));
       const double z0 = NormalDistribution::inverseNormalCdf(prop_less);
@@ -863,6 +958,19 @@ namespace mkc_timeseries
       m_accel = a;
 
       // (5) Adjusted percentiles → bounds
+      //
+      // BCa formula (Efron 1987, eq. 6.8):
+      //   α₁ = Φ( z₀ + (z₀ + zα) / (1 − a·(z₀ + zα)) )
+      //
+      // When a ≈ 0 the denominator ≈ 1 and the formula naturally reduces to
+      // the correct BC (bias-corrected) result Φ(2·z₀ + zα). We therefore do
+      // NOT short-circuit for |a| < ε: doing so would skip the second z₀ term
+      // and compute Φ(z₀ + zα) instead, which is wrong.
+      //
+      // The only fallback retained is for non-finite z₀ (±inf / NaN), which
+      // indicates a completely degenerate bootstrap distribution. In that case
+      // the BCa method has broken down regardless, and the unadjusted quantile
+      // is used as a safe fallback.
       const double alpha = computeAlpha(m_confidence_level, m_interval_type);
 
       double z_alpha_lo, z_alpha_hi;
@@ -876,12 +984,12 @@ namespace mkc_timeseries
 	case IntervalType::ONE_SIDED_LOWER:
 	  z_alpha_lo = NormalDistribution::inverseNormalCdf(alpha);
 	  z_alpha_hi = NormalDistribution::inverseNormalCdf(
-	    computeExtremeQuantile(alpha, true));
+	    computeExtremeQuantile(alpha, true, m_one_sided_tail_ratio));
 	  break;
 
 	case IntervalType::ONE_SIDED_UPPER:
 	  z_alpha_lo = NormalDistribution::inverseNormalCdf(
-	    computeExtremeQuantile(alpha, false));
+	    computeExtremeQuantile(alpha, false, m_one_sided_tail_ratio));
 	  z_alpha_hi = NormalDistribution::inverseNormalCdf(1.0 - alpha);
 	  break;
 
@@ -894,15 +1002,24 @@ namespace mkc_timeseries
       const double a_d       = num::to_double(a);
       const bool   z0_finite = std::isfinite(z0);
 
+      // BCa adjusted percentiles (Efron 1987, eq. 6.8).
+      // Fallback when z0 is non-finite: BCa has completely broken down, so
+      // fall back to the plain percentile bootstrap, which is simply Φ(zα).
+      // Using Φ(z0 + zα) in this branch would propagate ±∞ into standardNormalCdf,
+      // returning 0 or 1 and slamming the bound to the array extreme — the
+      // opposite of a safe fallback.
+      // In practice this branch is dead code: the [1e-10, 1-1e-10] clamping
+      // of prop_less in step (3) ensures inverseNormalCdf always returns a
+      // finite z0 (|z0| <= ~6.36). It is fixed here for mathematical correctness.
       const double alpha1 =
-	(!z0_finite || std::abs(a_d) < 1e-12)
-	? NormalDistribution::standardNormalCdf(z0 + z_alpha_lo)
+	!z0_finite
+	? NormalDistribution::standardNormalCdf(z_alpha_lo)
 	: NormalDistribution::standardNormalCdf(
 	    z0 + (z0 + z_alpha_lo) / (1.0 - a_d * (z0 + z_alpha_lo)));
 
       const double alpha2 =
-	(!z0_finite || std::abs(a_d) < 1e-12)
-	? NormalDistribution::standardNormalCdf(z0 + z_alpha_hi)
+	!z0_finite
+	? NormalDistribution::standardNormalCdf(z_alpha_hi)
 	: NormalDistribution::standardNormalCdf(
 	    z0 + (z0 + z_alpha_hi) / (1.0 - a_d * (z0 + z_alpha_hi)));
 

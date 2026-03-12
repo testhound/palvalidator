@@ -6,10 +6,6 @@
 // Normal Distribution Utility Functions
 // Provides standard normal CDF and inverse CDF (quantile) functions
 //
-// IMPLEMENTATION NOTE (Updated 2024):
-// This implementation now delegates to the high-precision Acklam algorithm
-// (NormalQuantile.h) for improved accuracy while maintaining the original
-// interface for backward compatibility.
 
 #pragma once
 
@@ -111,48 +107,28 @@ namespace mkc_timeseries
      *
      * @param confidence_level The confidence level in (0, 1), e.g., 0.95 for 95% CI
      * @return double The critical z-value (always positive).
-     *         Returns +∞ if confidence_level is not in (0, 1).
+     *         Returns NaN if confidence_level is not in (0, 1), allowing callers
+     *         to detect invalid input via std::isnan() rather than receiving a
+     *         finite-looking sentinel that could silently propagate through
+     *         subsequent arithmetic.
      *
      * @note This function is noexcept and handles invalid inputs by returning
-     *       infinity rather than throwing exceptions.
+     *       NaN rather than throwing exceptions.
      *
      * @example
      * double z_95 = criticalValue(0.95);  // Returns ~1.96
      * double z_99 = criticalValue(0.99);  // Returns ~2.576
+     * double z_bad = criticalValue(1.5);  // Returns NaN — detectable via std::isnan()
      */
     static inline double criticalValue(double confidence_level) noexcept
     {
-      // Validate confidence level
-      if (confidence_level <= 0.0 || confidence_level >= 1.0) {
-        return std::numeric_limits<double>::infinity();
-      }
+      if (confidence_level <= 0.0 || confidence_level >= 1.0)
+        return std::numeric_limits<double>::quiet_NaN();
 
-      // Compute upper tail probability
-      const double alpha = 1.0 - confidence_level;
+      const double alpha   = 1.0 - confidence_level;
       const double p_upper = 1.0 - alpha / 2.0;
 
-      // Use inverseNormalCdf which is already noexcept
       return inverseNormalCdf(p_upper);
-    }
-
-  private:
-    /**
-     * @brief Legacy helper function - no longer used.
-     *
-     * This function previously implemented the Abramowitz & Stegun approximation
-     * but is now deprecated. The implementation has been replaced with delegation
-     * to the high-precision Acklam algorithm.
-     *
-     * Kept for potential compatibility with derived classes, but should not be
-     * called directly.
-     *
-     * @deprecated Use inverseNormalCdf instead, which now uses Acklam's algorithm.
-     */
-    [[deprecated("Use inverseNormalCdf instead - now uses high-precision Acklam algorithm")]]
-    static inline double inverseNormalCdfHelper(double p) noexcept
-    {
-      // Delegate to the new implementation
-      return inverseNormalCdf(p);
     }
   };
 
