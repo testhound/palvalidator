@@ -518,7 +518,7 @@ namespace palvalidator
 		  [capturedStat](const std::vector<SampleType>& r) { return capturedStat(r); };
 
 		auto bcaEngine =
-		  m_factory.template makeBCa<Decimal, Resampler>(
+		  m_factory.template makeBCa<Decimal, Resampler, Executor>(
 								    returns,
 								    static_cast<unsigned>(B_single),
 								    cl,
