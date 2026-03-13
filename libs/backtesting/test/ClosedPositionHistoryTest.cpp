@@ -296,6 +296,30 @@ namespace
     
     return pos;
   }
+
+  D compoundTradeReturns(const Trade<D>& trade)
+  {
+    D product("1.0");
+
+    for (const auto& r : trade.getDailyReturns())
+      product = product * (D("1.0") + r);
+
+    return product - D("1.0");
+  }
+
+  D getExpectedNetReturnLong(D entryPrice,
+                             D exitPrice,
+                             bool applyCosts,
+                             D costPerSide)
+  {
+    if (!applyCosts)
+      return (exitPrice - entryPrice) / entryPrice;
+
+    D effectiveEntry = entryPrice * (D("1.0") + costPerSide);
+    D effectiveExit  = exitPrice  * (D("1.0") - costPerSide);
+
+    return (effectiveExit - effectiveEntry) / effectiveEntry;
+  }
 } // anonymous namespace
 
 TEST_CASE ("ClosedPositionHistory operations", "[ClosedPositionHistory]")
@@ -3471,5 +3495,295 @@ TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - exemptLimitExits logic"
         const double expected = -(effectiveExit - effectiveEntry) / effectiveEntry;
         
         REQUIRE(num::to_double(trades[0].getDailyReturns().back()) == Catch::Approx(expected).epsilon(1e-6));
+    }
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - compounded long trade equals realized return",
+          "[ClosedPositionHistory][getTradeLevelReturns][exact-verification]")
+{
+    ClosedPositionHistory<D> history;
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+
+    const D entryPrice("100.0");
+    const D exitPrice("108.0");
+
+    auto pos = createMockLongPosition(
+        "@C",
+        entryTime,
+        entryPrice,
+        exitPrice,
+        {D("103.0"), D("105.0")}
+    );
+
+    history.addClosedPosition(pos);
+
+    auto trades = history.getTradeLevelReturns(false);
+    REQUIRE(trades.size() == 1);
+
+    const D compounded = compoundTradeReturns(trades[0]);
+    const D expected   = getExpectedNetReturnLong(entryPrice, exitPrice, false, D("0.0"));
+
+    REQUIRE(num::to_double(compounded) ==
+            Catch::Approx(num::to_double(expected)).margin(1e-8));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - exact short bar sequence without costs",
+          "[ClosedPositionHistory][getTradeLevelReturns][exact-verification][short]")
+{
+    ClosedPositionHistory<D> history;
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+
+    const D entryPrice("100.0");
+    const D exitPrice("92.0");
+
+    auto pos = createMockShortPosition(
+        "@C",
+        entryTime,
+        entryPrice,
+        exitPrice,
+        {D("97.0"), D("95.0")}
+    );
+
+    history.addClosedPosition(pos);
+
+    auto trades = history.getTradeLevelReturns(false);
+    REQUIRE(trades.size() == 1);
+
+    const auto& dailyReturns = trades[0].getDailyReturns();
+    REQUIRE(dailyReturns.size() == 2);
+
+    const D expected0 = -((D("97.0") - D("100.0")) / D("100.0"));
+    REQUIRE(num::to_double(dailyReturns[0]) ==
+            Catch::Approx(num::to_double(expected0)).margin(1e-8));
+
+    const D expected1 = -((D("92.0") - D("97.0")) / D("97.0"));
+    REQUIRE(num::to_double(dailyReturns[1]) ==
+            Catch::Approx(num::to_double(expected1)).margin(1e-8));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - compounded long trade equals realized return with costs",
+          "[ClosedPositionHistory][getTradeLevelReturns][exact-verification][applyCosts]")
+{
+    ClosedPositionHistory<D> history;
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+
+    const D entryPrice("100.0");
+    const D exitPrice("108.0");
+    const D costPerSide("0.001");
+
+    auto pos = createMockLongPosition(
+        "@C",
+        entryTime,
+        entryPrice,
+        exitPrice,
+        {D("103.0"), D("105.0")}
+    );
+
+    history.addClosedPosition(pos);
+
+    auto trades = history.getTradeLevelReturns(true, costPerSide);
+    REQUIRE(trades.size() == 1);
+
+    const D compounded = compoundTradeReturns(trades[0]);
+    const D expected   = getExpectedNetReturnLong(entryPrice, exitPrice, true, costPerSide);
+
+    REQUIRE(num::to_double(compounded) ==
+            Catch::Approx(num::to_double(expected)).margin(1e-8));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - exact short bar sequence with costs",
+          "[ClosedPositionHistory][getTradeLevelReturns][exact-verification][short][applyCosts]")
+{
+    ClosedPositionHistory<D> history;
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+
+    const D entryPrice("100.0");
+    const D exitPrice("92.0");
+    const D costPerSide("0.001");
+
+    auto pos = createMockShortPosition(
+        "@C",
+        entryTime,
+        entryPrice,
+        exitPrice,
+        {D("97.0"), D("95.0")}
+    );
+
+    history.addClosedPosition(pos);
+
+    auto trades = history.getTradeLevelReturns(true, costPerSide);
+    REQUIRE(trades.size() == 1);
+
+    const auto& dailyReturns = trades[0].getDailyReturns();
+    REQUIRE(dailyReturns.size() == 2);
+
+    const D effectiveEntry = D("100.0") * (D("1.0") - costPerSide);
+    const D effectiveExit  = D("92.0")  * (D("1.0") + costPerSide);
+
+    const D expected0 = -((D("97.0") - effectiveEntry) / effectiveEntry);
+    REQUIRE(num::to_double(dailyReturns[0]) ==
+            Catch::Approx(num::to_double(expected0)).margin(1e-8));
+
+    const D expected1 = -((effectiveExit - D("97.0")) / D("97.0"));
+    REQUIRE(num::to_double(dailyReturns[1]) ==
+            Catch::Approx(num::to_double(expected1)).margin(1e-8));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - compounded long trade equals realized return with exempt limit exit",
+          "[ClosedPositionHistory][getTradeLevelReturns][exact-verification][applyCosts][exemptLimitExits]")
+{
+    ClosedPositionHistory<D> history;
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+
+    const D entryPrice("100.0");
+    const D exitPrice("108.0");
+    const D costPerSide("0.001");
+
+    auto pos = createMockLongPosition(
+        "@C",
+        entryTime,
+        entryPrice,
+        exitPrice,
+        {D("103.0"), D("105.0")}
+    );
+
+    pos->setExitOrderType(OrderType::SELL_AT_LIMIT);
+
+    history.addClosedPosition(pos);
+
+    auto trades = history.getTradeLevelReturns(true, costPerSide, true);
+    REQUIRE(trades.size() == 1);
+
+    const D compounded = compoundTradeReturns(trades[0]);
+
+    const D effectiveEntry = entryPrice * (D("1.0") + costPerSide);
+    const D effectiveExit  = exitPrice; // exempted limit exit
+
+    const D expected = (effectiveExit - effectiveEntry) / effectiveEntry;
+
+    REQUIRE(num::to_double(compounded) ==
+            Catch::Approx(num::to_double(expected)).margin(1e-8));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - exact short bar sequence with exempt limit exit",
+          "[ClosedPositionHistory][getTradeLevelReturns][exact-verification][short][applyCosts][exemptLimitExits]")
+{
+    ClosedPositionHistory<D> history;
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+
+    const D entryPrice("100.0");
+    const D exitPrice("92.0");
+    const D costPerSide("0.001");
+
+    auto pos = createMockShortPosition(
+        "@C",
+        entryTime,
+        entryPrice,
+        exitPrice,
+        {D("97.0"), D("95.0")}
+    );
+
+    pos->setExitOrderType(OrderType::COVER_AT_LIMIT);
+
+    history.addClosedPosition(pos);
+
+    auto trades = history.getTradeLevelReturns(true, costPerSide, true);
+    REQUIRE(trades.size() == 1);
+
+    const auto& dailyReturns = trades[0].getDailyReturns();
+    REQUIRE(dailyReturns.size() == 2);
+
+    const D effectiveEntry = D("100.0") * (D("1.0") - costPerSide);
+    const D effectiveExit  = D("92.0"); // exempt limit exit: no exit-side slippage
+
+    const D expected0 = -((D("97.0") - effectiveEntry) / effectiveEntry);
+    REQUIRE(num::to_double(dailyReturns[0]) ==
+            Catch::Approx(num::to_double(expected0)).margin(1e-8));
+
+    const D expected1 = -((effectiveExit - D("97.0")) / D("97.0"));
+    REQUIRE(num::to_double(dailyReturns[1]) ==
+            Catch::Approx(num::to_double(expected1)).margin(1e-8));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - exemptLimitExits has no effect for non-limit exits",
+          "[ClosedPositionHistory][getTradeLevelReturns][applyCosts][exemptLimitExits]")
+{
+    ClosedPositionHistory<D> history;
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+
+    const D entryPrice("100.0");
+    const D exitPrice("108.0");
+    const D costPerSide("0.001");
+
+    auto pos = createMockLongPosition(
+        "@C",
+        entryTime,
+        entryPrice,
+        exitPrice,
+        {D("103.0"), D("105.0")}
+    );
+
+    // Intentionally do NOT set a limit exit order type.
+    // Exit order type should remain non-limit (typically UNKNOWN).
+    history.addClosedPosition(pos);
+
+    auto tradesWithoutExemption = history.getTradeLevelReturns(true, costPerSide, false);
+    auto tradesWithExemption    = history.getTradeLevelReturns(true, costPerSide, true);
+
+    REQUIRE(tradesWithoutExemption.size() == 1);
+    REQUIRE(tradesWithExemption.size() == 1);
+
+    const auto& returnsWithoutExemption = tradesWithoutExemption[0].getDailyReturns();
+    const auto& returnsWithExemption    = tradesWithExemption[0].getDailyReturns();
+
+    REQUIRE(returnsWithoutExemption.size() == returnsWithExemption.size());
+
+    for (std::size_t i = 0; i < returnsWithoutExemption.size(); ++i)
+    {
+        REQUIRE(num::to_double(returnsWithoutExemption[i]) ==
+                Catch::Approx(num::to_double(returnsWithExemption[i])).margin(1e-8));
+    }
+
+    REQUIRE(num::to_double(compoundTradeReturns(tradesWithoutExemption[0])) ==
+            Catch::Approx(num::to_double(compoundTradeReturns(tradesWithExemption[0]))).margin(1e-8));
+}
+
+TEST_CASE("ClosedPositionHistory::getTradeLevelReturns - exemptLimitExits has no effect for non-limit short exits",
+          "[ClosedPositionHistory][getTradeLevelReturns][short][applyCosts][exemptLimitExits]")
+{
+    ClosedPositionHistory<D> history;
+    ptime entryTime(date(2024, 1, 15), hours(9) + minutes(30));
+
+    const D entryPrice("100.0");
+    const D exitPrice("92.0");
+    const D costPerSide("0.001");
+
+    auto pos = createMockShortPosition(
+        "@C",
+        entryTime,
+        entryPrice,
+        exitPrice,
+        {D("97.0"), D("95.0")}
+    );
+
+    // Intentionally do NOT set a limit exit order type.
+    // Exit order type should remain non-limit (typically UNKNOWN).
+    history.addClosedPosition(pos);
+
+    auto tradesWithoutExemption = history.getTradeLevelReturns(true, costPerSide, false);
+    auto tradesWithExemption    = history.getTradeLevelReturns(true, costPerSide, true);
+
+    REQUIRE(tradesWithoutExemption.size() == 1);
+    REQUIRE(tradesWithExemption.size() == 1);
+
+    const auto& returnsWithoutExemption = tradesWithoutExemption[0].getDailyReturns();
+    const auto& returnsWithExemption    = tradesWithExemption[0].getDailyReturns();
+
+    REQUIRE(returnsWithoutExemption.size() == returnsWithExemption.size());
+
+    for (std::size_t i = 0; i < returnsWithoutExemption.size(); ++i)
+    {
+        REQUIRE(num::to_double(returnsWithoutExemption[i]) ==
+                Catch::Approx(num::to_double(returnsWithExemption[i])).margin(1e-8));
     }
 }
