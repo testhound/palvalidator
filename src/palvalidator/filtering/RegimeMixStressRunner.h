@@ -13,6 +13,7 @@
 
 #include "randutils.hpp"
 #include "BiasCorrectedBootstrap.h"
+#include "ParallelExecutors.h"
 #include "StatUtils.h"
 #include "DecimalConstants.h"
 
@@ -188,8 +189,11 @@ namespace palvalidator
 
 	// Select the sampler type chosen by template argument
 	using Sampler = SamplerT<Num, Rng>;
-	using MixBCA  = BCaBootStrap<Num, Sampler, Rng>;
-        //using BlockBCA = BCaBootStrap<Num, RegimeMixBlockResampler<Num, Rng>, Rng>;
+	using TradeT = Num;
+	using ProviderT = void;
+	using ExecT = concurrency::ThreadPoolExecutor<>;
+
+	using MixBCA  = BCaBootStrap<Num, Sampler, Rng, ProviderT, TradeT, ExecT>;
 
         if (returns.size() != labels.size())
 	  {

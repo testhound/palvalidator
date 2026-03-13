@@ -277,7 +277,8 @@ public:
   // ========== Overloads accepting BacktesterStrategy (calls deterministicHashCode()) ==========
 
   // Full control: custom statFn + BacktesterStrategy object
-  template<class Decimal, class Resampler>
+  template<class Decimal, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<Decimal>& returns,
                unsigned B, double CL,
                std::function<Decimal(const std::vector<Decimal>&)> statFn,
@@ -285,34 +286,41 @@ public:
                const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
                uint64_t stageTag, uint64_t L, uint64_t fold,
 	       IntervalType interval_type = IntervalType::TWO_SIDED)
-    -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+    -> BCaBootStrap<Decimal, Resampler, Engine,
+                    mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
+                    Decimal, Executor>
   {
-    return makeBCaImpl(returns, B, CL, std::move(statFn), std::move(sampler),
-                       strategy.deterministicHashCode(), stageTag, L, fold,
-		       interval_type);
+    return makeBCaImpl<Decimal, Resampler, Executor>(
+        returns, B, CL, std::move(statFn), std::move(sampler),
+        strategy.deterministicHashCode(), stageTag, L, fold, interval_type);
   }
 
   // Convenience: default statistic (mean) + BacktesterStrategy object
-  template<class Decimal, class Resampler>
+  template<class Decimal, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<Decimal>& returns,
                unsigned B, double CL,
                Resampler sampler,
                const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
                uint64_t stageTag, uint64_t L, uint64_t fold,
 	       IntervalType interval_type = IntervalType::TWO_SIDED)
-    -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+    -> BCaBootStrap<Decimal, Resampler, Engine,
+                    mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
+                    Decimal, Executor>
   {
     using Stat = mkc_timeseries::StatUtils<Decimal>;
-    return makeBCaImpl(returns, B, CL,
-                       std::function<Decimal(const std::vector<Decimal>&)>(&Stat::computeMean),
-                       std::move(sampler), strategy.deterministicHashCode(), stageTag, L, fold,
-		       interval_type);
+    return makeBCaImpl<Decimal, Resampler, Executor>(
+        returns, B, CL,
+        std::function<Decimal(const std::vector<Decimal>&)>(&Stat::computeMean),
+        std::move(sampler), strategy.deterministicHashCode(), stageTag, L, fold,
+        interval_type);
   }
 
   // ========== Overloads accepting raw uint64_t strategy ID ==========
 
   // Full control: custom statFn + raw strategy ID
-  template<class Decimal, class Resampler>
+  template<class Decimal, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<Decimal>& returns,
                unsigned B, double CL,
                std::function<Decimal(const std::vector<Decimal>&)> statFn,
@@ -320,26 +328,33 @@ public:
                uint64_t strategyId,
                uint64_t stageTag, uint64_t L, uint64_t fold,
 	       IntervalType interval_type = IntervalType::TWO_SIDED)
-    -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+    -> BCaBootStrap<Decimal, Resampler, Engine,
+                    mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
+                    Decimal, Executor>
   {
-    return makeBCaImpl(returns, B, CL, std::move(statFn), std::move(sampler),
-                       strategyId, stageTag, L, fold, interval_type);
+    return makeBCaImpl<Decimal, Resampler, Executor>(
+        returns, B, CL, std::move(statFn), std::move(sampler),
+        strategyId, stageTag, L, fold, interval_type);
   }
 
   // Convenience: default statistic (mean) + raw strategy ID
-  template<class Decimal, class Resampler>
+  template<class Decimal, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<Decimal>& returns,
                unsigned B, double CL,
                Resampler sampler,
                uint64_t strategyId,
                uint64_t stageTag, uint64_t L, uint64_t fold,
 	       IntervalType interval_type = IntervalType::TWO_SIDED)
-    -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+    -> BCaBootStrap<Decimal, Resampler, Engine,
+                    mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
+                    Decimal, Executor>
   {
     using Stat = mkc_timeseries::StatUtils<Decimal>;
-    return makeBCaImpl(returns, B, CL,
-                       std::function<Decimal(const std::vector<Decimal>&)>(&Stat::computeMean),
-                       std::move(sampler), strategyId, stageTag, L, fold, interval_type);
+    return makeBCaImpl<Decimal, Resampler, Executor>(
+        returns, B, CL,
+        std::function<Decimal(const std::vector<Decimal>&)>(&Stat::computeMean),
+        std::move(sampler), strategyId, stageTag, L, fold, interval_type);
   }
 
   // ===========================================================================
@@ -362,7 +377,8 @@ public:
   // ===========================================================================
 
   // Full control: explicit statFn + BacktesterStrategy
-  template<class Decimal, class Resampler>
+  template<class Decimal, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<mkc_timeseries::Trade<Decimal>>& trades,
                unsigned B, double CL,
                std::function<Decimal(const std::vector<mkc_timeseries::Trade<Decimal>>&)> statFn,
@@ -372,15 +388,17 @@ public:
                IntervalType interval_type = IntervalType::TWO_SIDED)
     -> BCaBootStrap<Decimal, Resampler, Engine,
                     mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
-                    mkc_timeseries::Trade<Decimal>>
+                    mkc_timeseries::Trade<Decimal>, Executor>
   {
-    return makeBCaTradeImpl(trades, B, CL, std::move(statFn), std::move(sampler),
-                            static_cast<uint64_t>(strategy.deterministicHashCode()),
-                            stageTag, L, fold, interval_type);
+    return makeBCaTradeImpl<Decimal, Resampler, Executor>(
+        trades, B, CL, std::move(statFn), std::move(sampler),
+        static_cast<uint64_t>(strategy.deterministicHashCode()),
+        stageTag, L, fold, interval_type);
   }
 
   // Full control: explicit statFn + raw strategy ID
-  template<class Decimal, class Resampler>
+  template<class Decimal, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<mkc_timeseries::Trade<Decimal>>& trades,
                unsigned B, double CL,
                std::function<Decimal(const std::vector<mkc_timeseries::Trade<Decimal>>&)> statFn,
@@ -390,10 +408,11 @@ public:
                IntervalType interval_type = IntervalType::TWO_SIDED)
     -> BCaBootStrap<Decimal, Resampler, Engine,
                     mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
-                    mkc_timeseries::Trade<Decimal>>
+                    mkc_timeseries::Trade<Decimal>, Executor>
   {
-    return makeBCaTradeImpl(trades, B, CL, std::move(statFn), std::move(sampler),
-                            strategyId, stageTag, L, fold, interval_type);
+    return makeBCaTradeImpl<Decimal, Resampler, Executor>(
+        trades, B, CL, std::move(statFn), std::move(sampler),
+        strategyId, stageTag, L, fold, interval_type);
   }
 
   // ===========================================================================
@@ -779,8 +798,9 @@ public:
 private:
   uint64_t m_masterSeed;
 
-  // Common implementation used by all overloads
-  template<class Decimal, class Resampler>
+  // Common implementation used by all bar-level overloads
+  template<class Decimal, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
   auto makeBCaImpl(const std::vector<Decimal>& returns,
                    unsigned B, double CL,
                    std::function<Decimal(const std::vector<Decimal>&)> statFn,
@@ -789,7 +809,9 @@ private:
                    uint64_t stageTag, uint64_t L,
 		   uint64_t fold,
 		   IntervalType interval_type = IntervalType::TWO_SIDED)
-    -> BCaBootStrap<Decimal, Resampler, Engine, mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
+    -> BCaBootStrap<Decimal, Resampler, Engine,
+                    mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
+                    Decimal, Executor>
   {
     using Provider = mkc_timeseries::rng_utils::CRNEngineProvider<Engine>;
     using Key      = mkc_timeseries::rng_utils::CRNKey;
@@ -800,13 +822,8 @@ private:
         .with_tags({ stageTag, BootstrapMethods::BCA, L, fold })
     );
 
-    return BCaBootStrap<Decimal, Resampler, Engine, Provider>(returns,
-							      B,
-							      CL,
-							      std::move(statFn),
-							      std::move(sampler),
-							      prov,
-							      interval_type);
+    return BCaBootStrap<Decimal, Resampler, Engine, Provider, Decimal, Executor>(
+        returns, B, CL, std::move(statFn), std::move(sampler), prov, interval_type);
   }
 
   // ---------------------------------------------------------------------------
@@ -824,7 +841,8 @@ private:
   // strategy/metric each draw from independent streams without changing
   // the key structure.
   // ---------------------------------------------------------------------------
-  template<class Decimal, class Resampler>
+  template<class Decimal, class Resampler,
+           class Executor = concurrency::SingleThreadExecutor>
   auto makeBCaTradeImpl(
       const std::vector<mkc_timeseries::Trade<Decimal>>& trades,
       unsigned B, double CL,
@@ -836,7 +854,7 @@ private:
       IntervalType interval_type = IntervalType::TWO_SIDED)
     -> BCaBootStrap<Decimal, Resampler, Engine,
                     mkc_timeseries::rng_utils::CRNEngineProvider<Engine>,
-                    mkc_timeseries::Trade<Decimal>>
+                    mkc_timeseries::Trade<Decimal>, Executor>
   {
     using TradeT   = mkc_timeseries::Trade<Decimal>;
     using Provider = mkc_timeseries::rng_utils::CRNEngineProvider<Engine>;
@@ -848,7 +866,7 @@ private:
         .with_tags({ stageTag, BootstrapMethods::BCA, L, fold })
     );
 
-    return BCaBootStrap<Decimal, Resampler, Engine, Provider, TradeT>(
+    return BCaBootStrap<Decimal, Resampler, Engine, Provider, TradeT, Executor>(
         trades, B, CL, std::move(statFn), std::move(sampler), prov, interval_type);
   }
 

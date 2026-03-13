@@ -2019,7 +2019,9 @@ namespace palvalidator
       // Block length for meta bootstrap
       using ResamplerT = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
       ResamplerT metaSampler(blockLength);
-      using BlockBCA = BCaBootStrap<Num, ResamplerT>;
+      using ExecT = concurrency::ThreadPoolExecutor<>;
+
+      using BlockBCA = BCaBootStrap<Num, ResamplerT, randutils::mt19937_rng, void, Num, ExecT>;
 
       // Bootstrap portfolio series
       GeoMeanStat<Num> statGeo;
@@ -2069,10 +2071,11 @@ namespace palvalidator
 	  logTrades.emplace_back(std::move(logBars));
 	}
 
-      // Define Resampler and Statistics
+      // Define Resampler and Statistics,
       using TradeType = mkc_timeseries::Trade<Num>;
       using ResamplerT = mkc_timeseries::IIDResampler<TradeType>;
       using GeoStat = mkc_timeseries::GeoMeanFromLogBarsStat<Num>;
+      using ExecT = concurrency::ThreadPoolExecutor<>;
 
       // Custom lambda for arithmetic mean: flattens the resampled trades to compute mean
       auto statMean = [](const std::vector<TradeType>& trades) -> Num {
@@ -2086,7 +2089,7 @@ namespace palvalidator
       };
 
       // Instantiate Trade-Level BCaBootStrap (5th template arg is TradeType)
-      using TradeBCA = mkc_timeseries::BCaBootStrap<Num, ResamplerT, randutils::mt19937_rng, void, TradeType>;
+      using TradeBCA = mkc_timeseries::BCaBootStrap<Num, ResamplerT, randutils::mt19937_rng, void, TradeType, ExecT>;
       
       ResamplerT iidSampler;
       GeoStat statGeo;
@@ -2211,7 +2214,12 @@ namespace palvalidator
 	  GeoMeanStat<Num> statGeo;
 	  using ResamplerT = palvalidator::resampling::StationaryMaskValueResamplerAdapter<Num>;
 	  ResamplerT sampler(blockLength);
-	  using BlockBCA = BCaBootStrap<Num, ResamplerT>;
+	  using TradeT = Num;
+	  using ProviderT = void;
+	  using ExecT = concurrency::ThreadPoolExecutor<>;
+	  using RngT = randutils::mt19937_rng;
+	  using BlockBCA = BCaBootStrap<Num, ResamplerT, RngT, ProviderT, TradeT, ExecT>;
+
 
 	  BlockBCA bca(xs,
 		       numResamples,
@@ -2240,7 +2248,8 @@ namespace palvalidator
       using TradeType = mkc_timeseries::Trade<Num>;
       using ResamplerT = mkc_timeseries::IIDResampler<TradeType>;
       using GeoStat = mkc_timeseries::GeoMeanFromLogBarsStat<Num>;
-      using TradeBCA = mkc_timeseries::BCaBootStrap<Num, ResamplerT, randutils::mt19937_rng, void, TradeType>;
+      using ExecT = concurrency::ThreadPoolExecutor<>;
+      using TradeBCA = mkc_timeseries::BCaBootStrap<Num, ResamplerT, randutils::mt19937_rng, void, TradeType, ExecT>;
 
       std::vector<Num> out;
 
