@@ -3163,3 +3163,136 @@ TEST_CASE("normalizeAndScoreCandidates: Integration with normalization",
     REQUIRE(enriched1[0].getScore() != Catch::Approx(enriched2[0].getScore()));
   }
 }
+
+TEST_CASE("ImprovedTournamentSelector: Floating-point relative epsilon boundary",
+          "[AutoBootstrapSelector][Tournament][Epsilon]")
+{
+    // Retrieve the base scale from your configuration
+    const double eps_scale = AutoBootstrapConfiguration::kRelativeTieEpsilonScale;
+    
+    // Helper lambda mirroring the exact logic in ImprovedTournamentSelector
+    auto calc_expected_eps = [eps_scale](double a, double b) {
+        return eps_scale * (1.0 + std::max(std::fabs(a), std::fabs(b)));
+    };
+
+    SECTION("Scores within epsilon trigger tie-breaker (Worse score wins due to preference)")
+    {
+        double base_score = 1.0;
+        double eps = calc_expected_eps(base_score, base_score);
+        
+        // BCa score is numerically HIGHER (worse) than Normal, 
+        // but the difference is smaller than the calculated epsilon.
+        double bca_score = base_score + (eps * 0.5);
+        
+        std::vector<Candidate> candidates = {
+            makeTestCandidate(MethodId::Normal).withScore(base_score),
+            makeTestCandidate(MethodId::BCa).withScore(bca_score)
+        };
+        
+        // preferBcaOnTie = true (default)
+        ImprovedTournamentSelector selector(candidates, true);
+        selector.consider(0); // Normal becomes the best
+        selector.consider(1); // BCa is evaluated
+        
+        REQUIRE(selector.hasWinner() == true);
+        // BCa wins because it is treated as an exact tie, and BCa has higher preference
+        REQUIRE(selector.getWinnerIndex() == 1);
+    }
+
+    SECTION("Scores on the outer safe boundary of epsilon trigger tie-breaker")
+    {
+        double base_score = 1.0;
+        double eps = calc_expected_eps(base_score, base_score);
+        
+        // BCa score is effectively at the boundary, scaled by 0.99 to prevent 
+        // IEEE-754 round-off errors from artificially pushing the delta 
+        // strictly greater than the internally recalculated epsilon.
+        double bca_score = base_score + (eps * 0.99);
+        
+        std::vector<Candidate> candidates = {
+            makeTestCandidate(MethodId::Normal).withScore(base_score),
+            makeTestCandidate(MethodId::BCa).withScore(bca_score)
+        };
+        
+        ImprovedTournamentSelector selector(candidates, true);
+        selector.consider(0);
+        selector.consider(1);
+        
+        // The <= operator in the tie-breaker ensures BCa still wins at the boundary edge
+        REQUIRE(selector.getWinnerIndex() == 1); 
+    }
+
+    SECTION("Scores outside epsilon do NOT trigger tie-breaker (Strictly better score wins)")
+    {
+        double base_score = 1.0;
+        double eps = calc_expected_eps(base_score, base_score);
+        
+        // BCa score is worse than Normal by strictly MORE than epsilon
+        double bca_score = base_score + (eps * 1.5);
+        
+        std::vector<Candidate> candidates = {
+            makeTestCandidate(MethodId::Normal).withScore(base_score),
+            makeTestCandidate(MethodId::BCa).withScore(bca_score)
+        };
+        
+        ImprovedTournamentSelector selector(candidates, true);
+        selector.consider(0);
+        selector.consider(1);
+        
+        // Normal keeps the win because the tie logic is bypassed
+        REQUIRE(selector.getWinnerIndex() == 0); 
+    }
+
+    SECTION("Relative epsilon scales dynamically with score magnitude")
+    {
+        double base_score = 1000.0;
+        
+        // Epsilon at 1000.0 is roughly 1000x larger than epsilon at 1.0
+        double eps_large = calc_expected_eps(base_score, base_score);
+        
+        // Calculate a small epsilon and scale it up to verify magnitude scaling.
+        // This delta would easily fail the tie-break at 1.0, but should pass at 1000.0.
+        double eps_small = calc_expected_eps(1.0, 1.0);
+        double bca_score = base_score + (eps_small * 10.0); 
+        
+        // Verify the math assumption for the test
+        REQUIRE((bca_score - base_score) < eps_large);
+        REQUIRE((bca_score - base_score) > eps_small);
+        
+        std::vector<Candidate> candidates = {
+            makeTestCandidate(MethodId::Normal).withScore(base_score),
+            makeTestCandidate(MethodId::BCa).withScore(bca_score)
+        };
+        
+        ImprovedTournamentSelector selector(candidates, true);
+        selector.consider(0);
+        selector.consider(1);
+        
+        // BCa wins because at this magnitude, the large absolute delta is considered a relative tie
+        REQUIRE(selector.getWinnerIndex() == 1);
+    }
+    
+    SECTION("Tie-breaking respects the preferBcaOnTie configuration flag")
+    {
+        double base_score = 1.0;
+        double eps = calc_expected_eps(base_score, base_score);
+        
+        // Artificial tie condition
+        double bca_score = base_score + (eps * 0.5);
+        
+        std::vector<Candidate> candidates = {
+            makeTestCandidate(MethodId::Normal).withScore(base_score),
+            makeTestCandidate(MethodId::BCa).withScore(bca_score)
+        };
+        
+        // preferBcaOnTie = false
+        ImprovedTournamentSelector selector(candidates, false);
+        selector.consider(0); // Normal is considered first
+        selector.consider(1); // BCa is considered second
+        
+        // Normal keeps the win because method preference is ignored,
+        // and the "first-in" candidate holds the tie when the flag is false.
+        REQUIRE(selector.getWinnerIndex() == 0);
+    }
+}
+
