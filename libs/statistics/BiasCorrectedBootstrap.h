@@ -48,6 +48,7 @@
 #include <iostream>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <utility>
 #include <cstddef>
 #include <type_traits>
@@ -429,6 +430,125 @@ namespace mkc_timeseries
   };
 
   /**
+   * @class AccelerationReliability
+   * @brief Encapsulates the result of a jackknife influence analysis on the BCa
+   * acceleration parameter â.
+   *
+   * The BCa acceleration parameter is estimated from n jackknife leave-one-out
+   * values via:
+   *
+   *   â = Σd³ / (6 × (Σd²)^1.5)
+   *
+   * where d_i = jk_avg − jk_i. If a single observation contributes more than
+   * kDominanceThreshold of |Σd³|, the estimate is dominated by one data point
+   * and is unreliable regardless of â's magnitude. This class reports that
+   * condition so the tournament can gate BCa accordingly.
+   *
+   * There is no default constructor. Every instance is produced by
+   * JackknifeInfluence::compute() via the parameterised constructor, which
+   * guarantees that all members reflect a real computation.
+   */
+  class AccelerationReliability
+  {
+  public:
+    /// Fraction of |Σd³| above which a single observation is considered dominant.
+    static constexpr double kDominanceThreshold = 0.5;
+
+    /**
+     * @brief Constructs a fully-computed reliability result.
+     *
+     * @param isReliable           True if no single observation exceeds kDominanceThreshold.
+     * @param maxInfluenceFraction Largest single |d³| / |Σd³| across all LOO observations.
+     * @param maxInfluenceIndex    Index of the observation with maxInfluenceFraction.
+     * @param nDominant            Number of observations whose fraction exceeds kDominanceThreshold.
+     */
+    AccelerationReliability(bool        isReliable,
+                            double      maxInfluenceFraction,
+                            std::size_t maxInfluenceIndex,
+                            std::size_t nDominant)
+      : m_isReliable(isReliable),
+        m_maxInfluenceFraction(maxInfluenceFraction),
+        m_maxInfluenceIndex(maxInfluenceIndex),
+        m_nDominant(nDominant)
+    {}
+
+    /// True if no single jackknife observation dominates the acceleration estimate.
+    bool        isReliable()              const { return m_isReliable; }
+
+    /// Largest fraction of |Σd³| contributed by any single LOO observation.
+    double      getMaxInfluenceFraction() const { return m_maxInfluenceFraction; }
+
+    /// Index (into the original sample) of the most influential LOO observation.
+    std::size_t getMaxInfluenceIndex()    const { return m_maxInfluenceIndex; }
+
+    /// Number of observations whose influence fraction exceeds kDominanceThreshold.
+    std::size_t getNDominant()            const { return m_nDominant; }
+
+  private:
+    bool        m_isReliable;
+    double      m_maxInfluenceFraction;
+    std::size_t m_maxInfluenceIndex;
+    std::size_t m_nDominant;
+  };
+
+  /**
+   * @class JackknifeInfluence
+   * @brief Single-responsibility utility for computing jackknife influence
+   * diagnostics on BCa acceleration estimates.
+   *
+   * This class knows nothing about BCa, resampling, or statistics. Its sole
+   * responsibility is: given the signed cubic contributions from the jackknife
+   * loop (d_i² × d_i for each LOO observation), determine whether any single
+   * observation dominates the acceleration numerator Σd³.
+   *
+   * Called from BCaBootStrap::calculateBCaBounds() after the jackknife loop.
+   * The result is stored as std::optional<AccelerationReliability> and exposed
+   * via BCaBootStrap::getAccelerationReliability().
+   */
+  class JackknifeInfluence
+  {
+  public:
+    /**
+     * @brief Computes acceleration reliability from signed cubic LOO contributions.
+     *
+     * @param dCubed  Per-observation signed cubic values (d_i² × d_i) from the
+     *                jackknife loop. Their sum is the BCa numerator Σd³.
+     * @return        AccelerationReliability describing whether any single
+     *                observation dominates the acceleration estimate.
+     */
+    static AccelerationReliability compute(const std::vector<double>& dCubed)
+    {
+      double sumD = 0.0;
+      for (double v : dCubed) sumD += v;
+      const double absNumD = std::fabs(sumD);
+
+      // Numerator negligible: â ≈ 0, acceleration has no effect on the interval.
+      // BCa degenerates cleanly to plain BC — reliable by definition.
+      if (absNumD <= 1e-100)
+        return AccelerationReliability(true, 0.0, 0, 0);
+
+      double      maxFrac   = 0.0;
+      std::size_t maxIdx    = 0;
+      std::size_t nDominant = 0;
+
+      for (std::size_t i = 0; i < dCubed.size(); ++i)
+      {
+        const double frac = std::fabs(dCubed[i]) / absNumD;
+        if (frac > maxFrac)
+        {
+          maxFrac = frac;
+          maxIdx  = i;
+        }
+        if (frac > AccelerationReliability::kDominanceThreshold)
+          ++nDominant;
+      }
+
+      const bool reliable = (maxFrac <= AccelerationReliability::kDominanceThreshold);
+      return AccelerationReliability(reliable, maxFrac, maxIdx, nDominant);
+    }
+  };
+
+  /**
    * @class BCaBootStrap
    * @brief Bias-Corrected and Accelerated (BCa) bootstrap confidence intervals.
    *
@@ -663,6 +783,25 @@ namespace mkc_timeseries
       return m_accel;
     }
 
+    /**
+     * @brief Returns the jackknife influence analysis for the acceleration estimate.
+     *
+     * Indicates whether â was dominated by a single leave-one-out observation.
+     * If AccelerationReliability::isReliable() returns false, the BCa interval
+     * should be treated with caution regardless of â's magnitude — the estimate
+     * is being driven by one data point rather than reflecting a distributional
+     * property.
+     *
+     * The tournament (AutoBootstrapSelector) uses this to hard-gate BCa when
+     * acceleration is unreliable, rather than relying solely on the magnitude
+     * of â or n.
+     */
+    AccelerationReliability getAccelerationReliability() const
+    {
+      ensureCalculated();
+      return m_accelReliability.value(); // safe: ensureCalculated() guarantees population
+    }
+
     double getConfidenceLevel() const
     {
       return m_confidence_level;
@@ -784,6 +923,7 @@ namespace mkc_timeseries
     // BCa diagnostics
     double               m_z0;
     Decimal              m_accel;
+    std::optional<AccelerationReliability> m_accelReliability; // populated by calculateBCaBounds()
     std::vector<Decimal> m_bootstrapStats;   // bootstrap θ*'s (unsorted)
     IntervalType         m_interval_type;
 
@@ -1041,6 +1181,9 @@ namespace mkc_timeseries
 	  // semantic distinction matters for diagnostics and subclass overrides.
 	  m_z0             = 0.0;
 	  m_accel          = DecimalConstants<Decimal>::DecimalZero;
+	  // Degenerate bootstrap: â = 0 by construction. Acceleration has no
+	  // effect on the interval, so reliability is trivially true.
+	  m_accelReliability = AccelerationReliability(true, 0.0, 0, 0);
 	  m_bootstrapStats = boot_stats;
 	  m_is_calculated  = true;
 	  return;
@@ -1083,12 +1226,19 @@ namespace mkc_timeseries
 
       double num_d = 0.0;  // Σ d³
       double den_d = 0.0;  // Σ d²
-      for (const auto& th : jk_stats)
+
+      // Per-observation signed cubic contributions for influence analysis.
+      // Collected alongside the existing d² / d³ accumulation at zero extra
+      // passes through jk_stats. Passed to JackknifeInfluence::compute() below.
+      std::vector<double> dCubed(n_jk);
+
+      for (std::size_t i = 0; i < n_jk; ++i)
 	{
-	  const double d  = num::to_double(jk_avg - th);
+	  const double d  = num::to_double(jk_avg - jk_stats[i]);
 	  const double d2 = d * d;
-	  den_d += d2;
-	  num_d += d2 * d;
+	  den_d      += d2;
+	  num_d      += d2 * d;
+	  dCubed[i]   = d2 * d;  // signed cubic contribution of observation i
 	}
 
       Decimal a = DecimalConstants<Decimal>::DecimalZero;
@@ -1099,6 +1249,13 @@ namespace mkc_timeseries
 	    a = Decimal(num_d / (6.0 * den15));
 	}
       m_accel = a;
+
+      // Influence analysis: did any single LOO observation dominate Σd³?
+      // JackknifeInfluence has sole responsibility for this computation.
+      // The result is stored as optional so the accessor can assert it is
+      // populated before returning, catching any future code path that
+      // bypasses this line.
+      m_accelReliability = JackknifeInfluence::compute(dCubed);
 
       // (5) Adjusted percentiles → bounds
       //
