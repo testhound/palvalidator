@@ -668,6 +668,13 @@ namespace palvalidator
       bool mPerformTradeLevelBootstrapping;
       Num mRequiredReturn;                       ///< Last calculated required return
       std::optional<Num> mEffectiveSlippageFloor;
+
+      // Fixed algorithmic budgets for drawdown BCa — intentionally decoupled from
+      // mNumResamples because drawdown quantile CIs converge much faster than
+      // return mean/geo-mean CIs. Using mNumResamples (25000) here creates a
+      // cost of numResamples × nReps = O(25M–125M) inner drawdown computations.
+      static constexpr unsigned int kDrawdownNumResamples = 1000;  ///< Outer BCa bootstrap replicates
+      static constexpr int          kDrawdownNReps        = 1000; ///< Inner Monte-Carlo reps per resample
     };
 
   } // namespace filtering
