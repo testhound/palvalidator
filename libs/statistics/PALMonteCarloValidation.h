@@ -408,7 +408,7 @@ namespace mkc_timeseries
           bt->addStrategy(strategy);
 
           // Create MCPT instance and conditionally attach observer for statistics collection
-          McptType mcpt(bt, this->mNumPermutations);
+          McptType mcpt(bt, this->mNumPermutations, pValueSignificanceLevel);
           
           // Attach statistics collector to MCPT for observer pattern (only if supported)
           if constexpr (supports_observer_pattern) {

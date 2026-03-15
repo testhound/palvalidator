@@ -103,9 +103,28 @@ struct StubComputationPolicy : public PermutationTestSubject<D> {
     static ReturnType runPermutationTest(
         const std::shared_ptr<BackTester<D>>&,
         uint32_t numPermutations,
-        const D& baselineTestStat)
+        const D& baselineTestStat,
+	const D& /*targetAlpha*/ = DecimalConstants<D>::SignificantPValue)
     {
         return std::make_pair(baselineTestStat, numPermutations);
+    }
+};
+
+// A computation policy that captures the targetAlpha it receives and returns
+// it as its ReturnType. This lets us verify that MonteCarloPermuteMarketChanges
+// correctly forwards mPValueSignificalLevel to the computation policy rather
+// than silently discarding it.
+template <class D>
+struct AlphaCapturingPolicy : public PermutationTestSubject<D> {
+    using ReturnType = D;  // returns the alpha it received
+
+    ReturnType runPermutationTest(
+        const std::shared_ptr<BackTester<D>>&,
+        uint32_t   /*numPermutations*/,
+        const D&   /*baselineTestStat*/,
+        const D&   targetAlpha = DecimalConstants<D>::SignificantPValue)
+    {
+        return targetAlpha;  // echo the alpha back as the result
     }
 };
 
@@ -168,4 +187,78 @@ TEST_CASE("runPermutationTest returns expected values from stub policies",
     auto result = mc.runPermutationTest();
     REQUIRE(result.first  == DecimalConstants<DecimalType>::DecimalOne);
     REQUIRE(result.second == perms);
+}
+
+// ============================================================================
+// targetAlpha parameter tests
+// ============================================================================
+
+TEST_CASE("MonteCarloPermuteMarketChanges: default alpha is SignificantPValue",
+          "[unit][MonteCarloPermuteMarketChanges][alpha]")
+{
+    // AlphaCapturingPolicy echoes the targetAlpha it receives as its ReturnType.
+    // Constructing with two arguments (no explicit alpha) must cause the default
+    // DecimalConstants::SignificantPValue (0.05) to be forwarded.
+    using TestMC = MonteCarloPermuteMarketChanges<
+        DecimalType,
+        StubBackTestResultPolicy,
+        AlphaCapturingPolicy<DecimalType>
+    >;
+
+    auto bt = std::make_shared<DummyBackTester>();
+    bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+
+    TestMC mc(bt, 10);  // no explicit alpha
+    DecimalType receivedAlpha = mc.runPermutationTest();
+
+    REQUIRE(receivedAlpha == DecimalConstants<DecimalType>::SignificantPValue);
+}
+
+TEST_CASE("MonteCarloPermuteMarketChanges: custom alpha is forwarded to computation policy",
+          "[unit][MonteCarloPermuteMarketChanges][alpha]")
+{
+    // Passing an explicit alpha to the constructor must cause that exact value
+    // to reach the computation policy's runPermutationTest.
+    using TestMC = MonteCarloPermuteMarketChanges<
+        DecimalType,
+        StubBackTestResultPolicy,
+        AlphaCapturingPolicy<DecimalType>
+    >;
+
+    auto bt = std::make_shared<DummyBackTester>();
+    bt->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+
+    const DecimalType customAlpha("0.01");
+    TestMC mc(bt, 10, customAlpha);
+    DecimalType receivedAlpha = mc.runPermutationTest();
+
+    REQUIRE(receivedAlpha == customAlpha);
+}
+
+TEST_CASE("MonteCarloPermuteMarketChanges: different custom alphas produce distinct forwarded values",
+          "[unit][MonteCarloPermuteMarketChanges][alpha]")
+{
+    // Verify that two instances constructed with different alphas each forward
+    // their own value — i.e. alpha is stored per-instance, not shared.
+    using TestMC = MonteCarloPermuteMarketChanges<
+        DecimalType,
+        StubBackTestResultPolicy,
+        AlphaCapturingPolicy<DecimalType>
+    >;
+
+    auto bt1 = std::make_shared<DummyBackTester>();
+    bt1->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+
+    auto bt2 = std::make_shared<DummyBackTester>();
+    bt2->addStrategy(std::make_shared<DummyPalStrategy>(createDummyPortfolio()));
+
+    const DecimalType strictAlpha("0.01");
+    const DecimalType looseAlpha ("0.10");
+
+    TestMC mcStrict(bt1, 10, strictAlpha);
+    TestMC mcLoose (bt2, 10, looseAlpha);
+
+    REQUIRE(mcStrict.runPermutationTest() == strictAlpha);
+    REQUIRE(mcLoose.runPermutationTest()  == looseAlpha);
+    REQUIRE(mcStrict.runPermutationTest() != mcLoose.runPermutationTest());
 }
