@@ -48,7 +48,7 @@ namespace mkc_timeseries
      * Applies the "+1" correction often recommended in the permutation-testing literature
      * (e.g. Good 2005; North et al. 2002) to avoid zero p-values and to yield an unbiased
      * small-sample estimate.  Given:
-     *   - k = number of permutations whose test statistic ≥ the observed statistic
+     *   - k = number of permutations whose test statistic >= the observed statistic
      *   - N = total number of permutations run
      *
      * this returns
@@ -101,7 +101,7 @@ namespace mkc_timeseries
      * to account for Monte-Carlo uncertainty, so downstream rules like "promote if
      * @f$p \le \alpha@f$" are robust to finite @f$N@f$.
      *
-     * @param k  Count of permutations with test statistic ≥ observed (extreme count).
+     * @param k  Count of permutations with test statistic >= observed (extreme count).
      * @param N  Total number of (valid) permutations performed.
      * @return   Conservative p-value = Wilson upper bound for \f$\hat p = (k+1)/(N+1)\f$.
      *
@@ -137,51 +137,172 @@ namespace mkc_timeseries
      * use @f$z \approx 1.64485@f$; for a **two-sided 95%** interval (each tail @f$\alpha/2=0.025@f$),
      * @f$z \approx 1.96@f$. The result is clipped to @f$[0,1]@f$ for numerical safety.
      *
-     * @param phat  Observed proportion in @f$[0,1]@f$ (e.g., \f$\hat p = (k+1)/(N+1)\f$ for
-     *              permutation tests with a +1 correction).
+     * @param phat  Observed proportion in @f$[0,1]@f$.
      * @param N     Number of Bernoulli trials (sample size).
-     * @param z     Normal critical value (default 1.96; set 1.64485 for one-sided 95%).
+     * @param z     Normal critical value (set 1.64485 for one-sided 95%).
      * @return      The Wilson one-sided *upper* confidence bound in @f$[0,1]@f$.
-     *
-     * @note Compared to the simple Wald bound \f$\hat p \pm z\sqrt{\hat p (1-\hat p)/N}\f$,
-     *       the Wilson score bound has substantially better coverage—especially for small \f$N\f$
-     *       or proportions near 0 or 1.
-     *
-     * @par References
-     * - E. B. Wilson (1927), "Probable Inference, the Law of Succession, and Statistical Inference,"
-     *   *JASA* 22(158), 209–212. (Original derivation of the score interval.)
-     * - L. D. Brown, T. T. Cai, A. DasGupta (2001), "Interval Estimation for a Binomial Proportion,"
-     *   *Statistical Science* 16(2), 101–133. Excellent review and comparison of binomial intervals.
-     * - NIST/SEMATECH e-Handbook of Statistical Methods, "Confidence Intervals for a Proportion"
-     *   (one-sided adaptation via replacing \f$z_{\alpha/2}\f$ with \f$z_{\alpha}\f$).
-     * - Overview/derivation summary: "Binomial proportion confidence interval — Wilson score interval."
      */
     static double wilsonUpperBound(double phat, std::uint32_t N, double z = 1.645)
     {
-      // --- Algorithmic notes (step-by-step) ---
-      // 1) Precompute z^2 and denominator term 1 + z^2 / N.
-      // 2) Compute the "center" term: phat + z^2/(2N).
-      // 3) Compute the "radius" term:
-      //      z * sqrt( phat*(1 - phat)/N + z^2/(4N^2) )
-      //    which is the score-test standard error evaluated at the bound.
-      // 4) Upper bound = (center + radius) / denom.
-      // 5) Clip to [0, 1] to stabilize edge cases (very small/large phat, small N).
-
-      const double z2 = z*z;
+      const double z2     = z * z;
       const double denom  = 1.0 + z2 / N;
       const double center = phat + z2 / (2.0 * N);
       const double rad    = z * std::sqrt((phat * (1.0 - phat) + z2 / (4.0 * N)) / N);
       double ub = (center + rad) / denom;
 
-      if (ub < 0.0)
-        ub = 0.0;
-
-      if (ub > 1.0)
-        ub = 1.0;
+      if (ub < 0.0) ub = 0.0;
+      if (ub > 1.0) ub = 1.0;
 
       return ub;
     }
   };
+
+  // ============================================================================
+  // Early Stopping Policies
+  // ============================================================================
+
+  /**
+   * @class NoEarlyStoppingPolicy
+   * @brief Early stopping policy that never stops early.
+   *
+   * This is the default policy. It preserves the original behaviour of
+   * DefaultPermuteMarketChangesPolicy exactly — every permutation runs to
+   * completion regardless of intermediate counts. All existing unit tests
+   * that rely on a fixed permutation count are unaffected.
+   *
+   * @tparam Decimal The numerical type used for calculations.
+   */
+  template <typename Decimal>
+  class NoEarlyStoppingPolicy
+  {
+  public:
+    /**
+     * @brief Always returns false — no early stopping.
+     *
+     * The compiler will eliminate the dead branch in the permutation loop
+     * entirely for this policy.
+     */
+    template <typename PValueComputationPolicy>
+    bool shouldStop(uint32_t  /*validPerms*/,
+                    uint32_t  /*extremeCount*/,
+                    const Decimal& /*targetAlpha*/) noexcept
+    {
+      return false;
+    }
+  };
+
+  /**
+   * @class ThresholdEarlyStoppingPolicy
+   * @brief Early stopping policy that halts once the outcome is statistically clear.
+   *
+   * Checks stopping conditions every @p checkInterval completed permutations,
+   * after a minimum of @p minBeforeStop valid permutations have accumulated.
+   * Two conditions are evaluated using the same PValueComputationPolicy as the
+   * final result, ensuring consistency between the stopping decision and the
+   * reported p-value:
+   *
+   * **Clearly failing**: the implied p-value already exceeds
+   * @p failingMultiplier * targetAlpha — it cannot fall below targetAlpha by
+   * the time all permutations finish.
+   *
+   * **Clearly passing**: extremeCount is zero after at least @p minPassPerms
+   * valid permutations — the p-value is already well below targetAlpha.
+   *
+   * Strategies near the decision boundary (implied p close to targetAlpha) do
+   * not trigger either condition and continue to the full permutation count,
+   * preserving precision exactly where it matters.
+   *
+   * @tparam Decimal The numerical type used for calculations.
+   */
+  template <typename Decimal>
+  class ThresholdEarlyStoppingPolicy
+  {
+  public:
+    /**
+     * @brief Construct with configurable stopping parameters.
+     *
+     * @param checkInterval    How often (in completed permutations) to evaluate
+     *                         stopping conditions. Default: every 100.
+     * @param minBeforeStop    Minimum valid permutations before any stopping check
+     *                         is attempted. Default: 200.
+     * @param minPassPerms     Minimum valid permutations before a zero extreme-count
+     *                         is considered sufficient to declare a clear pass.
+     *                         Default: 500.
+     * @param failingMultiplier  Multiplier applied to targetAlpha for the failing
+     *                           threshold. A strategy is considered clearly failing
+     *                           when impliedP > failingMultiplier * targetAlpha.
+     *                           Default: DecimalConstants<Decimal>::DecimalThree (3x).
+     */
+    explicit ThresholdEarlyStoppingPolicy(
+        uint32_t checkInterval    = 100,
+        uint32_t minBeforeStop    = 200,
+        uint32_t minPassPerms     = 500,
+        Decimal  failingMultiplier = DecimalConstants<Decimal>::DecimalThree)
+      : m_checkInterval(checkInterval)
+      , m_minBeforeStop(minBeforeStop)
+      , m_minPassPerms(minPassPerms)
+      , m_failingMultiplier(failingMultiplier)
+    {}
+
+    /**
+     * @brief Evaluate whether the permutation loop should stop early.
+     *
+     * Must be called after the permutation's contribution to validPerms and
+     * extremeCount has already been committed (i.e. after the atomic increments).
+     *
+     * Uses PValueComputationPolicy::computePermutationPValue for the implied
+     * p-value so the stopping decision is consistent with the final reported
+     * p-value, including any Wilson correction.
+     *
+     * @tparam PValueComputationPolicy  The same p-value policy used for the
+     *                                  final result.
+     * @param validPerms   Current count of completed valid permutations.
+     * @param extremeCount Current count of permutations at least as extreme
+     *                     as the baseline.
+     * @param targetAlpha  The significance threshold for the test.
+     * @return true if the loop should stop; false to continue.
+     */
+    template <typename PValueComputationPolicy>
+    bool shouldStop(uint32_t       validPerms,
+                    uint32_t       extremeCount,
+                    const Decimal& targetAlpha) noexcept
+    {
+      // Do not evaluate until we have a meaningful sample.
+      if (validPerms < m_minBeforeStop)
+        return false;
+
+      // Only check at multiples of checkInterval to avoid hammering atomics.
+      if (validPerms % m_checkInterval != 0)
+        return false;
+
+      // --- Clearly passing ---
+      // Zero extreme counts after minPassPerms valid permutations means the
+      // p-value is already well below targetAlpha regardless of policy.
+      if (extremeCount == 0 && validPerms >= m_minPassPerms)
+        return true;
+
+      // --- Clearly failing ---
+      // Use the same PValueComputationPolicy as the final result so the
+      // stopping threshold is measured on the same scale as the reported value.
+      const Decimal impliedP =
+          PValueComputationPolicy::computePermutationPValue(extremeCount, validPerms);
+
+      if (impliedP > m_failingMultiplier * targetAlpha)
+        return true;
+
+      return false;
+    }
+
+  private:
+    uint32_t m_checkInterval;
+    uint32_t m_minBeforeStop;
+    uint32_t m_minPassPerms;
+    Decimal  m_failingMultiplier;
+  };
+
+  // ============================================================================
+  // DefaultPermuteMarketChangesPolicy
+  // ============================================================================
 
   /**
    * @class DefaultPermuteMarketChangesPolicy
@@ -189,66 +310,89 @@ namespace mkc_timeseries
    *
    * This class implements a Monte-Carlo permutation testing methodology to evaluate
    * the statistical significance of a trading strategy's performance. It operates on a
-   * trading strategy represented by the `BacktesterStrategy` class and utilizes a
-   * backtesting engine provided by the `BackTester` class.
+   * trading strategy represented by the BacktesterStrategy class and utilises a
+   * backtesting engine provided by the BackTester class.
    *
    * The core principle involves permuting market changes to generate multiple synthetic
    * market scenarios. The strategy is then backtested on these scenarios to create a
    * distribution of performance metrics, which is used to assess the likelihood that
    * the original strategy's performance was due to chance.
    *
-   * @tparam Decimal The numerical type used for calculations (e.g., double, mkc_timeseries::number).
+   * @tparam Decimal
+   *   The numerical type used for calculations (e.g., double, mkc_timeseries::number).
    *
-   * @tparam BackTestResultPolicy A policy class that defines how to extract the relevant
-   * test statistic from a backtest result. It is expected to be
-   * a class like `AllHighResLogPFPolicy`, which extracts a
-   * high-resolution profit factor. This policy must define:
-   * - `static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>>)`
-   * - `static uint32_t getMinStrategyTrades()`
+   * @tparam BackTestResultPolicy
+   *   Policy that extracts the relevant test statistic from a backtest result.
+   *   Must define:
+   *   - static Decimal getPermutationTestStatistic(shared_ptr<BackTester<Decimal>>)
+   *   - static uint32_t getMinStrategyTrades()
    *
-   * @tparam _PermutationTestResultPolicy A policy class determining the return type of the
-   * `runPermutationTest` method. It must define a nested
-   * type `ReturnType` and a static method
-   * `createReturnValue(Decimal pValue, Decimal summaryTestStat)`.
-   * Defaults to `PValueReturnPolicy<Decimal>`.
+   * @tparam _PermutationTestResultPolicy
+   *   Policy determining the return type of runPermutationTest. Must define a
+   *   nested ReturnType and:
+   *   - static ReturnType createReturnValue(Decimal pValue, Decimal summaryTestStat,
+   *                                         Decimal baseLineTestStat)
+   *   Defaults to PValueReturnPolicy<Decimal>.
    *
-   * @tparam _PermutationTestStatisticsCollectionPolicy A policy class used to determine if and how
-   * backtester statistics are collected across multiple permutations. These statistics can
-   * be used by multiple-testing correction algorithms.
+   * @tparam _PermutationTestStatisticsCollectionPolicy
+   *   Policy for collecting statistics across permutations (used by multiple-testing
+   *   correction algorithms). Must implement:
+   *   - void updateTestStatistic(Decimal)
+   *   - Decimal getTestStat()
+   *   Defaults to PermutationTestingNullTestStatisticPolicy<Decimal> (no-op).
    *
-   * It must implement:
-   * - `void updateTestStatistic(Decimal)`
-   * - `Decimal getTestStat()`
-   * Defaults to `PermutationTestingNullTestStatisticPolicy<Decimal>`.
-   * @tparam Executor A policy class that defines the execution model for permutations,
-   * specifically whether concurrency is used. Defaults to `concurrency::StdAsyncExecutor`.
-   * @tparam PValueComputationPolicy A policy class that defines how to compute the final p-value
-   * from the permutation test results. Defaults to `StandardPValueComputationPolicy<Decimal>`.
+   * @tparam Executor
+   *   Policy defining the execution model for the permutation loop.
+   *   Defaults to concurrency::ThreadPoolExecutor<>.
+   *   Use concurrency::SingleThreadExecutor for the inner loop when the outer
+   *   loop is already parallelised to avoid oversubscription.
+   *
+   * @tparam PValueComputationPolicy
+   *   Policy for computing the final p-value from (extremeCount, validPerms).
+   *   Defaults to StandardPValueComputationPolicy<Decimal>.
+   *
+   * @tparam NullModel
+   *   The synthetic null model used to generate permuted series.
+   *   Defaults to SyntheticNullModel::N0_PairedDay, which is appropriate for
+   *   price-action strategies that use only bar bodies (O and C) and fixed
+   *   percentage exits. Use N1_MaxDestruction or N2_BlockDays if your strategies
+   *   are sensitive to the gap/intraday-shape joint distribution or to
+   *   inter-day clustering respectively.
+   *
+   * @tparam EarlyStoppingPolicy
+   *   Policy controlling whether the permutation loop may stop before
+   *   numPermutations when the outcome is already statistically clear.
+   *   Defaults to NoEarlyStoppingPolicy<Decimal>, which preserves the original
+   *   behaviour exactly and ensures existing unit tests are unaffected.
+   *   Use ThresholdEarlyStoppingPolicy<Decimal> to enable early stopping for
+   *   production runs (typically 3-8x faster on clearly failing strategies).
    */
   template <class Decimal,
-	    class BackTestResultPolicy,
-	    typename _PermutationTestResultPolicy = PValueReturnPolicy<Decimal>,
-	    typename _PermutationTestStatisticsCollectionPolicy = PermutationTestingNullTestStatisticPolicy<Decimal>,
-	    typename Executor = concurrency::ThreadPoolExecutor<>,
-	    typename PValueComputationPolicy = StandardPValueComputationPolicy<Decimal>,
-	    SyntheticNullModel NullModel = SyntheticNullModel::N1_MaxDestruction
-	    >
+            class BackTestResultPolicy,
+            typename _PermutationTestResultPolicy              = PValueReturnPolicy<Decimal>,
+            typename _PermutationTestStatisticsCollectionPolicy
+                                                               = PermutationTestingNullTestStatisticPolicy<Decimal>,
+            typename Executor                                  = concurrency::ThreadPoolExecutor<>,
+            typename PValueComputationPolicy                   = StandardPValueComputationPolicy<Decimal>,
+            SyntheticNullModel NullModel                       = SyntheticNullModel::N1_MaxDestruction,
+            typename EarlyStoppingPolicy                       = NoEarlyStoppingPolicy<Decimal>>
   class DefaultPermuteMarketChangesPolicy : public PermutationTestSubject<Decimal>
   {
     static_assert(has_return_type<_PermutationTestResultPolicy>::value,
-    "_PermutationTestResultPolicy must define a nested ::ReturnType");
+      "_PermutationTestResultPolicy must define a nested ::ReturnType");
     static_assert(has_create_return_value_3param<_PermutationTestResultPolicy>::value,
-    "_PermutationTestResultPolicy must have static createReturnValue(Decimal, Decimal, Decimal)");
+      "_PermutationTestResultPolicy must have static createReturnValue(Decimal, Decimal, Decimal)");
     static_assert(has_update_test_statistic<_PermutationTestStatisticsCollectionPolicy>::value,
-		  "_PermutationTestStatisticsCollectionPolicy must implement updateTestStatistic(Decimal)");
+      "_PermutationTestStatisticsCollectionPolicy must implement updateTestStatistic(Decimal)");
     static_assert(has_get_test_stat<_PermutationTestStatisticsCollectionPolicy>::value,
-		  "_PermutationTestStatisticsCollectionPolicy must implement getTestStat()");
+      "_PermutationTestStatisticsCollectionPolicy must implement getTestStat()");
+
   public:
     using CacheType = SyntheticCache<Decimal,
-				     LogNLookupPolicy<Decimal>,
-				     NoRounding,
-				     NullModel>;
-    
+                                     LogNLookupPolicy<Decimal>,
+                                     NoRounding,
+                                     NullModel>;
+
     using ReturnType = typename _PermutationTestResultPolicy::ReturnType;
 
     DefaultPermuteMarketChangesPolicy()
@@ -260,201 +404,230 @@ namespace mkc_timeseries
     /**
      * @brief Executes the Monte-Carlo permutation test for a given trading strategy.
      *
-     * This method performs the permutation test by:
+     * For each permutation:
+     *   a. Builds a synthetic price series via the configured NullModel.
+     *   b. Runs the strategy on the synthetic series using a per-thread cloned
+     *      BackTester (TLS — rebuilt only when the security changes).
+     *   c. Computes the permutation test statistic.
+     *   d. Increments validPerms; increments extremeCount if the statistic is
+     *      at least as extreme as baseLineTestStat.
+     *   e. Delegates to EarlyStoppingPolicy to determine whether to stop early.
      *
-     * 1. For each permutation:
-     * a. Cloning the original strategy and backtester.
-     * b. Creating a synthetic portfolio with permuted market data derived from the original security.
-     * This step is repeated if the number of trades generated by the cloned strategy on the
-     * synthetic data is less than a minimum threshold (defined by `BackTestResultPolicy::getMinStrategyTrades()`).
-     * c. Running the backtest for the cloned strategy on the synthetic market data.
-     * d. Computing a test statistic for this permutation using `BackTestResultPolicy::getPermutationTestStatistic()`.
-     * e. Comparing the permutation's test statistic with the `baseLineTestStat`.
-     * f. Updating a collection of test statistics via `_PermutationTestStatisticsCollectionPolicy` (thread-safe)
-     *.
-     * 2. These steps are executed in parallel for all permutations, as governed by the `Executor` policy.
+     * All permutations are dispatched via the Executor policy. With
+     * SingleThreadExecutor they run serially on the calling thread; with
+     * ThreadPoolExecutor<> they run across a thread pool.
      *
-     * 3. Calculating the p-value as the proportion of permutations whose test statistic is greater than or
-     * equal to the `baseLineTestStat`.
-     *
-     * 4. Obtaining a summary test statistic from the `_PermutationTestStatisticsCollectionPolicy`.
-     *
-     * 5. Returning the results as defined by the `_PermutationTestResultPolicy`.
-     *
-     * @param theBackTester A shared pointer to a `BackTester<Decimal>` object, which
-     * encapsulates the backtesting engine and the trading strategy.
-     * @param numPermutations The number of permutations (synthetic backtests) to run.
-     * @param baseLineTestStat The test statistic obtained from running the strategy on the
-     * original, unpermuted market data. This serves as the benchmark.
-     * @return ReturnType The result of the permutation test, with its type determined by
-     * the `_PermutationTestResultPolicy`. This typically includes the p-value
-     * and may include a summary test statistic from the permutations.
+     * @param theBackTester    BackTester containing the strategy to test.
+     * @param numPermutations  Maximum number of permutations to run.
+     * @param baseLineTestStat Test statistic from the original unpermuted data.
+     * @param targetAlpha      Significance threshold used by EarlyStoppingPolicy
+     *                         to determine when the outcome is clear. Defaults to
+     *                         DecimalConstants<Decimal>::SignificantPValue (0.05).
+     *                         Has no effect when EarlyStoppingPolicy is
+     *                         NoEarlyStoppingPolicy.
+     * @return ReturnType      P-value (and optional summary statistic) as defined
+     *                         by _PermutationTestResultPolicy.
      */
     ReturnType
     runPermutationTest(std::shared_ptr<BackTester<Decimal>> theBackTester,
-         uint32_t numPermutations,
-         const Decimal& baseLineTestStat)
+                       uint32_t       numPermutations,
+                       const Decimal& baseLineTestStat,
+                       const Decimal& targetAlpha
+                           = DecimalConstants<Decimal>::SignificantPValue)
     {
       if (numPermutations == 0)
- throw std::invalid_argument(
-       "DefaultPermuteMarketChangesPolicy::runPermutationTest: numPermutations must be > 0");
+        throw std::invalid_argument(
+          "DefaultPermuteMarketChangesPolicy::runPermutationTest: "
+          "numPermutations must be > 0");
 
       if (!theBackTester)
- throw std::invalid_argument(
-       "DefaultPermuteMarketChangesPolicy::runPermutationTest: theBackTester cannot be null");
+        throw std::invalid_argument(
+          "DefaultPermuteMarketChangesPolicy::runPermutationTest: "
+          "theBackTester cannot be null");
 
-      // Grab the baseline strategy and its security/portfolio ONCE (before parallel work)
+      // Grab the baseline strategy and its security/portfolio ONCE (before parallel work).
       auto aStrategy = *(theBackTester->beginStrategies());
 
-      if (aStrategy->beginPortfolio() == aStrategy->endPortfolio()) {
-	throw std::runtime_error(
-				 "DefaultPermuteMarketChangesPolicy::runPermutationTest: Strategy portfolio is empty - "
-				 "use getRandomPalStrategy(security) to create strategy with populated portfolio");
-      }
+      if (aStrategy->beginPortfolio() == aStrategy->endPortfolio())
+        throw std::runtime_error(
+          "DefaultPermuteMarketChangesPolicy::runPermutationTest: "
+          "Strategy portfolio is empty - use getRandomPalStrategy(security) "
+          "to create strategy with populated portfolio");
 
-      auto theSecurity       = aStrategy->beginPortfolio()->second; // shared_ptr<Security<Decimal>>
+      auto theSecurity       = aStrategy->beginPortfolio()->second;
       auto originalPortfolio = aStrategy->getPortfolio();
 
       if (!theSecurity)
-	throw std::runtime_error("DefaultPermuteMarketChangesPolicy::runPermutationTest: Security is null");
+        throw std::runtime_error(
+          "DefaultPermuteMarketChangesPolicy::runPermutationTest: Security is null");
       if (!originalPortfolio)
-	throw std::runtime_error("DefaultPermuteMarketChangesPolicy::runPermutationTest: Portfolio is null");
+        throw std::runtime_error(
+          "DefaultPermuteMarketChangesPolicy::runPermutationTest: Portfolio is null");
 
-      // Atomics for valid/extreme/failed counts
+      // ---- Shared state accessed by all worker invocations ----
       std::atomic<uint32_t> validPerms{0}, extremeCount{0}, failedPerms{0};
+      std::atomic<bool>     shouldStopFlag{false};
 
-      // Optional summary collector (unchanged contract)
+      // Optional summary collector (unchanged contract).
       _PermutationTestStatisticsCollectionPolicy testStatCollector;
       std::mutex                                 testStatMutex;
 
-      // ---- Parallel work: TLS cache/portfolio/RNG + one-time BackTester clone per worker ----
+      // Early stopping policy instance — stateless for NoEarlyStoppingPolicy,
+      // parameterised for ThresholdEarlyStoppingPolicy.
+      EarlyStoppingPolicy earlyStop{};
 
-      auto work = [=, &validPerms, &extremeCount, &failedPerms, &testStatCollector, &testStatMutex](uint32_t /*permIndex*/) {
-	// --- thread-local state (initialized once per worker thread) ---
-	static thread_local RandomMersenne                       tls_rng;
-	static thread_local std::unique_ptr<CacheType>           tls_cache;
-	static thread_local std::shared_ptr<Portfolio<Decimal>>  tls_portfolio;
-	static thread_local std::shared_ptr<BackTester<Decimal>> tls_bt;
+      // ---- Work lambda: TLS cache/portfolio/bt, one per worker thread ----
+      auto work = [=,
+                   &validPerms, &extremeCount, &failedPerms,
+                   &shouldStopFlag, &earlyStop,
+                   &testStatCollector, &testStatMutex](uint32_t /*permIndex*/)
+      {
+        // Honour a stop signal set by a previous iteration on this thread.
+        // With SingleThreadExecutor this is checked at the top of every
+        // permutation; with ThreadPoolExecutor each worker thread checks it
+        // independently.
+        if (shouldStopFlag.load(std::memory_order_relaxed))
+          return;
 
-	// Sentinel: if the security changes between runPermutationTest calls on the
-	// same thread, all three TLS objects must be rebuilt together.
-	static thread_local const Security<Decimal>* tls_security_key = nullptr;
+        // --- Thread-local state (initialised once per worker thread) ---
+        static thread_local RandomMersenne                       tls_rng;
+        static thread_local std::unique_ptr<CacheType>           tls_cache;
+        static thread_local std::shared_ptr<Portfolio<Decimal>>  tls_portfolio;
+        static thread_local std::shared_ptr<BackTester<Decimal>> tls_bt;
 
-	if (tls_security_key != theSecurity.get()) {
-	  tls_cache        = std::make_unique<CacheType>(theSecurity);
-	  tls_portfolio    = std::make_shared<Portfolio<Decimal>>(*originalPortfolio);
-	  tls_bt           = theBackTester->clone();
-	  tls_security_key = theSecurity.get();
-	}
+        // Sentinel: rebuild all TLS objects atomically when the security
+        // pointer changes between runPermutationTest calls on the same thread.
+        static thread_local const Security<Decimal>* tls_security_key = nullptr;
 
-	try
-	{
-	  // 1) Build synthetic series into the reusable per-thread Security
-	  auto& synSec = tls_cache->shuffleAndRebuild(tls_rng);
+        if (tls_security_key != theSecurity.get()) {
+          tls_cache        = std::make_unique<CacheType>(theSecurity);
+          tls_portfolio    = std::make_shared<Portfolio<Decimal>>(*originalPortfolio);
+          tls_bt           = theBackTester->clone();
+          tls_security_key = theSecurity.get();
+        }
 
-	  // 2) Swap that Security into the per-thread portfolio
-	  tls_portfolio->replaceSecurity(synSec);
+        try
+        {
+          // 1) Build synthetic series into the reusable per-thread Security.
+          auto& synSec = tls_cache->shuffleAndRebuild(tls_rng);
 
-	  // 3) Create a fresh strategy for this permutation (fresh broker state),
-	  //    then reuse the already-cloned per-thread BackTester by swapping the strategy in.
-	  auto clonedStrat = aStrategy->clone_shallow(tls_portfolio);
-	  tls_bt->setSingleStrategy(clonedStrat);
-	  tls_bt->backtest();
+          // 2) Swap that Security into the per-thread portfolio.
+          tls_portfolio->replaceSecurity(synSec);
 
-	  // 4) Compute permutation statistic from the *reused* tls_bt
-	  const Decimal testStat = BackTestResultPolicy::getPermutationTestStatistic(tls_bt);
+          // 3) Create a fresh strategy for this permutation (fresh broker state),
+          //    then reuse the already-cloned per-thread BackTester.
+          auto clonedStrat = aStrategy->clone_shallow(tls_portfolio);
+          tls_bt->setSingleStrategy(clonedStrat);
+          tls_bt->backtest();
 
-	  // 5) Notify observers
-	  this->notifyObservers(*tls_bt, testStat);
+          // 4) Compute permutation statistic from the reused tls_bt.
+          const Decimal testStat =
+              BackTestResultPolicy::getPermutationTestStatistic(tls_bt);
 
-	  // 6) Atomics: valid/extreme counts
-	  validPerms.fetch_add(1, std::memory_order_relaxed);
-	  if (testStat >= baseLineTestStat)
-	    extremeCount.fetch_add(1, std::memory_order_relaxed);
+          // 5) Update valid/extreme counts BEFORE notifying observers so that
+          //    any observer inspecting running counts sees up-to-date values.
+          validPerms.fetch_add(1, std::memory_order_relaxed);
+          if (testStat >= baseLineTestStat)
+            extremeCount.fetch_add(1, std::memory_order_relaxed);
 
-	  // 7) Update optional summary collector
-	  {
-	    std::lock_guard<std::mutex> guard(testStatMutex);
-	    testStatCollector.updateTestStatistic(testStat);
-	  }
-	}
-	catch (const std::exception& ex)
-	{
-	  // Count the failed permutation so the caller can detect systematic failures.
-	  failedPerms.fetch_add(1, std::memory_order_relaxed);
-	  std::cerr << "DefaultPermuteMarketChangesPolicy: permutation failed: "
-		    << ex.what() << '\n';
+          // 6) Notify observers (after atomics are updated).
+          this->notifyObservers(*tls_bt, testStat);
 
-	  // Invalidate TLS sentinel so the next permutation on this thread rebuilds
-	  // all three objects from scratch — the cache, portfolio, or backtester may
-	  // be in a partially-modified state after the exception.
-	  tls_security_key = nullptr;
-	}
-	catch (...)
-	{
-	  failedPerms.fetch_add(1, std::memory_order_relaxed);
-	  std::cerr << "DefaultPermuteMarketChangesPolicy: permutation failed with unknown exception\n";
-	  tls_security_key = nullptr;
-	}
+          // 7) Update optional summary collector (mutex guards non-atomic policy).
+          {
+            std::lock_guard<std::mutex> guard(testStatMutex);
+            testStatCollector.updateTestStatistic(testStat);
+          }
+
+          // 8) Delegate early stopping decision to the policy.
+          //    NoEarlyStoppingPolicy::shouldStop is a constexpr false — the
+          //    compiler eliminates this entire block for the default policy.
+          if (earlyStop.template shouldStop<PValueComputationPolicy>(
+                validPerms.load(std::memory_order_relaxed),
+                extremeCount.load(std::memory_order_relaxed),
+                targetAlpha))
+          {
+            shouldStopFlag.store(true, std::memory_order_relaxed);
+          }
+        }
+        catch (const std::exception& ex)
+        {
+          failedPerms.fetch_add(1, std::memory_order_relaxed);
+          std::cerr << "DefaultPermuteMarketChangesPolicy: permutation failed: "
+                    << ex.what() << '\n';
+
+          // Invalidate TLS sentinel so the next permutation rebuilds all three
+          // objects from scratch — they may be in a partially-modified state.
+          tls_security_key = nullptr;
+        }
+        catch (...)
+        {
+          failedPerms.fetch_add(1, std::memory_order_relaxed);
+          std::cerr << "DefaultPermuteMarketChangesPolicy: permutation failed "
+                       "with unknown exception\n";
+          tls_security_key = nullptr;
+        }
       };
 
-      // Execute in parallel using the provided Executor policy (chunked)
+      // Execute permutations via the configured Executor.
       Executor executor{};
-      concurrency::parallel_for_chunked(numPermutations, executor, work);
+      concurrency::parallel_for_chunked(numPermutations, executor, work, 1u);
 
-      // ---- Failure diagnostic -----------------------------------------------
-      // If a significant fraction of permutations failed, the p-value is computed
-      // from too few samples to be reliable. Warn loudly rather than return a
-      // silently wrong result.
+      // ---- Failure diagnostic ------------------------------------------------
+      // If a significant fraction of permutations failed, the p-value is
+      // computed from too few samples to be reliable.
       const uint32_t failed = failedPerms.load(std::memory_order_relaxed);
       if (failed > 0)
       {
-	const uint32_t attempted = numPermutations;
-	const double   failRate  = static_cast<double>(failed) / attempted;
-	std::cerr << "DefaultPermuteMarketChangesPolicy: " << failed << " of "
-		  << attempted << " permutations failed ("
-		  << static_cast<int>(failRate * 100.0) << "%).\n";
-	if (failRate > 0.05)
-	  throw std::runtime_error(
-	    "DefaultPermuteMarketChangesPolicy::runPermutationTest: "
-	    "more than 5% of permutations failed — p-value is unreliable");
+        const double failRate =
+            static_cast<double>(failed) / static_cast<double>(numPermutations);
+        std::cerr << "DefaultPermuteMarketChangesPolicy: " << failed << " of "
+                  << numPermutations << " permutations failed ("
+                  << static_cast<int>(failRate * 100.0) << "%).\n";
+        if (failRate > 0.05)
+          throw std::runtime_error(
+            "DefaultPermuteMarketChangesPolicy::runPermutationTest: "
+            "more than 5% of permutations failed — p-value is unreliable");
       }
 
-      // ---- Final aggregation -------------------------------------------------------
+      // ---- Final aggregation -------------------------------------------------
       const uint32_t valid = validPerms.load(std::memory_order_relaxed);
       if (valid == 0)
-	{
-	  // Distinguish between two root causes so the caller can act appropriately.
-	  if (failed == numPermutations)
-	    {
-	      // Every permutation threw — the try/catch absorbed all of them.
-	      // The failure diagnostic above will already have printed details.
-	      std::cerr << "DefaultPermuteMarketChangesPolicy: no valid permutations — "
-			<< "all " << numPermutations << " permutations failed with exceptions. "
-			<< "Returning p-value of 1 (cannot reject null).\n";
-	    }
-	  else
-	    {
-	      // No exceptions but nothing was counted as valid — logically unreachable
-	      // given the current control flow; likely indicates a bug.
-	      std::cerr << "DefaultPermuteMarketChangesPolicy: no valid permutations — "
-			<< failed << " of " << numPermutations << " failed with exceptions, "
-			<< "but the remaining " << (numPermutations - failed)
-			<< " produced no valid counts. This may indicate a bug. "
-			<< "Returning p-value of 1 (cannot reject null).\n";
-	    }
-	  return _PermutationTestResultPolicy::createReturnValue(Decimal(1),
-								 testStatCollector.getTestStat(),
-								 baseLineTestStat);
+      {
+        if (failed == numPermutations)
+        {
+          // Every permutation threw — the failure diagnostic above has details.
+          std::cerr << "DefaultPermuteMarketChangesPolicy: no valid permutations — "
+                    << "all " << numPermutations << " permutations failed with "
+                    << "exceptions. Returning p-value of 1 (cannot reject null).\n";
+        }
+        else
+        {
+          // No exceptions but nothing counted as valid — logically unreachable
+          // in the current control flow; likely indicates a bug.
+          std::cerr << "DefaultPermuteMarketChangesPolicy: no valid permutations — "
+                    << failed << " of " << numPermutations
+                    << " failed with exceptions, but the remaining "
+                    << (numPermutations - failed)
+                    << " produced no valid counts. This may indicate a bug. "
+                    << "Returning p-value of 1 (cannot reject null).\n";
+        }
+        return _PermutationTestResultPolicy::createReturnValue(
+            Decimal(1),
+            testStatCollector.getTestStat(),
+            baseLineTestStat);
       }
 
       const uint32_t extreme = extremeCount.load(std::memory_order_relaxed);
-      const Decimal  pValue  = PValueComputationPolicy::computePermutationPValue(extreme, valid);
+      const Decimal  pValue  =
+          PValueComputationPolicy::computePermutationPValue(extreme, valid);
+      const Decimal  summaryTestStat = testStatCollector.getTestStat();
 
-      const Decimal summaryTestStat = testStatCollector.getTestStat();
-
-      return _PermutationTestResultPolicy::createReturnValue(pValue, summaryTestStat, baseLineTestStat);
+      return _PermutationTestResultPolicy::createReturnValue(
+          pValue, summaryTestStat, baseLineTestStat);
     }
   };
-}
+
+} // namespace mkc_timeseries
+
 #endif

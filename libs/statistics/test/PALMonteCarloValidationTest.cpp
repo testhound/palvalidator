@@ -17,7 +17,8 @@ namespace {
 
     // must exactly match the ctor signature that PALMonteCarloValidation::runPermutationTests will use
     MixedMcpt(const std::shared_ptr<BackTester<D>>& /*bt*/,
-	      unsigned long                         /*numPermutations*/)
+              unsigned long                         /*numPermutations*/,
+              const D& /*targetAlpha*/ = DecimalConstants<D>::SignificantPValue)
     {}
 
     // no-arg runPermutationTest() so the static_assert and call site line up
@@ -39,7 +40,8 @@ namespace {
   struct OneMcpt {
     using ResultType = D;
 
-    OneMcpt(const std::shared_ptr<BackTester<D>>& /*bt*/, unsigned long /*numPermutations*/) {} 
+    OneMcpt(const std::shared_ptr<BackTester<D>>& /*bt*/, unsigned long /*numPermutations*/,
+            const D& /*targetAlpha*/ = DecimalConstants<D>::SignificantPValue) {}
     ResultType runPermutationTest(...) { return D("0.05"); }
   };
 
@@ -47,7 +49,8 @@ namespace {
   struct DummyMcpt {
     using ResultType = D;
 
-    DummyMcpt(const std::shared_ptr<BackTester<D>>& /*bt*/, unsigned long /*numPermutations*/) {}
+    DummyMcpt(const std::shared_ptr<BackTester<D>>& /*bt*/, unsigned long /*numPermutations*/,
+              const D& /*targetAlpha*/ = DecimalConstants<D>::SignificantPValue) {}
     ResultType runPermutationTest() { return D("0.01"); }
   };
 
@@ -55,7 +58,8 @@ namespace {
   struct EqualMcpt {
     using ResultType = D;
 
-    EqualMcpt(const std::shared_ptr<BackTester<D>>& /*bt*/, unsigned long /*numPermutations*/) {}
+    EqualMcpt(const std::shared_ptr<BackTester<D>>& /*bt*/, unsigned long /*numPermutations*/,
+              const D& /*targetAlpha*/ = DecimalConstants<D>::SignificantPValue) {}
     ResultType runPermutationTest() {
       // must match the alpha you pass in tests
       return D("0.05");
@@ -99,7 +103,8 @@ namespace {
     using ResultType = D;
     // match the MCPT constructor signature
     ThrowingMcpt(const std::shared_ptr<BackTester<D>>& /*bt*/,
-                 unsigned long /*numPermutations*/) 
+                 unsigned long /*numPermutations*/,
+                 const D& /*targetAlpha*/ = DecimalConstants<D>::SignificantPValue)
     {}
 
     // must return ResultType and throw
@@ -271,5 +276,3 @@ TEST_CASE("Mixed p-values: survivors are < or = alpha (sequential)") {
     REQUIRE(v.getNumSurvivingStrategies() == 2);
 
 }
-
-

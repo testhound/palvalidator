@@ -185,7 +185,8 @@ namespace statistics
 				      PermutationTestingNullTestStatisticPolicy<Num>,
 				      concurrency::SingleThreadExecutor,
 				      WilsonPValueComputationPolicy<Num>,
-				      SyntheticNullModel::N0_PairedDay>
+				      SyntheticNullModel::N0_PairedDay,
+              ThresholdEarlyStoppingPolicy<Num>>
     >;
     PALMonteCarloValidation<Num, UnadjustedMcpt, UnadjustedPValueStrategySelection, concurrency::ThreadPoolExecutor<>> validation;
     

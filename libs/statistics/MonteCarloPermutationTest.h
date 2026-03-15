@@ -112,11 +112,13 @@ namespace mkc_timeseries
     using ReturnType = typename _ComputationPolicy::ReturnType;
     
     MonteCarloPermuteMarketChanges (std::shared_ptr<BackTester<Decimal>> backtester,
-                                    uint32_t numPermutations)
+                                    uint32_t numPermutations,
+				    const Decimal& pValueSignificalLevel = DecimalConstants<Decimal>::SignificantPValue)
       : MonteCarloPermutationTest<Decimal, ReturnType>(),
         mBackTester (backtester),
         mNumPermutations(numPermutations),
-        mBaseLineTestStat(DecimalConstants<Decimal>::DecimalZero)
+        mBaseLineTestStat(DecimalConstants<Decimal>::DecimalZero),
+	mPValueSignificalLevel(pValueSignificalLevel)
     {
       if (numPermutations == 0)
         throw MonteCarloPermutationException("MonteCarloPermuteMarketChanges: num of permuations must be greater than zero");
@@ -167,13 +169,15 @@ namespace mkc_timeseries
 	}
       }
 
-      return computationPolicy.runPermutationTest (mBackTester, mNumPermutations, mBaseLineTestStat);
+      return computationPolicy.runPermutationTest (mBackTester, mNumPermutations, mBaseLineTestStat, mPValueSignificalLevel);
     }
 
   private:
     std::shared_ptr<BackTester<Decimal>> mBackTester;
     uint32_t mNumPermutations;
     Decimal mBaseLineTestStat;
+    Decimal  mPValueSignificalLevel;
+    
   };
 
 
