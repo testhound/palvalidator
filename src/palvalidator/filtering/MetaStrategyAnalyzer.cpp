@@ -2612,10 +2612,10 @@ namespace palvalidator
           // Parameters: trades, numResamples, confidenceLevel, nTrades, nReps, ddConf, executor, intervalType
           auto drawdownResult = BoundedDrawdowns::bcaBoundsForDrawdownFractile(
               tradeReturns,
-              mNumResamples,
+              kDrawdownNumResamples,
               mConfidenceLevel.getAsDouble(),
               static_cast<int>(numTrades),
-              1000,
+              kDrawdownNReps,
               mConfidenceLevel.getAsDouble(),
               executor,
               IntervalType::ONE_SIDED_UPPER
@@ -2702,10 +2702,10 @@ namespace palvalidator
           
           auto drawdownResult = BoundedDrawdowns::bcaBoundsForDrawdownFractile(
               metaReturns,
-              mNumResamples,
+              kDrawdownNumResamples,
               mConfidenceLevel.getAsDouble(),
               static_cast<int>(metaReturns.size()),
-              5000,
+              kDrawdownNReps,
               mConfidenceLevel.getAsDouble(),
               blockLength,
               executor,
