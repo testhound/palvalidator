@@ -56,7 +56,7 @@ TEST_CASE("MOutOfNPercentileBootstrap: rescale_to_n widens intervals", "[Bootstr
     std::seed_seq seqB = make_seed_seq(0x1234567890ABCDEFull);
     std::mt19937_64 rngA(seqA), rngB(seqB);
     
-    SECTION("Rescaled intervals are wider than unrescaled")
+    SECTION("Rescaled intervals are narrow than unrescaled")
     {
         // Without rescaling (conservative subsample-based inference)
         MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>> 
@@ -71,16 +71,11 @@ TEST_CASE("MOutOfNPercentileBootstrap: rescale_to_n widens intervals", "[Bootstr
         
         const double width_no_rescale = num::to_double(result_no_rescale.upper - result_no_rescale.lower);
         const double width_rescale = num::to_double(result_rescale.upper - result_rescale.lower);
-        
-        // Rescaled interval should be wider
-        REQUIRE(width_rescale > width_no_rescale);
-        
-        // Expected scale factor: sqrt(n/m) = sqrt(100/50) = sqrt(2) ≈ 1.414
-        const double expected_scale = std::sqrt(static_cast<double>(n) / (m_ratio * n));
-        const double actual_scale = width_rescale / width_no_rescale;
-        
-        // Allow 20% tolerance due to randomness and edge effects
-        REQUIRE(actual_scale == Catch::Approx(expected_scale).margin(0.25));
+
+	REQUIRE(width_rescale < width_no_rescale);
+	const double expected_scale = std::sqrt(m_ratio);  // sqrt(m/n) = sqrt(0.5) ≈ 0.707
+	const double actual_scale = width_rescale / width_no_rescale;
+	REQUIRE(actual_scale == Catch::Approx(expected_scale).margin(0.25));
     }
 }
 
@@ -185,7 +180,7 @@ TEST_CASE("MOutOfNPercentileBootstrap: diagnostics are rescaled", "[Bootstrap][M
     std::seed_seq seqB = make_seed_seq(0xDEADBEEFDEADBEEFull);
     std::mt19937_64 rngA(seqA), rngB(seqB);
     
-    SECTION("Bootstrap SE is rescaled by sqrt(n/m)")
+    SECTION("Bootstrap SE is rescaled by sqrt(m/n)")
     {
         MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>> 
             moon_no_rescale(800, 0.95, m_ratio, res, false);
@@ -199,15 +194,14 @@ TEST_CASE("MOutOfNPercentileBootstrap: diagnostics are rescaled", "[Bootstrap][M
         const double se_no_rescale = moon_no_rescale.getBootstrapSe();
         const double se_rescale = moon_rescale.getBootstrapSe();
         
-        // SE should be scaled by sqrt(n/m)
-        const double expected_scale = std::sqrt(static_cast<double>(n) / (m_ratio * n));
-        const double actual_scale = se_rescale / se_no_rescale;
-        
-        REQUIRE(se_rescale > se_no_rescale);
-        REQUIRE(actual_scale == Catch::Approx(expected_scale).margin(0.20));
+        // SE should be scaled by sqrt(m/n)
+	const double expected_scale = std::sqrt(m_ratio);  // sqrt(m/n) < 1
+	const double actual_scale = se_rescale / se_no_rescale;
+	REQUIRE(se_rescale < se_no_rescale);
+	REQUIRE(actual_scale == Catch::Approx(expected_scale).margin(0.20));
     }
     
-    SECTION("Bootstrap variance is rescaled by n/m")
+    SECTION("Bootstrap variance is rescaled by m/n")
     {
         MOutOfNPercentileBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>> 
             moon_no_rescale(800, 0.95, m_ratio, res, false);
@@ -225,12 +219,11 @@ TEST_CASE("MOutOfNPercentileBootstrap: diagnostics are rescaled", "[Bootstrap][M
         const double var_no_rescale = moon_no_rescale.getBootstrapVariance();
         const double var_rescale = moon_rescale.getBootstrapVariance();
         
-        // Variance should be scaled by n/m (square of SE scale)
-        const double expected_scale = static_cast<double>(n) / (m_ratio * n);
-        const double actual_scale = var_rescale / var_no_rescale;
-        
-        REQUIRE(var_rescale > var_no_rescale);
-        REQUIRE(actual_scale == Catch::Approx(expected_scale).margin(0.35));
+        // Variance should be scaled by m/n (square of SE scale)
+	const double expected_scale = m_ratio;  // m/n < 1
+	const double actual_scale = var_rescale / var_no_rescale;
+	REQUIRE(var_rescale < var_no_rescale);
+	REQUIRE(actual_scale == Catch::Approx(expected_scale).margin(0.35));
     }
     
     SECTION("Bootstrap mean shifts toward theta_hat after rescaling")
@@ -604,7 +597,8 @@ TEST_CASE("MOutOfNPercentileBootstrap: rescaling with extreme m_ratios", "[Boots
         REQUIRE(std::isfinite(num::to_double(result.upper)));
         REQUIRE(result.lower <= result.upper);
         
-        // Scale factor should be large: sqrt(50/5) ≈ 3.16
+        // Scale factor should be small: sqrt(m/n) = sqrt(5/50) ≈ 0.316
+	// Rescaling narrows the interval toward the full-sample SE
         const double width = num::to_double(result.upper - result.lower);
         REQUIRE(width > 0.0);  // Positive width
         
