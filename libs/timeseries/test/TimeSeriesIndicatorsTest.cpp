@@ -1637,5 +1637,86 @@ TEST_CASE("TimeSeriesIndicators Tests", "[TimeSeriesIndicators]")
       REQUIRE(S_target == decimalApprox(eps, TEST_DEC_TOL_INDICATORS));
       REQUIRE(S_stop   == decimalApprox(eps, TEST_DEC_TOL_INDICATORS));
     }
+SECTION("BootstrappedIndicators — Positive Skew (Bullish Asymmetry)")
+  {
+    using mkc_timeseries::ComputeBootStrappedLongStopAndTarget;
+    using DC = DecimalConstants<DecimalType>;
+
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    double close = 100.0;
+    boost::gregorian::date current_date(2023, 6, 1);
+
+    for (int i = 1; i <= 80; ++i) {
+      double r_bp = (i % 2 == 0 ? +0.005 : -0.003); // Slight upward drift
+      
+      // Increase spike frequency to ~15% (12 out of 80 bars) 
+      // This ensures q90 consistently captures the spikes during resampling.
+      if (i % 7 == 0) r_bp = +0.040; 
+      
+      r_bp += (static_cast<double>(i) * 0.00001);
+
+      double open  = close;
+      double nextC = close * (1.0 + r_bp);
+      double high  = std::max(open, nextC) * 1.002;
+      double low   = std::min(open, nextC) * 0.998;
+
+      series.addEntry(*createEquityEntry(boost::gregorian::to_iso_string(current_date),
+                                         std::to_string(open),
+                                         std::to_string(high),
+                                         std::to_string(low),
+                                         std::to_string(nextC),
+                                         1000));
+      close = nextC;
+      current_date += boost::gregorian::days(1);
+    }
+
+    auto [L_target, L_stop] = ComputeBootStrappedLongStopAndTarget<DecimalType>(series, 1);
+
+    INFO("Positive Skew Diagnostic:");
+    INFO("  - Conservative Target (5th %ile of Upside): " << L_target);
+    INFO("  - Conservative Stop (95th %ile of Downside): " << L_stop);
+
+    // With ~15% spikes, the 90th percentile is now high enough that even 
+    // the conservative target bound should be robustly positive.
+    REQUIRE(L_target > DC::DecimalZero);
+    REQUIRE(L_stop > DC::DecimalZero);
+    
+    // In this heavily skewed synthetic case, target should now beat stop.
+    REQUIRE(L_target > L_stop); 
+  }
+
+ SECTION("BootstrappedIndicators — Large Sample ACF-based Block Selection (n >= 100)")
+  {
+    using mkc_timeseries::ComputeBootStrappedLongStopAndTarget;
+    using DC = DecimalConstants<DecimalType>;
+
+    OHLCTimeSeries<DecimalType> series(TimeFrame::DAILY, TradingVolume::SHARES);
+    double close = 100.0;
+    boost::gregorian::date current_date(2024, 1, 1);
+
+    for (int i = 1; i <= 120; ++i) {
+      double r_bp = (i < 60) ? 0.005 : -0.003; 
+      r_bp += (static_cast<double>(i % 10) * 0.0002); 
+
+      double open  = close;
+      double nextC = close * (1.0 + r_bp);
+      
+      std::string ymd = boost::gregorian::to_iso_string(current_date);
+      
+      series.addEntry(*createEquityEntry(ymd, 
+                                         std::to_string(open),
+                                         std::to_string(std::max(open, nextC) + 0.1),
+                                         std::to_string(std::min(open, nextC) - 0.1),
+                                         std::to_string(nextC),
+                                         1000));
+      close = nextC;
+      current_date += boost::gregorian::days(1);
+    }
+
+    auto [L_target, L_stop] = ComputeBootStrappedLongStopAndTarget<DecimalType>(series, 1);
+
+    REQUIRE(L_target > DC::createDecimal("0.0000001"));
+    REQUIRE(L_stop > DC::createDecimal("0.0000001"));
+  }
 }
 
