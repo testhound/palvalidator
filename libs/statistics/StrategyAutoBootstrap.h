@@ -443,15 +443,26 @@ namespace palvalidator
 		    // small trade populations typical in backtesting.
 		    constexpr double TRADE_LEVEL_MOUTOFN_RATIO = 0.75;
 
+		    const std::size_t n_trades    = returns.size();
+		    const double n23_floor    = std::pow(static_cast<double>(n_trades), 2.0/3.0)
+                            / static_cast<double>(n_trades);
+		    const double min_m6_floor = 6.0 / static_cast<double>(n_trades);
+
+		    // TRADE_LEVEL_MOUTOFN_RATIO (0.75) dominates at all expected N (>= 9).
+		    // The floors are purely defensive — they only fire if N falls below
+		    // the minimum expected sample size, preventing degenerate subsamples.
+		    const double trade_ratio  = std::max({TRADE_LEVEL_MOUTOFN_RATIO,
+			n23_floor,
+			min_m6_floor});
 		    auto [engine, crn] =
 		      m_factory.template makeMOutOfN<Decimal, Sampler, Resampler, Executor, SampleType>(
 							  B_single,
 							  cl,
-							  TRADE_LEVEL_MOUTOFN_RATIO,
+							  trade_ratio,
 							  resampler,
 							  m_strategy,
 							  stageTag,
-							  static_cast<uint64_t>(1), // IID: block length = 1
+							  static_cast<uint64_t>(blockSize),
 							  fold,
 							  rescaleMOutOfN,
 							  m_interval_type);

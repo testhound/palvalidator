@@ -97,10 +97,12 @@ namespace palvalidator
         std::size_t L;
         double      computed_ratio;    // logical ratio reported to callers
         double      skew_boot;         // skewness of usable bootstrap θ*'s
+	bool        degenerate_warning;
       };
 
       /// Configuration constant: maximum allowed fraction of degenerate replicates
-      static constexpr double MAX_DEGENERATE_FRACTION = 0.5;
+      static constexpr double MAX_DEGENERATE_FRACTION_WARN  = 0.10; // warn at >10% degenerate
+      static constexpr double MAX_DEGENERATE_FRACTION_ERROR = 0.25; // throw at >25% degenerate
 
     public:
       // ====================================================================
@@ -614,11 +616,19 @@ namespace palvalidator
         }
 
         // Clamp to valid range [2, n-1]
-        if (m_sub < 2)
-          m_sub = 2;
-        if (m_sub >= n)
-          m_sub = n - 1;
-
+	// WITH this:
+	const std::size_t m_sub_before_clamp = m_sub;
+	if (m_sub < 2)
+	  m_sub = 2;
+	if (m_sub >= n)
+	  m_sub = n - 1;
+	
+	if (m_sub != m_sub_before_clamp)
+	  {
+	    actual_ratio   = static_cast<double>(m_sub) / static_cast<double>(n);
+	    reported_ratio = actual_ratio;
+	  }
+	
         const Decimal theta_hat = sampler(x);
 
         // Pre-allocate; NaN marks skipped/invalid replicates
@@ -653,17 +663,33 @@ namespace palvalidator
           thetas_d.erase(it, thetas_d.end());
         }
 
-        // Check if too many replicates are degenerate
-        // MAX_DEGENERATE_FRACTION = 0.5 means we require at least 50% valid replicates
-        if (thetas_d.size() < static_cast<std::size_t>(m_B * (1.0 - MAX_DEGENERATE_FRACTION)))
-        {
-           std::lock_guard<std::mutex> lock(*m_diagMutex);
-          m_diagValid = false;
-          throw std::runtime_error(
-            "MOutOfNPercentileBootstrap: too many degenerate replicates (>" + 
-            std::to_string(static_cast<int>(MAX_DEGENERATE_FRACTION * 100)) + "% failed)");
-        }
+	const double degenerate_fraction =
+	  static_cast<double>(skipped) / static_cast<double>(m_B);
 
+	if (degenerate_fraction > MAX_DEGENERATE_FRACTION_ERROR)
+	  {
+	    std::lock_guard<std::mutex> lock(*m_diagMutex);
+	    m_diagValid = false;
+	    throw std::runtime_error(
+				     "MOutOfNPercentileBootstrap: too many degenerate replicates ("
+				     + std::to_string(static_cast<int>(degenerate_fraction * 100))
+				     + "% failed, error threshold is "
+				     + std::to_string(static_cast<int>(MAX_DEGENERATE_FRACTION_ERROR * 100))
+				     + "%)");
+	  }
+
+	const bool degenerate_warning = (degenerate_fraction > MAX_DEGENERATE_FRACTION_WARN);
+
+	if (degenerate_warning && diagnosticLog)
+	  {
+	    (*diagnosticLog)
+	      << "[M-out-of-N WARNING] "
+	      << static_cast<int>(degenerate_fraction * 100)
+	      << "% of replicates were degenerate (threshold: "
+	      << static_cast<int>(MAX_DEGENERATE_FRACTION_WARN * 100)
+	      << "%). Interval reliability may be reduced.\n";
+	  }
+ 
         // Diagnostics: mean, variance, se, skewness over usable replicates
         const std::size_t m = thetas_d.size();
 
@@ -715,7 +741,7 @@ namespace palvalidator
         // ====================================================================
         if (m_rescale_to_n)
         {
-          const double scale_factor = std::sqrt(static_cast<double>(n) / static_cast<double>(m_sub));
+	  const double scale_factor = std::sqrt(static_cast<double>(m_sub) / static_cast<double>(n));
           const double theta_hat_d = num::to_double(theta_hat);
           
           if (diagnosticLog)
@@ -726,10 +752,13 @@ namespace palvalidator
                            << ", se_boot=" << se_boot << "\n";
           }
           
-          // Rescale all statistics: center at theta_hat and scale by sqrt(n/m_sub)
+	  // Rescale the m-out-of-n bootstrap replicates to the full-sample scale.
+	  // Each bootstrap statistic is centered at theta_hat and then contracted
+	  // by sqrt(m_sub / n), because the m-subsample fluctuation is O(1/sqrt(m_sub))
+	  // while the target n-sample fluctuation is O(1/sqrt(n)).
           for (double& v : thetas_d)
           {
-            double centered = v - mean_boot;
+	    const double centered = v - theta_hat_d;   // standard pivot: θ̂*_m - θ̂_n
             v = theta_hat_d + centered * scale_factor;
           }
           
@@ -820,7 +849,8 @@ namespace palvalidator
           /*m_sub         =*/ m_sub,
           /*L             =*/ m_resampler.getL(),
           /*computed_ratio=*/ reported_ratio,
-          /*skew_boot     =*/ skew_boot
+          /*skew_boot     =*/ skew_boot,
+	  /*degenerate_warning =*/ degenerate_warning
         };
       }
 
