@@ -1238,7 +1238,7 @@ namespace mkc_timeseries
 	{
 	  concurrency::parallel_for_chunked(
 	    static_cast<uint32_t>(m_num_resamples), exec,
-	    [&](uint32_t b)
+	    [&](uint32_t chunk_begin, uint32_t chunk_end)
 	    {
 	      // One Rng instance per worker thread, default-constructed on first use.
 	      // For randutils::mt19937_rng: auto-seeded with entropy — each thread
@@ -1248,13 +1248,27 @@ namespace mkc_timeseries
 	      // behaviour to the original serial thread_local Rng path.
 	      thread_local Rng task_rng;
 
-	      Sampler sampler_local = m_sampler;
-	      const std::vector<SampleType> resample = sampler_local(m_returns, n, task_rng);
-	      const Decimal stat_b = m_statistic(resample);
+	      // Accumulate into chunk-local counters to avoid cache-line bouncing
+	      // on the shared atomics. A single fetch_add per chunk (below) is
+	      // sufficient because all writes to boot_stats[b] target disjoint
+	      // indices and need no synchronization of their own.
+	      unsigned int local_less  = 0;
+	      unsigned int local_equal = 0;
 
-	      boot_stats[b] = stat_b;
-	      if      (stat_b <  m_theta_hat) count_less.fetch_add(1, std::memory_order_relaxed);
-	      else if (stat_b == m_theta_hat) count_equal.fetch_add(1, std::memory_order_relaxed);
+	      Sampler sampler_local = m_sampler;
+	      for (uint32_t b = chunk_begin; b < chunk_end; ++b)
+		{
+		  const std::vector<SampleType> resample =
+		    sampler_local(m_returns, n, task_rng);
+		  const Decimal stat_b = m_statistic(resample);
+
+		  boot_stats[b] = stat_b;
+		  if      (stat_b <  m_theta_hat) ++local_less;
+		  else if (stat_b == m_theta_hat) ++local_equal;
+		}
+
+	      count_less .fetch_add(local_less,  std::memory_order_relaxed);
+	      count_equal.fetch_add(local_equal, std::memory_order_relaxed);
 	    },
 	    chunkSizeHint);
 	}
@@ -1263,17 +1277,29 @@ namespace mkc_timeseries
 	  // Provider path: deterministic per-replicate engines — naturally parallel.
 	  concurrency::parallel_for_chunked(
 	    static_cast<uint32_t>(m_num_resamples), exec,
-	    [&](uint32_t b)
+	    [&](uint32_t chunk_begin, uint32_t chunk_end)
 	    {
-	      Rng rng_b = m_provider.make_engine(static_cast<unsigned int>(b));
+	      // Same local-accumulator pattern as the Provider=void path above:
+	      // flush to the shared atomics once per chunk, not once per replicate.
+	      unsigned int local_less  = 0;
+	      unsigned int local_equal = 0;
 
 	      Sampler sampler_local = m_sampler;
-	      const std::vector<SampleType> resample = sampler_local(m_returns, n, rng_b);
-	      const Decimal stat_b = m_statistic(resample);
+	      for (uint32_t b = chunk_begin; b < chunk_end; ++b)
+		{
+		  Rng rng_b = m_provider.make_engine(static_cast<unsigned int>(b));
 
-	      boot_stats[b] = stat_b;
-	      if      (stat_b <  m_theta_hat) count_less.fetch_add(1, std::memory_order_relaxed);
-	      else if (stat_b == m_theta_hat) count_equal.fetch_add(1, std::memory_order_relaxed);
+		  const std::vector<SampleType> resample =
+		    sampler_local(m_returns, n, rng_b);
+		  const Decimal stat_b = m_statistic(resample);
+
+		  boot_stats[b] = stat_b;
+		  if      (stat_b <  m_theta_hat) ++local_less;
+		  else if (stat_b == m_theta_hat) ++local_equal;
+		}
+
+	      count_less .fetch_add(local_less,  std::memory_order_relaxed);
+	      count_equal.fetch_add(local_equal, std::memory_order_relaxed);
 	    },
 	    chunkSizeHint);
 	}
