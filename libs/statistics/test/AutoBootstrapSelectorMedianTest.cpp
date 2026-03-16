@@ -18,6 +18,7 @@
 #include <numeric>
 
 #include "AutoBootstrapSelector.h"
+#include "BiasCorrectedBootstrap.h"
 #include "number.h"
 
 // Alias for convenience
@@ -573,7 +574,12 @@ struct MockBCaEngine
     std::size_t getSampleSize() const { return sample_size; }
     double getZ0() const { return z0_val; }
     Decimal getAcceleration() const { return accel_val; }
-    
+
+    mkc_timeseries::AccelerationReliability getAccelerationReliability() const
+    {
+      return mkc_timeseries::AccelerationReliability(true, 0.0, 0, 0, 1.0);
+    }
+  
     const std::vector<Decimal>& getBootstrapStatistics() const {
         return bootstrap_statistics;
     }

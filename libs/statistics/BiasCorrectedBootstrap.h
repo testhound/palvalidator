@@ -439,11 +439,42 @@ namespace mkc_timeseries
    *
    *   â = Σd³ / (6 × (Σd²)^1.5)
    *
-   * where d_i = jk_avg − jk_i. If a single observation contributes more than
-   * kDominanceThreshold of |Σd³|, the estimate is dominated by one data point
-   * and is unreliable regardless of â's magnitude. This class reports that
-   * condition so the tournament can gate BCa accordingly.
+   * where d_i = jk_avg − jk_i. This class diagnoses two distinct failure modes
+   * in that estimate, which must be kept separate:
    *
+   * -----------------------------------------------------------------------
+   * FAILURE MODE 1 — Single-point dominance (isReliable)
+   * -----------------------------------------------------------------------
+   * If one observation contributes more than kDominanceThreshold of the
+   * TOTAL ABSOLUTE cubic influence Σ|d³|, then â is being driven by that
+   * single data point rather than by a genuine distributional property.
+   *
+   *   maxInfluenceFraction = max_i ( |d_i³| / Σ_j |d_j³| )
+   *
+   * NOTE: the denominator is Σ|d³|, NOT |Σd³|. Using the signed net sum as
+   * denominator causes fractions to explode when positive and negative cubic
+   * terms partially cancel — making the metric fire spuriously on healthy
+   * mixed-return data. The absolute sum is the correct normaliser.
+   *
+   * -----------------------------------------------------------------------
+   * FAILURE MODE 2 — Sign cancellation (isCancellationHeavy)
+   * -----------------------------------------------------------------------
+   * Even when no single observation dominates, the signed cubic terms can
+   * largely cancel, leaving â precariously balanced near zero. The
+   * cancellation ratio measures how far the signed sum has been eroded:
+   *
+   *   cancellationRatio = |Σd³| / Σ|d³|
+   *
+   * Near 1.0 → cubic terms mostly agree in sign (well-conditioned numerator).
+   * Near 0.0 → large positive and negative terms cancel (precariously balanced).
+   *
+   * When cancellationRatio is near zero, â is numerically near zero and BCa
+   * degenerates to plain BC. This is generally acceptable behaviour — the
+   * interval is not incorrect, just less corrected. isCancellationHeavy()
+   * exposes this as a diagnostic so callers can inspect it, but it is NOT
+   * folded into isReliable() since degeneration to BC is not a hard failure.
+   *
+   * -----------------------------------------------------------------------
    * There is no default constructor. Every instance is produced by
    * JackknifeInfluence::compute() via the parameterised constructor, which
    * guarantees that all members reflect a real computation.
@@ -451,44 +482,77 @@ namespace mkc_timeseries
   class AccelerationReliability
   {
   public:
-    /// Fraction of |Σd³| above which a single observation is considered dominant.
+    /// Fraction of Σ|d³| above which a single observation is considered dominant.
+    /// Uses the total absolute cubic sum as denominator, not the signed net sum,
+    /// so near-cancellation among balanced observations does not inflate fractions.
     static constexpr double kDominanceThreshold = 0.5;
+
+    /// Cancellation ratio below which the signed cubic sum is considered
+    /// heavily cancelled: cancellationRatio = |Σd³| / Σ|d³|.
+    static constexpr double kCancellationThreshold = 0.1;
 
     /**
      * @brief Constructs a fully-computed reliability result.
      *
-     * @param isReliable           True if no single observation exceeds kDominanceThreshold.
-     * @param maxInfluenceFraction Largest single |d³| / |Σd³| across all LOO observations.
+     * @param isReliable           True if no single observation exceeds kDominanceThreshold
+     *                             of the total absolute cubic influence Σ|d³|.
+     * @param maxInfluenceFraction max_i( |d_i³| / Σ|d_j³| ) — fraction of total absolute
+     *                             cubic influence from the most influential observation.
      * @param maxInfluenceIndex    Index of the observation with maxInfluenceFraction.
      * @param nDominant            Number of observations whose fraction exceeds kDominanceThreshold.
+     * @param cancellationRatio    |Σd³| / Σ|d³|. Near 1 = well-conditioned, near 0 = heavy
+     *                             cancellation. Set to 1.0 when Σ|d³| is negligible.
      */
     AccelerationReliability(bool        isReliable,
                             double      maxInfluenceFraction,
                             std::size_t maxInfluenceIndex,
-                            std::size_t nDominant)
+                            std::size_t nDominant,
+                            double      cancellationRatio)
       : m_isReliable(isReliable),
         m_maxInfluenceFraction(maxInfluenceFraction),
         m_maxInfluenceIndex(maxInfluenceIndex),
-        m_nDominant(nDominant)
+        m_nDominant(nDominant),
+        m_cancellationRatio(cancellationRatio)
     {}
 
-    /// True if no single jackknife observation dominates the acceleration estimate.
+    /// True if no single jackknife observation dominates the total absolute
+    /// cubic influence. This is one diagnostic among several — see also
+    /// the z0, acceleration, and skewness gates in AutoBootstrapSelector.
     bool        isReliable()              const { return m_isReliable; }
 
-    /// Largest fraction of |Σd³| contributed by any single LOO observation.
+    /// Largest fraction of Σ|d³| contributed by any single LOO observation.
+    /// Range [0, 1] when no cancellation is present; can exceed 1.0 only if
+    /// computed incorrectly with the signed net sum — this implementation uses
+    /// the absolute sum so fractions are always in [0, 1].
     double      getMaxInfluenceFraction() const { return m_maxInfluenceFraction; }
 
     /// Index (into the original sample) of the most influential LOO observation.
     std::size_t getMaxInfluenceIndex()    const { return m_maxInfluenceIndex; }
 
-    /// Number of observations whose influence fraction exceeds kDominanceThreshold.
+    /// Number of observations whose absolute cubic fraction exceeds kDominanceThreshold.
     std::size_t getNDominant()            const { return m_nDominant; }
+
+    /// |Σd³| / Σ|d³|. Near 1.0: cubic terms agree in sign (well-conditioned).
+    /// Near 0.0: strong cancellation among opposite-sign contributions.
+    /// Always in [0, 1]. Set to 1.0 when Σ|d³| is negligible (no cubic signal).
+    double      getCancellationRatio()    const { return m_cancellationRatio; }
+
+    /// True if cancellationRatio < kCancellationThreshold, indicating that the
+    /// signed cubic sum is severely eroded by cancellation. When true, â is
+    /// near zero and BCa degenerates toward plain BC. This is a separate
+    /// diagnostic from isReliable() and is NOT a hard failure: degeneration to
+    /// BC is acceptable; callers may choose to use it as a soft warning.
+    bool        isCancellationHeavy()     const
+    {
+      return m_cancellationRatio < kCancellationThreshold;
+    }
 
   private:
     bool        m_isReliable;
     double      m_maxInfluenceFraction;
     std::size_t m_maxInfluenceIndex;
     std::size_t m_nDominant;
+    double      m_cancellationRatio;
   };
 
   /**
@@ -497,13 +561,26 @@ namespace mkc_timeseries
    * diagnostics on BCa acceleration estimates.
    *
    * This class knows nothing about BCa, resampling, or statistics. Its sole
-   * responsibility is: given the signed cubic contributions from the jackknife
-   * loop (d_i² × d_i for each LOO observation), determine whether any single
-   * observation dominates the acceleration numerator Σd³.
+   * responsibility is: given the signed cubic contributions d_i² × d_i from
+   * the jackknife loop, compute the two influence diagnostics described by
+   * AccelerationReliability:
+   *
+   *   1. Single-point dominance: max_i(|d_i³| / Σ|d_j³|) > kDominanceThreshold
+   *   2. Sign cancellation:      |Σd³| / Σ|d³| < kCancellationThreshold
+   *
+   * The denominator for the dominance check is Σ|d³| (total absolute cubic
+   * influence), NOT |Σd³| (absolute value of the net signed sum). The signed
+   * net sum collapses toward zero when positive and negative contributions
+   * cancel — which is common for mixed-return strategies — causing fractions
+   * to inflate spuriously. The absolute sum is the mathematically correct
+   * normaliser for "share of total cubic influence."
    *
    * Called from BCaBootStrap::calculateBCaBounds() after the jackknife loop.
    * The result is stored as std::optional<AccelerationReliability> and exposed
    * via BCaBootStrap::getAccelerationReliability().
+   *
+   * Reference: Efron, B. (1987). JASA 82(397), eq. 6.7; see also the review
+   * discussion of dominance vs. cancellation failure modes.
    */
   class JackknifeInfluence
   {
@@ -511,40 +588,70 @@ namespace mkc_timeseries
     /**
      * @brief Computes acceleration reliability from signed cubic LOO contributions.
      *
+     * Computes two diagnostics:
+     *   - Single-point dominance: does any observation contribute > 50% of Σ|d³|?
+     *   - Cancellation ratio:     how much has the signed sum been eroded by cancellation?
+     *
      * @param dCubed  Per-observation signed cubic values (d_i² × d_i) from the
      *                jackknife loop. Their sum is the BCa numerator Σd³.
-     * @return        AccelerationReliability describing whether any single
-     *                observation dominates the acceleration estimate.
+     * @return        AccelerationReliability with dominance and cancellation diagnostics.
      */
     static AccelerationReliability compute(const std::vector<double>& dCubed)
     {
-      double sumD = 0.0;
-      for (double v : dCubed) sumD += v;
-      const double absNumD = std::fabs(sumD);
+      // Empty input: no jackknife information available. No dominance possible.
+      // Cancellation ratio 1.0 by convention (no signal to cancel).
+      if (dCubed.empty())
+        return AccelerationReliability(true, 0.0, 0, 0, 1.0);
 
-      // Numerator negligible: â ≈ 0, acceleration has no effect on the interval.
-      // BCa degenerates cleanly to plain BC — reliable by definition.
-      if (absNumD <= 1e-100)
-        return AccelerationReliability(true, 0.0, 0, 0);
+      // Accumulate both the signed sum (for cancellation ratio) and the
+      // absolute sum (for dominance fractions) in a single pass.
+      double sumSignedCubic = 0.0;
+      double sumAbsCubic    = 0.0;
+      for (double v : dCubed)
+        {
+          sumSignedCubic += v;
+          sumAbsCubic    += std::fabs(v);
+        }
 
+      // Total absolute cubic influence negligible: every LOO contribution is
+      // negligible, so â ≈ 0 and BCa degenerates to plain BC. No meaningful
+      // dominance is possible. Cancellation ratio 1.0 by convention.
+      if (sumAbsCubic <= 1e-100)
+        return AccelerationReliability(true, 0.0, 0, 0, 1.0);
+
+      // Cancellation ratio: how much of Σ|d³| survives after sign cancellation.
+      // Near 1.0 → cubic terms mostly agree in sign (well-conditioned numerator).
+      // Near 0.0 → large opposite-sign terms cancel (precariously balanced).
+      // Always in [0, 1] because |Σd³| ≤ Σ|d³| by the triangle inequality.
+      const double cancellationRatio = std::fabs(sumSignedCubic) / sumAbsCubic;
+
+      // Dominance check: does any single observation contribute more than
+      // kDominanceThreshold of the total absolute cubic influence?
+      //
+      // IMPORTANT: denominator is sumAbsCubic = Σ|d³|, NOT fabs(sumSignedCubic).
+      // Using the signed net sum as denominator would cause fractions to inflate
+      // when positive and negative cubics partially cancel — a common situation
+      // for mixed-return strategies — leading to spurious rejections of valid BCa
+      // runs where no single observation actually dominates.
       double      maxFrac   = 0.0;
       std::size_t maxIdx    = 0;
       std::size_t nDominant = 0;
 
       for (std::size_t i = 0; i < dCubed.size(); ++i)
-      {
-        const double frac = std::fabs(dCubed[i]) / absNumD;
-        if (frac > maxFrac)
         {
-          maxFrac = frac;
-          maxIdx  = i;
+          const double frac = std::fabs(dCubed[i]) / sumAbsCubic;
+          if (frac > maxFrac)
+            {
+              maxFrac = frac;
+              maxIdx  = i;
+            }
+          if (frac > AccelerationReliability::kDominanceThreshold)
+            ++nDominant;
         }
-        if (frac > AccelerationReliability::kDominanceThreshold)
-          ++nDominant;
-      }
 
       const bool reliable = (maxFrac <= AccelerationReliability::kDominanceThreshold);
-      return AccelerationReliability(reliable, maxFrac, maxIdx, nDominant);
+      return AccelerationReliability(reliable, maxFrac, maxIdx, nDominant,
+                                     cancellationRatio);
     }
   };
 
@@ -786,15 +893,23 @@ namespace mkc_timeseries
     /**
      * @brief Returns the jackknife influence analysis for the acceleration estimate.
      *
-     * Indicates whether â was dominated by a single leave-one-out observation.
-     * If AccelerationReliability::isReliable() returns false, the BCa interval
-     * should be treated with caution regardless of â's magnitude — the estimate
-     * is being driven by one data point rather than reflecting a distributional
-     * property.
+     * Provides two diagnostics:
      *
-     * The tournament (AutoBootstrapSelector) uses this to hard-gate BCa when
-     * acceleration is unreliable, rather than relying solely on the magnitude
-     * of â or n.
+     *   isReliable()         — false if any single LOO observation contributes
+     *                          more than 50% of the total absolute cubic influence
+     *                          Σ|d³|. When false, â is that observation's artifact
+     *                          rather than a distributional property, regardless of
+     *                          â's magnitude, z0, or skew_boot.
+     *
+     *   isCancellationHeavy() — true if |Σd³| / Σ|d³| < kCancellationThreshold,
+     *                          indicating the signed cubic sum is severely eroded
+     *                          by opposing-sign contributions. When true, â ≈ 0
+     *                          and BCa degenerates toward plain BC. This is a soft
+     *                          diagnostic, not a hard failure: degeneration to BC
+     *                          is acceptable behaviour.
+     *
+     * The tournament (AutoBootstrapSelector) uses isReliable() as a hard gate.
+     * isCancellationHeavy() is available for inspection or soft-penalty use.
      */
     AccelerationReliability getAccelerationReliability() const
     {
@@ -1182,8 +1297,9 @@ namespace mkc_timeseries
 	  m_z0             = 0.0;
 	  m_accel          = DecimalConstants<Decimal>::DecimalZero;
 	  // Degenerate bootstrap: â = 0 by construction. Acceleration has no
-	  // effect on the interval, so reliability is trivially true.
-	  m_accelReliability = AccelerationReliability(true, 0.0, 0, 0);
+	  // effect on the interval. No dominance possible; cancellation ratio 1.0
+	  // by convention (no cubic signal to cancel).
+	  m_accelReliability = AccelerationReliability(true, 0.0, 0, 0, 1.0);
 	  m_bootstrapStats = boot_stats;
 	  m_is_calculated  = true;
 	  return;

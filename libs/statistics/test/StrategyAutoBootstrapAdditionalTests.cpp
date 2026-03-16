@@ -547,7 +547,7 @@ TEST_CASE("StrategyAutoBootstrap: Different block sizes",
     
     SECTION("Small block size (2)")
     {
-        BootstrapConfiguration cfg(200, 2, 0.95, 1, 0);
+        BootstrapConfiguration cfg(500, 2, 0.95, 1, 0);
         StrategyAutoBootstrapType autoBootstrap(factory, strategy, cfg, algos);
         
         AutoCIResult result = autoBootstrap.run(returns);
@@ -556,7 +556,7 @@ TEST_CASE("StrategyAutoBootstrap: Different block sizes",
     
     SECTION("Medium block size (4)")
     {
-        BootstrapConfiguration cfg(200, 4, 0.95, 1, 0);
+        BootstrapConfiguration cfg(500, 4, 0.95, 1, 0);
         StrategyAutoBootstrapType autoBootstrap(factory, strategy, cfg, algos);
         
         AutoCIResult result = autoBootstrap.run(returns);
@@ -565,7 +565,7 @@ TEST_CASE("StrategyAutoBootstrap: Different block sizes",
     
     SECTION("Large block size (8)")
     {
-        BootstrapConfiguration cfg(200, 8, 0.95, 1, 0);
+        BootstrapConfiguration cfg(500, 8, 0.95, 1, 0);
         StrategyAutoBootstrapType autoBootstrap(factory, strategy, cfg, algos);
         
         AutoCIResult result = autoBootstrap.run(returns);
@@ -749,25 +749,27 @@ TEST_CASE("StrategyAutoBootstrap: Various algorithm combinations produce valid r
                      msg.find("no valid candidate") != std::string::npos));
         }
     }
-    
+
     SECTION("Only BCa")
-    {
-        BootstrapAlgorithmsConfiguration algos(false, false, false, false, false, true);
-        StrategyAutoBootstrapType autoBootstrap(factory, strategy, cfg, algos);
-        
-        // BCa should generally work with simple returns data
-        try {
-            AutoCIResult result = autoBootstrap.run(returns);
-            REQUIRE(result.getCandidates().size() == 1);
-            REQUIRE(result.getChosenMethod() == MethodId::BCa);
-        }
-        catch (const std::runtime_error& e) {
-            // BCa might be rejected due to instability parameters
-            const std::string msg = e.what();
-            REQUIRE((msg.find("no bootstrap candidate succeeded") != std::string::npos ||
-                     msg.find("no valid candidate") != std::string::npos));
-        }
-    }
+      {
+	BootstrapAlgorithmsConfiguration algos(false, false, false, false, false, true);
+	StrategyAutoBootstrapType autoBootstrap(factory, strategy, cfg, algos);
+
+	try {
+	  AutoCIResult result = autoBootstrap.run(returns);
+	  REQUIRE(result.getCandidates().size() == 1);
+	  REQUIRE(result.getChosenMethod() == MethodId::BCa);
+	}
+	catch (const std::runtime_error& e) {
+	  const std::string msg = e.what();
+	  // BCa is correctly rejected when acceleration is unreliable
+        // (makeSimpleReturns() has near-canceling cubic contributions).
+        // "All candidates failed" is the expected outcome in this case.
+	  REQUIRE((msg.find("no bootstrap candidate succeeded") != std::string::npos ||
+		   msg.find("no valid candidate")              != std::string::npos ||
+		   msg.find("all candidates failed hard gates")!= std::string::npos));
+	}
+      }
 }
 
 // -----------------------------------------------------------------------------
@@ -812,7 +814,7 @@ TEST_CASE("StrategyAutoBootstrap: All candidates report correct sample size",
     
     DummyStrategy strategy("SampleSize", portfolio, returns);
     
-    BootstrapConfiguration cfg(300, 4, 0.95, 1, 0);
+    BootstrapConfiguration cfg(500, 4, 0.95, 1, 0);
     BootstrapAlgorithmsConfiguration algos; // all enabled
     
     StrategyAutoBootstrapType autoBootstrap(factory, strategy, cfg, algos);

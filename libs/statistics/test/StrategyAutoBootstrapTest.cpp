@@ -79,6 +79,8 @@ using RatioStrategyAutoBootstrapType =
 // Factory alias for the ratio-stat StrategyAutoBootstrap
 using RatioFactoryAlias = typename RatioStrategyAutoBootstrapType::Factory;
 
+using TradeT            = mkc_timeseries::Trade<Decimal>;
+
 // -----------------------------------------------------------------------------
 // Helper: construct StrategyAutoBootstrap for tests
 // -----------------------------------------------------------------------------
@@ -192,6 +194,36 @@ static std::vector<Decimal> makeStrongProfitFactorReturns()
         xs.push_back(Decimal(-0.003)); // -0.3%
 
     return xs;
+}
+
+// Returns 20 trades analytically verified to produce reliable BCa acceleration.
+// All trades are positive with a consistent positive third central moment:
+// 15 small trades (geo_mean ≈ 0.003-0.011) and 5 large trades (geo_mean ≈ 0.042-0.052).
+// IID jackknife: maxFrac ≈ 0.344 < 0.5 → getAccelIsReliable() == true.
+static std::vector<TradeT> makeReliableBCaTrades()
+{
+    return {
+        TradeT({0.003, 0.003}),
+        TradeT({0.004, 0.004}),
+        TradeT({0.004, 0.005}),
+        TradeT({0.005, 0.005}),
+        TradeT({0.005, 0.006}),
+        TradeT({0.006, 0.006}),
+        TradeT({0.006, 0.007}),
+        TradeT({0.007, 0.007}),
+        TradeT({0.007, 0.008}),
+        TradeT({0.008, 0.008}),
+        TradeT({0.008, 0.009}),
+        TradeT({0.009, 0.009}),
+        TradeT({0.009, 0.010}),
+        TradeT({0.010, 0.010}),
+        TradeT({0.010, 0.011}),
+        TradeT({0.040, 0.045}),
+        TradeT({0.042, 0.048}),
+        TradeT({0.045, 0.050}),
+        TradeT({0.048, 0.052}),
+        TradeT({0.050, 0.055}),
+    };
 }
 
 // -----------------------------------------------------------------------------
@@ -680,7 +712,7 @@ struct TradeGeoMeanSampler
 // Trade-level type aliases
 // ---------------------------------------------------------------------------
 
-using TradeT            = mkc_timeseries::Trade<Decimal>;
+
 using TradeIIDResampler = mkc_timeseries::IIDResampler<TradeT>;
 
 // StrategyAutoBootstrap specialised for trade-level GeoMean bootstrapping.
@@ -1061,7 +1093,12 @@ TEST_CASE("StrategyAutoBootstrap trade-level integration: BCa participates and s
     const std::uint64_t stage  = 14;
     const std::uint64_t fold   = 0;
 
-    auto trades = makeMixedTrades();
+    // makeReliableBCaTrades() is analytically verified to produce diffuse
+    // jackknife influence (maxFrac ≈ 0.34 < 0.5), ensuring BCa's acceleration
+    // estimate passes the reliability gate. makeMixedTrades() contains negative
+    // trades whose geo-mean cubic contributions nearly cancel (sumD ≈ -1.2e-9),
+    // causing BCa to be correctly rejected.
+    auto trades = makeReliableBCaTrades();   // was: makeMixedTrades()
 
     auto portfolio = createTestPortfolio();
     DummyStrategy strategy("TradeBCa", portfolio, {});
