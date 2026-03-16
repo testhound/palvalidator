@@ -508,6 +508,17 @@ namespace palvalidator
           if (candidate.getN() < AutoBootstrapConfiguration::kBcaMinSampleSize)
             return false;
 
+	  // Data-adaptive acceleration reliability gate.
+	  // Supplements the kBcaMinSampleSize floor with a data-driven check:
+	  // BCaBootStrap::getAccelerationReliability() reports whether any single
+	  // LOO observation contributed more than 50% of |Σd³|. When it did, â
+	  // reflects that observation's artifact rather than a distributional
+	  // property — regardless of â's magnitude, z0, or skew_boot.
+	  // This correctly handles n=9 strategies with diffuse influence (pass)
+	  // and n=25 strategies with one dominant outlier trade (fail).
+	  if (!candidate.getAccelIsReliable())
+	    return false;
+
           // High bootstrap skewness renders the Edgeworth expansion on which
           // BCa is based unreliable. This is a hard gate, not a soft penalty:
           // above kBcaSkewHardLimit the correction can overcorrect rather than

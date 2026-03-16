@@ -872,28 +872,24 @@ namespace palvalidator
 	    length_penalty = BootstrapPenaltyCalculator<Decimal>::computeLengthPenalty_Percentile(len, stats, res.cl, method, normalized_length, median_val);
 	  }
 
-	return Candidate(
-			 method,
-			 res.mean,
-			 res.lower,
-			 res.upper,
-			 res.cl,
-			 res.n,
-			 res.B,            // B_outer
-			 0,                // B_inner (N/A for percentile-like)
+	return Candidate(method,
+			 res.mean, res.lower, res.upper, res.cl, res.n,
+			 res.B,
+			 0,              // B_inner
 			 res.effective_B,
-			 res.skipped,      // skipped_total
-			 se_boot,
-			 skew_boot,
-			 median_val,       // Always populated by computeLengthPenalty
-			 center_shift_in_se,
-			 normalized_length,
-			 ordering_penalty,
-			 length_penalty,
-			 0.0,              // stability_penalty (N/A for Percentile-like)
-			 0.0,              // z0 (N/A)
-			 0.0,              // accel (N/A)
-			 0.0
+			 res.skipped,
+			 se_boot, skew_boot, median_val,
+			 center_shift_in_se, normalized_length,
+			 ordering_penalty, length_penalty,
+			 0.0,            // stability_penalty
+			 0.0,            // z0
+			 0.0,            // accel
+			 0.0,            // inner_failure_rate (param 21)
+			 std::numeric_limits<double>::quiet_NaN(),    // score  (param 22)
+			 0,                                           // candidate_id (param 23)
+			 0,                                           // rank (param 24)
+			 false,                                       // is_chosen (param 25)
+			 true                                         // accelIsReliable (param 26)
 			 );
       }
       
@@ -1011,28 +1007,22 @@ namespace palvalidator
 	      static_cast<double>(res.inner_attempted_total);
 	  }
 
-	return Candidate(
-			 MethodId::PercentileT,
-			 res.mean,
-			 res.lower,
-			 res.upper,
-			 res.cl,
-			 res.n,
-			 res.B_outer,
-			 res.B_inner,
+	return Candidate(MethodId::PercentileT,
+			 res.mean, res.lower, res.upper, res.cl, res.n,
+			 res.B_outer, res.B_inner,
 			 res.effective_B,
 			 res.skipped_outer + res.skipped_inner_total,
-			 se_ref,
-			 skew_boot,
-			 median_boot,
-			 center_shift_in_se,
-			 normalized_length,
-			 ordering_penalty,
-			 length_penalty,
-			 stability_penalty,
-			 0.0,              // z0 (N/A)
-			 0.0,              // accel (N/A)
-			 inner_failure_rate
+			 se_ref, skew_boot, median_boot,
+			 center_shift_in_se, normalized_length,
+			 ordering_penalty, length_penalty, stability_penalty,
+			 0.0,            // z0
+			 0.0,            // accel
+			 inner_failure_rate,                          // (param 21)
+			 std::numeric_limits<double>::quiet_NaN(),    // score  (param 22)
+			 0,                                           // candidate_id (param 23)
+			 0,                                           // rank (param 24)
+			 false,                                       // is_chosen (param 25)
+			 true                                         // accelIsReliable (param 26)
 			 );
       }
 
@@ -1064,6 +1054,7 @@ namespace palvalidator
 	const double  z0      = bca.getZ0();
 	const Decimal accelD  = bca.getAcceleration();
 	const double  accel   = num::to_double(accelD);
+	const bool accel_is_reliable = bca.getAccelerationReliability().isReliable();
 
 	const auto& statsD = bca.getBootstrapStatistics();
 	if (statsD.size() < 2)
@@ -1146,28 +1137,22 @@ namespace palvalidator
 	// "skipped" is how many outer resamples did not produce a usable statistic
 	const std::size_t skipped = (B > effective_B) ? (B - effective_B) : 0;
 
-	return Candidate(
-			 MethodId::BCa,
-			 mean,
-			 lower,
-			 upper,
-			 cl,
-			 n,
+	return Candidate(MethodId::BCa,
+			 mean, lower, upper, cl, n,
 			 B,
-			 0,             // B_inner (not used by BCa)
+			 0,              // B_inner
 			 effective_B,
 			 skipped,
-			 se_boot,
-			 skew_boot,
-			 median_boot,
-			 center_shift_in_se,
-			 normalized_length,
-			 ordering_penalty,
-			 length_penalty,
-			 stability_penalty,
-			 z0,
-			 accel,
-			 0.0            // inner_failure_rate (not applicable to BCa)
+			 se_boot, skew_boot, median_boot,
+			 center_shift_in_se, normalized_length,
+			 ordering_penalty, length_penalty, stability_penalty,
+			 z0, accel,
+			 0.0,                                         // inner_failure_rate
+			 std::numeric_limits<double>::quiet_NaN(),    // score  (param 22)
+			 0,                                           // candidate_id (param 23)
+			 0,                                           // rank (param 24)
+			 false,                                       // is_chosen (param 25)
+			 accel_is_reliable                            // accelIsReliable (param 26)
 			 );
       }
       
@@ -1482,6 +1467,12 @@ namespace palvalidator
           {
             rejected_for_instability = true;
           }
+
+	  // NEW: data-adaptive acceleration reliability gate
+	  if (!bca.getAccelIsReliable())
+	    {
+	      rejected_for_instability = true;
+	    }
 
           // Skew hard gate: Edgeworth expansion breaks down at extreme skewness
           if (std::isfinite(bca.getSkewBoot()) &&

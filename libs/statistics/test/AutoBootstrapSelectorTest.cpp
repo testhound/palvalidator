@@ -25,6 +25,7 @@
 #include <numeric>
 
 #include "AutoBootstrapSelector.h"
+#include "BiasCorrectedBootstrap.h"
 #include "BootstrapPenaltyCalculator.h"
 #include "number.h"
 
@@ -442,6 +443,10 @@ struct MockBCaEngine
     double  getConfidenceLevel() const { return cl; }
     unsigned int getNumResamples() const { return static_cast<unsigned int>(B); }
     std::size_t getSampleSize() const { return n; }
+  mkc_timeseries::AccelerationReliability getAccelerationReliability() const
+    {
+      return mkc_timeseries::AccelerationReliability(true, 0.0, 0, 0, 1.0);
+    }
     
     double getZ0() const { return z0; }
     Decimal getAcceleration() const { return accel; }

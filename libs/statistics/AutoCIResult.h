@@ -24,7 +24,6 @@ namespace palvalidator
     // Forward declarations
     using mkc_timeseries::StatisticSupport;
     using palvalidator::diagnostics::CandidateReject;
-    using palvalidator::diagnostics::CandidateReject;
     using palvalidator::diagnostics::hasRejection;
     using palvalidator::diagnostics::rejectionMaskToString;
 
@@ -121,7 +120,8 @@ namespace palvalidator
 		  // NEW V2 PARAMETERS (defaults for backward compatibility)
 		  std::uint64_t candidate_id = 0,
 		  std::size_t   rank = 0,
-		  bool          is_chosen = false)
+		  bool          is_chosen = false,
+		  bool accelIsReliable = true)
 	: m_method(method),
 	  m_mean(mean),
 	  m_lower(lower),
@@ -146,7 +146,8 @@ namespace palvalidator
 	  m_score(score),
 	  m_candidate_id(candidate_id),
 	  m_rank(rank),
-	  m_is_chosen(is_chosen)
+	  m_is_chosen(is_chosen),
+	  m_accel_is_reliable(accelIsReliable)
 	{
 	}
 
@@ -174,6 +175,11 @@ namespace palvalidator
 
 	double      getZ0() const { return m_z0; }
 	double      getAccel() const { return m_accel; }
+	
+	// True if no single jackknife observation dominated the acceleration
+	/// estimate. Always true for non-BCa methods (concept does not apply).
+	bool getAccelIsReliable() const { return m_accel_is_reliable; }
+	
 	double      getScore() const { return m_score; }
 	double      getInnerFailureRate() const { return m_inner_failure_rate; }
 
@@ -211,7 +217,8 @@ namespace palvalidator
 			   m_stability_penalty, 
 			   m_z0, m_accel, m_inner_failure_rate, 
 			   newScore,
-			   m_candidate_id, m_rank, m_is_chosen);  // V2: Preserve metadata
+			   m_candidate_id, m_rank, m_is_chosen,
+			   m_accel_is_reliable);  // V2: Preserve metadata
 	}
 
 	Candidate markAsChosen() const
@@ -236,7 +243,8 @@ namespace palvalidator
 			   m_stability_penalty, 
 			   m_z0, m_accel, m_inner_failure_rate, 
 			   m_score,
-			   id, final_rank, chosen);
+			   id, final_rank, chosen,
+			   m_accel_is_reliable);
 	}
 
       private:
@@ -268,6 +276,7 @@ namespace palvalidator
 	std::uint64_t m_candidate_id;
 	std::size_t   m_rank;
 	bool          m_is_chosen;
+	bool m_accel_is_reliable;
       };
 
       // ===========================================================================
