@@ -556,42 +556,62 @@ namespace palvalidator
 
 	if (os)
 	  {
-	    // (Logging code remains identical)
 	    const auto& diagnostics = result.getDiagnostics();
 	    const auto& chosen      = result.getChosenCandidate();
 
 	    if (result.getChosenMethod() == MethodId::MOutOfN)
 	      {
-		(*os) << "\n[!] CRITICAL: Safety Valve Triggered (M-out-of-N chosen)\n";
-		(*os) << "--------------------------------------------------------\n";
-    
-		// Find the BCa candidate to see why it failed (it usually wins)
-		for (const auto& cand : result.getCandidates())
+		(*os) << "\n   [AutoCI] M-out-of-N selected — ";
+
+		// Explain the primary reason BCa did not win, in priority order.
+		// These flags are mutually exclusive in practice but we check in
+		// severity order so the most fundamental reason is reported first.
+		if (!diagnostics.hasBCaCandidate())
+		  (*os) << "BCa was not evaluated\n";
+		else if (diagnostics.wasBCaRejectedForNonFiniteParameters())
+		  (*os) << "BCa disqualified: non-finite z0 or acceleration\n";
+		else if (diagnostics.wasBCaRejectedForDomain())
+		  (*os) << "BCa disqualified: interval violates domain constraints\n";
+		else if (diagnostics.wasBCaRejectedForInstability())
+		  (*os) << "BCa disqualified: unstable acceleration estimate\n";
+		else if (diagnostics.wasBCaRejectedForLength())
+		  (*os) << "BCa disqualified: interval too wide\n";
+		else
+		  (*os) << "outscored all other valid candidates\n";
+
+		// When BCa was disqualified for instability, print the parameters
+		// that triggered the gates. getAccelIsReliable() flags whether a
+		// single jackknife observation dominated the cubic influence sum —
+		// that is the canonical BCa failure mode and the most actionable fact.
+		if (diagnostics.hasBCaCandidate() && diagnostics.wasBCaRejectedForInstability())
 		  {
-		    if (cand.getMethod() == MethodId::BCa)
+		    for (const auto& cand : result.getCandidates())
 		      {
-			(*os) << "    BCa Stats (REJECTED):\n"
-			      << "    - z0 (Bias): " << cand.getZ0() << "\n"
-			      << "    - a (Accel): " << cand.getAccel() << "\n"
-			      << "    - Stability Penalty: " << cand.getStabilityPenalty() << "\n"
-			      << "    - Normalized Length: " << cand.getNormalizedLength() << "\n";
-			
+			if (cand.getMethod() != MethodId::BCa) continue;
+
+			(*os) << "   [AutoCI]   BCa instability detail:\n";
+
+			(*os) << "   [AutoCI]     z0 (bias):        " << cand.getZ0();
 			if (std::abs(cand.getZ0()) > 0.4)
-			  (*os) << "    -> DIAGNOSIS: Excessive Bias (z0 > 0.4)\n";
+			  (*os) << "  <- |z0| > 0.4 threshold";
+			(*os) << "\n";
+
+			(*os) << "   [AutoCI]     a  (accel):       " << cand.getAccel();
 			if (std::abs(cand.getAccel()) > 0.1)
-			  (*os) << "    -> DIAGNOSIS: Excessive Skew Sensitivity (a > 0.1)\n";
-		      }
-		    
-		    if (cand.getMethod() == MethodId::Percentile)
-		      {
-			(*os) << "    Percentile Stats:\n"
-			      << "    - Skewness: " << cand.getSkewBoot() << "\n"
-			      << "    - Length Penalty: " << cand.getLengthPenalty() << "\n";
+			  (*os) << "  <- |a| > 0.1 threshold";
+			(*os) << "\n";
+
+			(*os) << "   [AutoCI]     accel reliable:   "
+			      << (cand.getAccelIsReliable() ? "yes" : "NO — dominant jackknife observation")
+			      << "\n";
+
+			(*os) << "   [AutoCI]     stability penalty: "
+			      << cand.getStabilityPenalty() << "\n";
 		      }
 		  }
-		(*os) << "--------------------------------------------------------\n\n";
+		(*os) << "\n";
 	      }
- 
+
 	    (*os) << "   [AutoCI] Selected method="
 		  << Result::methodIdToString(diagnostics.getChosenMethod())
 		  << "  mean="  << chosen.getMean()
@@ -614,7 +634,7 @@ namespace palvalidator
 		  << "  numCandidates="          << diagnostics.getNumCandidates()
 		  << "\n";
 	  }
-
+ 
 	return result;
       }
       
