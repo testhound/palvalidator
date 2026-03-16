@@ -13,6 +13,7 @@ namespace palvalidator::filtering::stages
   using namespace palvalidator::filtering;
 
   using palvalidator::bootstrap_cfg::BootstrapFactory;
+  using palvalidator::analysis::AutoCIResult;
 
   /**
    * @brief Stage tag and fold constants for Common Random Number (CRN) stream differentiation.
@@ -274,6 +275,18 @@ namespace palvalidator::filtering::stages
     AnnualizationParams computeAnnualizationParams(const StrategyAnalysisContext& ctx,
                                                     std::ostream& os) const;
 
+    Num populateAndLogGeoResult(const AutoCIResult<Num>&       result,
+				BootstrapAnalysisResult&       out,
+				const StrategyAnalysisContext& ctx,
+				const char*                    logLabel,
+				std::ostream&                  os) const;
+
+    Num populateAndLogPFResult(const AutoCIResult<Num>&       result,
+			       BootstrapAnalysisResult&       out,
+			       const StrategyAnalysisContext& ctx,
+			       const char*                    logLabel,
+			       std::ostream&                  os) const;
+ 
     /**
      * Execute profit factor bootstrap analysis
      */
