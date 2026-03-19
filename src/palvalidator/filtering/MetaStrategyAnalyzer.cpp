@@ -688,7 +688,7 @@ namespace palvalidator
      * Returns:
      * A `RegimeMixResult` containing pass/fail status and a list of any failing mixes.
      */
-    MetaStrategyAnalyzer::RegimeMixResult
+   MetaStrategyAnalyzer::RegimeMixResult
     MetaStrategyAnalyzer::runRegimeMixGate(
         const std::shared_ptr<BackTester<Num>>& bt,
         const std::shared_ptr<Security<Num>>& baseSecurity,
@@ -713,38 +713,48 @@ namespace palvalidator
        * those periods were rare in the backtest history.
        *
        * @section technical Technical Implementation
-       * The logic relies on **Regime-Conditional Resampling**:
+       * The logic relies on Regime-Conditional Resampling:
        *
-       * 1. **Dynamic Labeling (VolTercileLabeler):**
-       * Defines regimes using **Relative Volatility** (top 33% of the asset's own history)
-       * rather than arbitrary thresholds (e.g., VIX > 20). This makes the test robust across
-       * different asset classes.
+       * 1. Dynamic Labeling (VolTercileLabeler):
+       *    Defines regimes using Relative Volatility (top 33% of the asset's own history)
+       *    rather than arbitrary thresholds (e.g., VIX > 20). This makes the test robust across
+       *    different asset classes.
        *
-       * 2. **Sparse-to-Dense Alignment (BarAlignedSeries):**
-       * Maps continuous market regimes to sparse, irregular trade timestamps. This ensures
-       * that a trade executed on a Tuesday is strictly evaluated against Tuesday's specific
-       * volatility regime.
+       * 2. Sparse-to-Dense Alignment (BarAlignedSeries):
+       *    Maps continuous market regimes to sparse, irregular trade timestamps. This ensures
+       *    that a trade executed on a Tuesday is strictly evaluated against Tuesday's specific
+       *    volatility regime.
+       *    NOTE: When an exact timestamp match is not found, the prior bar's regime label is
+       *    used as a fallback. A counter tracks and logs the fallback rate; a rate exceeding
+       *    10% triggers a warning indicating a potential timestamp alignment issue.
        *
-       * 3. **Weighted Bootstrapping (RegimeMixStressRunner):**
-       * Creates synthetic equity curves by forcing the bootstrapper to pick trades from
-       * specific regimes based on probability weights (e.g., forcing 30% of trades to
-       * come from the "High Vol" bucket).
+       * 3. Weighted Bootstrapping (RegimeMixStressRunner):
+       *    Creates synthetic equity curves by forcing the bootstrapper to pick trades from
+       *    specific regimes based on probability weights (e.g., forcing 30% of trades to
+       *    come from the "High Vol" bucket).
        *
        * @section mixes Tested Scenarios
-       * The stage evaluates five distinct market textures:
-       * - **Equal (0.33, 0.33, 0.33):** Removes historical frequency bias.
-       * - **MidVolFav (0.25, 0.50, 0.25):** Simulates a mean-reverting, grinding market.
-       * - **LowVolFav (0.50, 0.35, 0.15):** Simulates a calm, bull-market environment.
-       * - **EvenMinusHV (0.35, 0.35, 0.30):** A balanced view capping extreme volatility exposure.
-       * - **LongRun:** Uses the actual historical distribution as a baseline reality check.
+       * The stage evaluates six distinct market textures:
+       * - Equal (0.33, 0.33, 0.33):        Removes historical frequency bias.
+       * - MidVolFav (0.25, 0.50, 0.25):    Simulates a mean-reverting, grinding market.
+       * - LowVolFav (0.50, 0.35, 0.15):    Simulates a calm, bull-market environment.
+       * - EvenMinusHV (0.35, 0.35, 0.30):  A balanced view capping extreme volatility exposure.
+       * - HighVolFav (0.20, 0.30, 0.50):   Stress test for crisis periods / regime shifts.
+       * - LongRun:                          Uses the actual historical distribution as a baseline
+       *                                     reality check (shrunk 25% toward equal, floored 1%).
+       *
+       * @section median Median Calculation
+       * The median annualized lower bound across mixes uses the correct two-element average
+       * for even mix counts, preventing a systematic upward bias when the number of mixes
+       * is even.
        *
        * @section value Strategic Value
-       * - **Detects "Hidden Beta":** Exposes strategies that hold implicit "Short Volatility"
-       * positions by failing them in Equal or High Vol weighted mixes.
-       * - **Validates Portfolio Effect:** Proves that diversification is structural, allowing
-       * the portfolio to pass all regimes even if individual components are specialists.
-       * - **Prevents Curve Fitting:** Makes it mathematically difficult to overfit a strategy
-       * to work in three different volatility regimes simultaneously unless the edge is genuine.
+       * - Detects "Hidden Beta": Exposes strategies that hold implicit "Short Volatility"
+       *   positions by failing them in Equal or High Vol weighted mixes.
+       * - Validates Portfolio Effect: Proves that diversification is structural, allowing
+       *   the portfolio to pass all regimes even if individual components are specialists.
+       * - Prevents Curve Fitting: Makes it mathematically difficult to overfit a strategy
+       *   to work in three different volatility regimes simultaneously unless the edge is genuine.
        */
 
       using mkc_timeseries::FilterTimeSeries;
@@ -823,20 +833,28 @@ namespace palvalidator
         dateToLabel[entries[i].getDateTime()] = oosBarLabels[i - 1];
       }
 
-      // Align meta-strategy returns to regime labels
+      // Align meta-strategy returns to regime labels.
+      // Track exact vs fallback matches to detect timestamp alignment issues.
       std::vector<int> metaLabels;
       metaLabels.reserve(metaReturnsWithDates.size());
+
+      std::size_t exactMatches    = 0;
+      std::size_t fallbackMatches = 0;
+      std::size_t defaultMatches  = 0;
+
       for (const auto& [date, ret] : metaReturnsWithDates)
       {
         auto it = dateToLabel.find(date);
         if (it != dateToLabel.end())
         {
           metaLabels.push_back(it->second);
+          ++exactMatches;
         }
         else
         {
-          // If we can't find the exact date, use the closest previous label
+          // Exact match not found — use the closest prior bar's regime label.
           // This handles cases where meta returns might be on different timestamps
+          // (e.g., intraday trades aligned to daily regime labels).
           auto lower = dateToLabel.lower_bound(date);
           if (lower != dateToLabel.begin())
           {
@@ -850,8 +868,29 @@ namespace palvalidator
           else
           {
             metaLabels.push_back(1); // Default to mid volatility
+            ++defaultMatches;
+            continue;
           }
+          ++fallbackMatches;
         }
+      }
+
+      // Log alignment quality and warn if fallback rate is high
+      outputStream << "      [Meta Regime Mix] Label alignment: "
+                   << exactMatches    << " exact, "
+                   << fallbackMatches << " fallback (prior bar), "
+                   << defaultMatches  << " default (mid-vol)\n";
+
+      const double fallbackRate =
+        static_cast<double>(fallbackMatches + defaultMatches) /
+        static_cast<double>(metaReturnsWithDates.size());
+
+      if (fallbackRate > 0.10)
+      {
+        outputStream << "      [Meta Regime Mix] WARNING: "
+                     << static_cast<int>(fallbackRate * 100)
+                     << "% of trades used fallback regime label — "
+                     << "verify timestamp alignment between trades and price series.\n";
       }
 
       if (metaLabels.size() != metaReturns.size())
@@ -883,7 +922,7 @@ namespace palvalidator
       // HighVolFav: Stress test for crisis periods / regime shifts
       // 50% High Volatility, 30% Mid, 20% Low
       mixes.emplace_back("HighVolFav(0.20,0.30,0.50)",
-			 std::vector<double>{0.20, 0.30, 0.50});
+                         std::vector<double>{0.20, 0.30, 0.50});
 
       // LongRun: Calculate from in-sample data
       auto inSampleTS = FilterTimeSeries(*baseSecurity->getTimeSeries(), inSampleDates);
@@ -962,18 +1001,26 @@ namespace palvalidator
       const bool passStat  = resStat.overallPass();
       const bool passFixed = resFixed.overallPass();
 
-      // Compute median of stationary annualized LBs across mixes (bps above hurdle)
+      // Compute median of stationary annualized LBs across mixes (bps above hurdle).
+      // Uses the correct two-element average for even mix counts to avoid the
+      // upper-bias that arises from integer division when size() is even.
       auto stationaryMedianOverHurdle_bps = [&]() -> double
       {
         const auto& perMix = resStat.perMix();
         if (perMix.empty()) return -1e9;
+
         std::vector<NumT> lbs;
         lbs.reserve(perMix.size());
         for (const auto& d : perMix) lbs.push_back(d.annualizedLowerBound());
         std::sort(lbs.begin(), lbs.end(), [](const NumT& a, const NumT& b){ return a < b; });
-        const NumT medianLB = lbs[lbs.size() / 2];
 
-        const double lb = num::to_double(medianLB);
+        // Correct median: average the two middle elements for even counts
+        const std::size_t sz = lbs.size();
+        const NumT medianLB = (sz % 2 == 1)
+          ? lbs[sz / 2]
+          : (lbs[sz / 2 - 1] + lbs[sz / 2]) / NumT(2);
+
+        const double lb        = num::to_double(medianLB);
         const double hurdleDec = requiredReturn.getAsDouble();
         return 10000.0 * (lb - hurdleDec);
       }();
@@ -1317,8 +1364,29 @@ namespace palvalidator
 
 
       // --- GATE 3: Selection-Aware Gate ---
-      // Note: Maintained at bar-level. Aggregating overlapping trades mathematically
-      // without stepping through time bar-by-bar is complex and error-prone.
+      // NOTE: Gate 3 always operates at bar level regardless of whether
+      // trade-level bootstrapping is enabled for Gates 2 and 4.
+      //
+      // Rationale: The selection-aware bootstrap resamples component return
+      // series aligned to a common time axis. Reconstructing this time
+      // alignment from discrete trade objects — where multiple strategies may
+      // hold overlapping positions on the same bar — requires stepping through
+      // time bar-by-bar to aggregate correctly. This is non-trivial and
+      // error-prone to implement correctly at the trade level.
+      //
+      // Implication: When trade-level bootstrapping is enabled, Gates 2 and 4
+      // test the IID trade distribution while Gate 3 tests the bar-level
+      // return distribution. These are testing related but distinct properties:
+      // Gate 3 captures selection bias in the time domain; Gates 2 and 4
+      // capture the edge distribution across trades. This asymmetry is
+      // intentional and documented here to prevent future refactoring that
+      // inadvertently removes the bar-level gate under the mistaken assumption
+      // that trade-level bootstrapping should be applied uniformly.
+      //
+      // Future work: A trade-level selection-aware gate would require building
+      // a sparse trade matrix aligned to a common timestamp index and
+      // resampling at the trade level — feasible but non-trivial.
+      
       const bool passMetaSelectionAware =
 	runSelectionAwareMetaGate(survivingStrategies,
 				  baseSecurity,
@@ -2113,49 +2181,64 @@ namespace palvalidator
     }
     
     void MetaStrategyAnalyzer::performBlockLengthSensitivity(
-							     const std::vector<Num>& metaReturns,
-							     std::size_t calculatedL,
-							     double annualizationFactor,
-							     const Num& hurdle,
-							     std::ostream& outputStream) const
+                                                             const std::vector<Num>& metaReturns,
+                                                             std::size_t calculatedL,
+                                                             double annualizationFactor,
+                                                             const Num& hurdle,
+                                                             std::ostream& outputStream) const
     {
       using mkc_timeseries::DecimalConstants;
-
+ 
       // Define multipliers to stress-test the block length
       std::vector<double> multipliers = {0.5, 1.5, 2.0};
     
       outputStream << "\n" 
-		   << "      === Block Length Sensitivity Audit ===\n"
-		   << "      (Checking robustness against L variation)\n";
-
+                   << "      === Block Length Sensitivity Audit ===\n"
+                   << "      (Checking robustness against L variation)\n";
+ 
       // Print the baseline (current result)
       outputStream << "      Baseline (L=" << calculatedL << "): Included in analysis above.\n" << std::endl;
-
+ 
       for (double mult : multipliers)
-	{
-	  // Calculate new L, ensuring it is at least 2 and at most n/2
-	  std::size_t newL = static_cast<std::size_t>(calculatedL * mult);
-	  newL = std::max<std::size_t>(2, newL);
-	  newL = std::min<std::size_t>(metaReturns.size() / 2, newL);
-
-	  // Skip if effective L didn't change (e.g., small L rounding)
-	  if (newL == calculatedL) continue; 
-
-	  // Run Bootstrap with new L
-	  auto results = performBootstrapAnalysis(metaReturns, annualizationFactor, newL, outputStream);
+      {
+        // Calculate new L, ensuring it is at least 2 and at most n/2
+        std::size_t newL = static_cast<std::size_t>(std::round(calculatedL * mult));
+        newL = std::max<std::size_t>(2, newL);
+        newL = std::min<std::size_t>(metaReturns.size() / 2, newL);
+ 
+        // Skip if effective L didn't change (e.g., small L rounding)
+        if (newL == calculatedL)
+	  continue;
+ 
+        // Skip if the multiplier collapsed to the minimum clamp (L=2) but
+        // calculatedL was materially larger. L=2 is only a meaningful stress
+        // test if the baseline was already close to 2; otherwise the result
+        // is not informative and would misleadingly suggest the strategy is
+        // robust to very short block lengths when it was never tested at them.
+        if (newL <= 2 && calculatedL > 4)
+        {
+          outputStream << "      Sensitivity L=" << newL
+                       << " (" << std::fixed << std::setprecision(1) << mult
+                       << "x): Skipped (collapsed to minimum L=2, not informative"
+                       << " given baseline L=" << calculatedL << ")\n\n";
+          continue;
+        }
+ 
+        // Run Bootstrap with new L
+        auto results = performBootstrapAnalysis(metaReturns, annualizationFactor, newL, outputStream);
         
-	  // Check vs Hurdle
-	  bool pass = (results.lbGeoAnn > hurdle);
+        // Check vs Hurdle
+        bool pass = (results.lbGeoAnn > hurdle);
         
-	  outputStream << "      Sensitivity L=" << std::left << std::setw(4) << newL 
-		       << " (" << std::fixed << std::setprecision(1) << mult << "x): "
-		       << "LB=" << (results.lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "% "
-		       << (pass ? "[PASS]" : "[FAIL]") 
-		       << "\n" << "\n";
-	}
+        outputStream << "      Sensitivity L=" << std::left << std::setw(4) << newL 
+                     << " (" << std::fixed << std::setprecision(1) << mult << "x): "
+                     << "LB=" << (results.lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "% "
+                     << (pass ? "[PASS]" : "[FAIL]") 
+                     << "\n\n";
+      }
       outputStream << "      ======================================\n\n";
     }
-    
+
     /**
      * @brief Helper for Multi-Split: Bootstraps specific sub-segments.
      *
