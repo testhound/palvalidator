@@ -1303,18 +1303,25 @@ struct RecordingFactory
       const Decimal stat_value = statistic(data);
       
       // Return a simple result with the statistic value as all bounds
+
       return Result{
-        /*mean=*/stat_value,
-        /*lower=*/stat_value * Decimal(0.9),  // Mock lower bound
-        /*upper=*/stat_value * Decimal(1.1),  // Mock upper bound
-        /*cl=*/CL,
-        /*B=*/B,
-        /*effective_B=*/B,
-        /*skipped=*/0,
-        /*n=*/n,
-        /*m_sub=*/m_sub,
-        /*L=*/resampler.getL(),
-        /*computed_ratio=*/rho
+	/*mean=*/stat_value,
+	/*lower=*/stat_value * Decimal(0.9),
+	/*upper=*/stat_value * Decimal(1.1),
+	/*cl=*/CL,
+	/*B=*/B,
+	/*effective_B=*/B,
+	/*skipped=*/0,
+	/*n=*/n,
+	/*m_sub=*/m_sub,
+	/*L=*/resampler.getL(),
+	/*computed_ratio=*/rho,
+	/*skew_boot=*/0.0,
+	/*degenerate_warning=*/false,
+	/*distribution_degenerate=*/false,
+	/*excessive_bias=*/false,
+	/*insufficient_spread=*/false,
+	/*ratio_near_boundary=*/false
       };
     }
   };
