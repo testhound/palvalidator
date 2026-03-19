@@ -7,6 +7,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <set>
 #include "randutils.hpp"
 #include "RngUtils.h"
 #include "StatUtils.h"
@@ -97,12 +98,100 @@ namespace palvalidator
         std::size_t L;
         double      computed_ratio;    // logical ratio reported to callers
         double      skew_boot;         // skewness of usable bootstrap θ*'s
-	bool        degenerate_warning;
+        bool        degenerate_warning;
+
+        // ----------------------------------------------------------------
+        // Reliability flags — analogous to BCa's isReliable() but split
+        // into distinct failure modes since M-out-of-N failures are
+        // distributed across the bootstrap distribution rather than
+        // concentrated in a single scalar parameter.
+        //
+        // distribution_degenerate:
+        //   True when the bootstrap distribution has very few distinct
+        //   values relative to B, indicating m_sub is too small for the
+        //   statistic to vary meaningfully across subsamples.
+        //
+        // excessive_bias:
+        //   True (only meaningful when rescale_to_n=true) when the
+        //   bootstrap mean deviates substantially from theta_hat,
+        //   indicating the variance-scaling rescaling assumption
+        //   (Var ∝ 1/sample_size) is being violated.
+        //
+        // insufficient_spread:
+        //   True when the coefficient of variation of the bootstrap
+        //   distribution is near zero, indicating the distribution is
+        //   too concentrated to produce a meaningful interval.
+        //
+        // ratio_near_boundary:
+        //   True when the computed ratio is very close to either the
+        //   lower bound (2/n) or upper bound ((n-1)/n), indicating
+        //   that clamping fired or the adaptive policy pushed the ratio
+        //   into a degenerate region.
+        //
+        // isReliable():
+        //   Convenience method: returns true if none of the above flags
+        //   are set. Downstream selectors (e.g., AutoBootstrapSelector)
+        //   can use this as a single gate, while diagnostic logging can
+        //   inspect individual flags for the reason.
+        // ----------------------------------------------------------------
+        bool        distribution_degenerate;  // bootstrap distribution too discrete
+        bool        excessive_bias;           // mean_boot far from theta_hat (rescale only)
+        bool        insufficient_spread;      // CV of bootstrap distribution near zero
+        bool        ratio_near_boundary;      // computed_ratio at or near valid-range limit
+
+        bool isReliable() const noexcept
+	{
+	  if (distribution_degenerate)
+	    return false;
+
+	  if (insufficient_spread)
+	    return false;
+
+	  if (excessive_bias)
+	    return false;  // only set when rescale_to_n=true anyway
+
+	  if (ratio_near_boundary)
+	    return false;  // only set in adaptive/clamped anyway
+
+	  return true;
+	}
       };
 
       /// Configuration constant: maximum allowed fraction of degenerate replicates
       static constexpr double MAX_DEGENERATE_FRACTION_WARN  = 0.10; // warn at >10% degenerate
       static constexpr double MAX_DEGENERATE_FRACTION_ERROR = 0.25; // throw at >25% degenerate
+
+      // ----------------------------------------------------------------
+      // Reliability thresholds — govern the four failure-mode flags in
+      // Result. These are intentionally conservative defaults: they flag
+      // pathological cases without triggering on normal bootstrap variance.
+      //
+      // RELIABILITY_UNIQUE_RATIO_THRESHOLD:
+      //   Bootstrap distribution is flagged as degenerate when fewer than
+      //   this fraction of replicates produce distinct values. At 0.05, a
+      //   distribution with only 5% distinct values (e.g., 20 unique values
+      //   from B=400 replicates) triggers the flag.
+      //
+      // RELIABILITY_BIAS_FRACTION_THRESHOLD:
+      //   Bootstrap mean is flagged as excessively biased when it deviates
+      //   from theta_hat by more than this fraction of |theta_hat|. Only
+      //   meaningful when rescale_to_n=true. At 0.20, a 20% relative
+      //   deviation triggers the flag.
+      //
+      // RELIABILITY_MIN_CV_THRESHOLD:
+      //   Bootstrap distribution is flagged as insufficiently spread when
+      //   its coefficient of variation falls below this value. At 0.01,
+      //   a distribution where SE is less than 1% of the mean triggers.
+      //
+      // RELIABILITY_BOUNDARY_FRACTION:
+      //   Computed ratio is flagged as near-boundary when it is within this
+      //   fraction of n from either the lower (2/n) or upper ((n-1)/n) limit.
+      //   At 3.0/n this means the ratio corresponds to m_sub within 1 trade
+      //   of either boundary.
+      // ----------------------------------------------------------------
+      static constexpr double RELIABILITY_UNIQUE_RATIO_THRESHOLD = 0.05;
+      static constexpr double RELIABILITY_BIAS_FRACTION_THRESHOLD = 0.20;
+      static constexpr double RELIABILITY_MIN_CV_THRESHOLD = 0.01;
 
     public:
       // ====================================================================
@@ -510,6 +599,50 @@ namespace palvalidator
           ensureDiagnosticsAvailable();
           return m_diagSkewBoot;
         }
+
+      // ----------------------------------------------------------------
+      // Reliability diagnostic accessors.
+      // These mirror the flags in Result and allow callers to inspect
+      // reliability without retaining the Result object.
+      // ----------------------------------------------------------------
+      bool isDistributionDegenerate() const
+      {
+        std::lock_guard<std::mutex> lock(*m_diagMutex);
+        ensureDiagnosticsAvailable();
+        return m_diagDistributionDegenerate;
+      }
+
+      bool isExcessiveBias() const
+      {
+        std::lock_guard<std::mutex> lock(*m_diagMutex);
+        ensureDiagnosticsAvailable();
+        return m_diagExcessiveBias;
+      }
+
+      bool isInsufficientSpread() const
+      {
+        std::lock_guard<std::mutex> lock(*m_diagMutex);
+        ensureDiagnosticsAvailable();
+        return m_diagInsufficientSpread;
+      }
+
+      bool isRatioNearBoundary() const
+      {
+        std::lock_guard<std::mutex> lock(*m_diagMutex);
+        ensureDiagnosticsAvailable();
+        return m_diagRatioNearBoundary;
+      }
+
+      /// Convenience: returns true if none of the four reliability flags are set.
+      bool isReliable() const
+      {
+        std::lock_guard<std::mutex> lock(*m_diagMutex);
+        ensureDiagnosticsAvailable();
+        return !m_diagDistributionDegenerate
+            && !m_diagExcessiveBias
+            && !m_diagInsufficientSpread
+            && !m_diagRatioNearBoundary;
+      }
       
     private:
       void ensureDiagnosticsAvailable() const
@@ -826,31 +959,125 @@ namespace palvalidator
         const Decimal lb = mkc_timeseries::StatUtils<Decimal>::quantileType7Sorted(thetas_sorted, pl);
         const Decimal ub = mkc_timeseries::StatUtils<Decimal>::quantileType7Sorted(thetas_sorted, pu);
 
+        // ====================================================================
+        // RELIABILITY CHECKS
+        // ====================================================================
+        // Compute four structural failure-mode flags. These are distinct from
+        // the degenerate_warning (which measures NaN/non-finite replicates) —
+        // they assess whether the *valid* replicates form a meaningful
+        // bootstrap distribution. See Result struct documentation for the
+        // interpretation of each flag.
+        // ====================================================================
+
+        // Flag 1: Distribution degeneracy — too few distinct values.
+        // Uses the post-rescaling thetas_d so the check reflects the actual
+        // distribution used for quantile computation.
+        const std::size_t uniqueCount =
+            std::set<double>(thetas_d.begin(), thetas_d.end()).size();
+        const double uniqueRatio =
+            static_cast<double>(uniqueCount) / static_cast<double>(m);
+        const bool distribution_degenerate =
+            (uniqueRatio < RELIABILITY_UNIQUE_RATIO_THRESHOLD);
+
+        // Flag 2: Excessive bias — bootstrap mean far from theta_hat.
+        // Only meaningful when rescale_to_n=true; the rescaling assumes
+        // Var ∝ 1/sample_size, and a large bias gap indicates this assumption
+        // is being violated. When rescale_to_n=false the bias is expected and
+        // the flag is suppressed to avoid spurious warnings.
+        const double theta_hat_d_rel = num::to_double(theta_hat);
+        const double biasFraction =
+            std::abs(mean_boot - theta_hat_d_rel)
+            / (std::abs(theta_hat_d_rel) + 1e-10);
+        const bool excessive_bias =
+            m_rescale_to_n && (biasFraction > RELIABILITY_BIAS_FRACTION_THRESHOLD);
+
+        // Flag 3: Insufficient spread — CV of the bootstrap distribution near zero.
+        // A near-zero CV means the bootstrap distribution is too concentrated
+        // to produce a meaningful interval, regardless of the interval width.
+        const double cvBoot =
+            (std::abs(mean_boot) > 1e-10)
+            ? (std::sqrt(var_boot) / std::abs(mean_boot))
+            : std::sqrt(var_boot);
+        const bool insufficient_spread =
+            (m > 1) && (cvBoot < RELIABILITY_MIN_CV_THRESHOLD);
+
+        // Flag 4: Ratio near boundary — computed_ratio very close to either
+        // the lower limit (2/n) or upper limit ((n-1)/n). This indicates that
+        // clamping fired or the adaptive policy pushed the ratio into a
+        // degenerate region where subsample behaviour is unreliable.
+        const double lower_boundary = 3.0 / static_cast<double>(n);
+        const double upper_boundary =
+            static_cast<double>(n - 2) / static_cast<double>(n);
+
+	const bool ratio_near_boundary =
+	  (isAdaptiveMode() || (m_sub != m_sub_before_clamp) || (m_sub_override > 0))
+	  && ((reported_ratio < lower_boundary) || (reported_ratio > upper_boundary));
+ 
+        // Log reliability issues if a diagnostic stream is available
+        if (diagnosticLog)
+        {
+          if (distribution_degenerate)
+            (*diagnosticLog) << "[M-out-of-N RELIABILITY] distribution_degenerate: "
+                             << uniqueCount << " unique values from " << m
+                             << " replicates (ratio=" << uniqueRatio
+                             << " < threshold=" << RELIABILITY_UNIQUE_RATIO_THRESHOLD
+                             << "). m_sub=" << m_sub << " may be too small.\n";
+
+          if (excessive_bias)
+            (*diagnosticLog) << "[M-out-of-N RELIABILITY] excessive_bias: "
+                             << "mean_boot=" << mean_boot
+                             << " vs theta_hat=" << theta_hat_d_rel
+                             << " (bias fraction=" << biasFraction
+                             << " > threshold=" << RELIABILITY_BIAS_FRACTION_THRESHOLD
+                             << "). rescale_to_n assumption may be violated.\n";
+
+          if (insufficient_spread)
+            (*diagnosticLog) << "[M-out-of-N RELIABILITY] insufficient_spread: "
+                             << "CV=" << cvBoot
+                             << " < threshold=" << RELIABILITY_MIN_CV_THRESHOLD
+                             << ". Bootstrap distribution too concentrated.\n";
+
+          if (ratio_near_boundary)
+            (*diagnosticLog) << "[M-out-of-N RELIABILITY] ratio_near_boundary: "
+                             << "computed_ratio=" << reported_ratio
+                             << " is within boundary margins ["
+                             << lower_boundary << ", " << upper_boundary
+                             << "]. Clamping may have fired.\n";
+        }
+
         // Store diagnostics for the most recent run (with thread safety)
         {
           std::lock_guard<std::mutex> lock(*m_diagMutex);
-          m_diagBootstrapStats = thetas_d;
-          m_diagMeanBoot       = mean_boot;
-          m_diagVarBoot        = var_boot;
-          m_diagSeBoot         = std::sqrt(var_boot);
-          m_diagSkewBoot       = skew_boot;
-          m_diagValid          = true;
+          m_diagBootstrapStats          = thetas_d;
+          m_diagMeanBoot                = mean_boot;
+          m_diagVarBoot                 = var_boot;
+          m_diagSeBoot                  = std::sqrt(var_boot);
+          m_diagSkewBoot                = skew_boot;
+          m_diagDistributionDegenerate  = distribution_degenerate;
+          m_diagExcessiveBias           = excessive_bias;
+          m_diagInsufficientSpread      = insufficient_spread;
+          m_diagRatioNearBoundary       = ratio_near_boundary;
+          m_diagValid                   = true;
         }
 
         return Result{
-          /*mean          =*/ theta_hat,
-          /*lower         =*/ lb,
-          /*upper         =*/ ub,
-          /*cl            =*/ m_CL,
-          /*B             =*/ m_B,
-          /*effective_B   =*/ thetas_d.size(),
-          /*skipped       =*/ skipped,
-          /*n             =*/ n,
-          /*m_sub         =*/ m_sub,
-          /*L             =*/ m_resampler.getL(),
-          /*computed_ratio=*/ reported_ratio,
-          /*skew_boot     =*/ skew_boot,
-	  /*degenerate_warning =*/ degenerate_warning
+          /*mean                    =*/ theta_hat,
+          /*lower                   =*/ lb,
+          /*upper                   =*/ ub,
+          /*cl                      =*/ m_CL,
+          /*B                       =*/ m_B,
+          /*effective_B             =*/ thetas_d.size(),
+          /*skipped                 =*/ skipped,
+          /*n                       =*/ n,
+          /*m_sub                   =*/ m_sub,
+          /*L                       =*/ m_resampler.getL(),
+          /*computed_ratio          =*/ reported_ratio,
+          /*skew_boot               =*/ skew_boot,
+          /*degenerate_warning      =*/ degenerate_warning,
+          /*distribution_degenerate =*/ distribution_degenerate,
+          /*excessive_bias          =*/ excessive_bias,
+          /*insufficient_spread     =*/ insufficient_spread,
+          /*ratio_near_boundary     =*/ ratio_near_boundary
         };
       }
 
@@ -900,6 +1127,12 @@ namespace palvalidator
       mutable double              m_diagSeBoot;
       mutable double              m_diagSkewBoot;
       mutable bool                m_diagValid;
+
+      // Reliability flags from most recent run (protected by same mutex)
+      mutable bool                m_diagDistributionDegenerate{false};
+      mutable bool                m_diagExcessiveBias{false};
+      mutable bool                m_diagInsufficientSpread{false};
+      mutable bool                m_diagRatioNearBoundary{false};
       IntervalType m_interval_type;
     };
   }
