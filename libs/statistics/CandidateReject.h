@@ -22,6 +22,7 @@ namespace palvalidator::diagnostics
       BcaAccelHardFail        = 1u << 5,  // |accel| exceeds hard limit
       PercentileTInnerFails   = 1u << 6,  // Percentile-T inner fail rate too high (diagnostic)
       PercentileTLowEffB      = 1u << 7,  // Percentile-T effective B fraction too low (diagnostic)
+      MOutOfNHardFailure      = (1 << 8)  // distribution_degenerate or insufficient_spread
       // bits 8..31 reserved
     };
 

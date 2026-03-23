@@ -521,6 +521,136 @@ namespace palvalidator
       using Candidate = typename Result::Candidate;
       using SelectionDiagnostics = typename Result::SelectionDiagnostics;
 
+      // =========================================================================
+      // summarizeMOutOfN
+      //
+      // Dedicated summarizer for MOutOfNPercentileBootstrap engines. Separating
+      // this from summarizePercentileLike gives direct, unconditional access to
+      // the engine's public reliability constants and result fields.
+      //
+      // Routing from summarizePercentileLike uses a compile-time type trait
+      // (HasDegenerateFlag) rather than a runtime method-ID check. This is
+      // necessary because a runtime if() causes the compiler to instantiate
+      // summarizeMOutOfN for all BootstrapEngine types — including plain engines
+      // that lack the reliability fields — which produces compile errors.
+      // =========================================================================
+
+      /// Detect at compile time whether a Result type carries M-out-of-N
+      /// reliability flags (specifically distribution_degenerate).
+      /// Used to route summarizePercentileLike to summarizeMOutOfN.
+      template <class R, class = void>
+      struct HasDegenerateFlag : std::false_type {};
+
+      template <class R>
+      struct HasDegenerateFlag<R,
+          std::void_t<decltype(std::declval<const R&>().distribution_degenerate)>>
+        : std::true_type {};
+
+      /**
+       * @brief Creates a Candidate summary for MOutOfNPercentileBootstrap engines.
+       *
+       * Applies the two-tier reliability gating:
+       *   HARD GATE (distribution_degenerate || insufficient_spread):
+       *     stability_penalty = infinity → ScoreNonFinite fires in the gate keeper,
+       *     disqualifying the candidate before scoring. Equivalent to BCa's z0/accel
+       *     hard rejection gates.
+       *   SOFT GATE (excessive_bias || ratio_near_boundary):
+       *     stability_penalty = kMOutOfNUnreliabilityPenalty → finite penalty
+       *     down-weights M-out-of-N while preserving it as rescue fallback.
+       *
+       * When excessive_bias fires, the pre-computed excess_bias is stored on the
+       * Candidate so select() can apply an adaptive lower bound haircut proportional
+       * to the severity without needing the threshold constant outside the engine.
+       *
+       * @param engine The MOutOfNPercentileBootstrap engine (after run()).
+       * @param res    The Result returned by run().
+       * @return A populated Candidate for the tournament.
+       */
+      template <class MOutOfNEngine>
+      static Candidate summarizeMOutOfN(const MOutOfNEngine& engine,
+                                        const typename MOutOfNEngine::Result& res)
+      {
+        if (!engine.hasDiagnostics())
+          throw std::logic_error(
+            "AutoBootstrapSelector: diagnostics not available for MOutOfN engine "
+            "(run() not called?).");
+
+        const auto& stats = engine.getBootstrapStatistics();
+        const std::size_t m = stats.size();
+        if (m < 2)
+          throw std::logic_error(
+            "AutoBootstrapSelector: need at least 2 bootstrap statistics for MOutOfN engine.");
+
+        const double mean_boot = engine.getBootstrapMean();
+        const double se_boot   = engine.getBootstrapSe();
+        const double skew_boot = (se_boot > 0.0)
+          ? mkc_timeseries::StatUtils<double>::computeSkewness(stats, mean_boot, se_boot)
+          : 0.0;
+
+        const double lo  = num::to_double(res.lower);
+        const double hi  = num::to_double(res.upper);
+        const double mu  = num::to_double(res.mean);
+        const double len = hi - lo;
+
+        // Center shift
+        double center_shift_in_se = 0.0;
+        if (se_boot > 0.0 && len > 0.0)
+          center_shift_in_se = std::fabs(0.5 * (lo + hi) - mu) / se_boot;
+
+        // Length penalty — MOutOfN uses the percentile-quantile ideal with
+        // the wider kLengthMaxMOutOfN tolerance (6× rather than 1.8×)
+        double normalized_length = 1.0;
+        double median_val        = 0.0;
+        const double length_penalty =
+          BootstrapPenaltyCalculator<Decimal>::computeLengthPenalty_Percentile(
+            len, stats, res.cl, MethodId::MOutOfN, normalized_length, median_val);
+
+        // Ordering penalty is skipped for MOutOfN — see summarizePercentileLike
+        // for the rationale (rescaling artifacts produce systematic non-zero values
+        // that unfairly penalise the method vs BCa/Percentile-T).
+        const double ordering_penalty = 0.0;
+
+        // ====================================================================
+        // RELIABILITY GATING — direct field access, no SFINAE needed
+        // ====================================================================
+        const bool hard_failure = res.distribution_degenerate || res.insufficient_spread;
+        const bool soft_failure = res.excessive_bias || res.ratio_near_boundary;
+        const bool algorithm_reliable = engine.isReliable();
+
+        double stability_penalty = 0.0;
+        if (hard_failure)
+          stability_penalty = std::numeric_limits<double>::infinity();
+        else if (soft_failure)
+          stability_penalty = AutoBootstrapConfiguration::kMOutOfNUnreliabilityPenalty;
+
+        // Pre-compute excess_bias = max(0, bias_fraction - threshold) using the
+        // engine's own threshold constant so select() needs no threshold reference.
+        const double excess_bias = res.excessive_bias
+          ? std::max(0.0, res.bias_fraction
+                        - MOutOfNEngine::RELIABILITY_BIAS_FRACTION_THRESHOLD)
+          : 0.0;
+
+        return Candidate(MethodId::MOutOfN,
+                         res.mean, res.lower, res.upper, res.cl, res.n,
+                         res.B,
+                         0,               // B_inner
+                         res.effective_B,
+                         res.skipped,
+                         se_boot, skew_boot, median_val,
+                         center_shift_in_se, normalized_length,
+                         ordering_penalty, length_penalty,
+                         stability_penalty,
+                         0.0,             // z0
+                         0.0,             // accel
+                         0.0,             // inner_failure_rate
+                         std::numeric_limits<double>::quiet_NaN(),  // score
+                         0, 0, false,     // candidate_id, rank, is_chosen
+                         true,            // accelIsReliable (concept n/a for MOutOfN)
+                         algorithm_reliable,
+                         res.excessive_bias,
+                         excess_bias);
+      }
+
       /**
        * @brief Configuration for the scoring algorithm weights and penalties.
        *
@@ -655,6 +785,20 @@ namespace palvalidator
 	      mask |= CandidateReject::BcaAccelHardFail;
 	  }
 
+	if (candidate.getMethod() == MethodId::MOutOfN)
+	  {
+	    // Hard gate: distribution_degenerate or insufficient_spread means the
+	    // bootstrap distribution itself is pathological. Disqualify explicitly
+	    // rather than relying on infinity propagating through the scoring pipeline.
+	    // !algorithmIsReliable alone is insufficient — it also covers soft flags.
+	    // We use the stability_penalty being infinite as the proxy here since
+	    // we stored the hard vs soft distinction via the penalty magnitude.
+	    if (std::isinf(candidate.getStabilityPenalty()))
+	      {
+		mask |= CandidateReject::MOutOfNHardFailure;
+	      }
+	  }
+
 	if (candidate.getMethod() == MethodId::PercentileT)
 	  {
 	    const double inner_fail_rate = candidate.getInnerFailureRate();
@@ -717,9 +861,9 @@ namespace palvalidator
       /**
        * @brief Creates a Candidate summary for "simple" percentile-like methods.
        *
-       * Handles Normal, Basic, Percentile, and MOutOfN methods. It computes standard
-       * metrics (ordering penalty, length penalty) but assumes no complex stability
-       * parameters (like z0 or accel) are needed.
+       * Handles Normal, Basic, and Percentile methods. For MOutOfN, this function
+       * delegates immediately to summarizeMOutOfN which has direct access to the
+       * engine's reliability constants and result fields.
        *
        * @param method The method ID (e.g., MethodId::Percentile).
        * @param engine The bootstrap engine instance used to generate results.
@@ -732,6 +876,14 @@ namespace palvalidator
 					       const BootstrapEngine&                  engine,
 					       const typename BootstrapEngine::Result& res)
       {
+        // Route to the dedicated MOutOfN summarizer at compile time.
+        // Must use if constexpr + type trait rather than a runtime method-ID
+        // check: a runtime if() causes the compiler to instantiate
+        // summarizeMOutOfN for every BootstrapEngine type, including plain
+        // engines that lack the reliability fields, producing compile errors.
+        if constexpr (HasDegenerateFlag<typename BootstrapEngine::Result>::value)
+          return summarizeMOutOfN(engine, res);
+
 	if (!engine.hasDiagnostics())
 	  {
 	    throw std::logic_error(
@@ -872,6 +1024,11 @@ namespace palvalidator
 	    length_penalty = BootstrapPenaltyCalculator<Decimal>::computeLengthPenalty_Percentile(len, stats, res.cl, method, normalized_length, median_val);
 	  }
 
+	// ====================================================================
+	// No MOutOfN reliability logic here — that is handled in summarizeMOutOfN.
+	// For Normal, Basic, and Percentile the stability penalty is always 0.
+	// ====================================================================
+
 	return Candidate(method,
 			 res.mean, res.lower, res.upper, res.cl, res.n,
 			 res.B,
@@ -889,7 +1046,10 @@ namespace palvalidator
 			 0,                                           // candidate_id (param 23)
 			 0,                                           // rank (param 24)
 			 false,                                       // is_chosen (param 25)
-			 true                                         // accelIsReliable (param 26)
+			 true,                                        // accelIsReliable (param 26)
+			 true,                                        // algorithmIsReliable (param 27)
+			 false,                                       // excessiveBias (param 28)
+			 0.0                                          // excessBias (param 29)
 			 );
       }
       
@@ -1607,6 +1767,85 @@ namespace palvalidator
         // PHASE 5: BCa diagnostics
         // =====================================================================
         auto bca_analysis = analyzeBcaRejection(enriched, raw, winner_idx, has_bca);
+        
+        // =====================================================================
+        // PHASE 5b: M-OUT-OF-N LOWER BOUND HAIRCUT
+        // =====================================================================
+        // When M-out-of-N wins the tournament with excessive_bias set, apply
+        // a conservative reduction to the lower bound. This handles the case
+        // where M-out-of-N is the only surviving candidate — the stability
+        // penalty in the tournament cannot help when there is nothing else to
+        // prefer.
+        //
+        // The haircut is applied only for excessive_bias because that flag
+        // directly affects the interval center via the rescaling centering
+        // assumption (the bootstrap mean has drifted from theta_hat). The other
+        // soft flag, ratio_near_boundary, affects ratio selection but not the
+        // distribution centering, so no haircut is warranted for it alone.
+        //
+        // excess_bias is pre-computed in summarizeMOutOfN as:
+        //   max(0, bias_fraction - RELIABILITY_BIAS_FRACTION_THRESHOLD)
+        // so select() needs no threshold reference here.
+        //
+        // ADAPTIVE HAIRCUT FORMULA:
+        //   raw     = excess_bias * kMOutOfNHaircutScale
+        //   haircut = min(raw, kMOutOfNMaxHaircutFraction)
+        //
+        // Example outcomes (threshold=0.20, scale=0.10, cap=0.20):
+        //   bias_fraction=0.23 → excess=0.03 → haircut=0.3%
+        //   bias_fraction=0.49 → excess=0.29 → haircut=2.9%
+        //   bias_fraction=0.77 → excess=0.57 → haircut=5.7%
+        //   bias_fraction=4.98 → excess=4.78 → raw=47.8% → haircut=20% (capped)
+        //
+        // Formula: lo_adjusted = lo - |lo| * haircut
+        //   For lo > 0: reduces lower bound toward zero (less optimistic)
+        //   For lo < 0: moves lower bound further negative (more conservative)
+        // =====================================================================
+        const Candidate& pre_haircut_winner = enriched[winner_idx];
+        if (pre_haircut_winner.getMethod() == MethodId::MOutOfN &&
+            pre_haircut_winner.getExcessiveBias())
+        {
+          const double lo      = num::to_double(pre_haircut_winner.getLower());
+          const double raw     = pre_haircut_winner.getExcessBias()
+                               * AutoBootstrapConfiguration::kMOutOfNHaircutScale;
+          const double haircut = std::min(raw,
+                               AutoBootstrapConfiguration::kMOutOfNMaxHaircutFraction);
+
+          const double lo_adjusted = lo - std::abs(lo) * haircut;
+          const Decimal lo_adjusted_d(lo_adjusted);
+
+          enriched[winner_idx] = Candidate(
+            pre_haircut_winner.getMethod(),
+            pre_haircut_winner.getMean(),
+            lo_adjusted_d,
+            pre_haircut_winner.getUpper(),
+            pre_haircut_winner.getCl(),
+            pre_haircut_winner.getN(),
+            pre_haircut_winner.getBOuter(),
+            pre_haircut_winner.getBInner(),
+            pre_haircut_winner.getEffectiveB(),
+            pre_haircut_winner.getSkippedTotal(),
+            pre_haircut_winner.getSeBoot(),
+            pre_haircut_winner.getSkewBoot(),
+            pre_haircut_winner.getMedianBoot(),
+            pre_haircut_winner.getCenterShiftInSe(),
+            pre_haircut_winner.getNormalizedLength(),
+            pre_haircut_winner.getOrderingPenalty(),
+            pre_haircut_winner.getLengthPenalty(),
+            pre_haircut_winner.getStabilityPenalty(),
+            pre_haircut_winner.getZ0(),
+            pre_haircut_winner.getAccel(),
+            pre_haircut_winner.getInnerFailureRate(),
+            pre_haircut_winner.getScore(),
+            pre_haircut_winner.getCandidateId(),
+            pre_haircut_winner.getRank(),
+            pre_haircut_winner.isChosen(),
+            pre_haircut_winner.getAccelIsReliable(),
+            pre_haircut_winner.getAlgorithmIsReliable(),
+            pre_haircut_winner.getExcessiveBias(),
+            pre_haircut_winner.getExcessBias()
+          );
+        }
         
         // =====================================================================
         // BUILD RESULT

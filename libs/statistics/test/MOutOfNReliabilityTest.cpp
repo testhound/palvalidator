@@ -71,11 +71,6 @@ static std::vector<D> make_ramp(std::size_t n)
     return x;
 }
 
-// Build a constant series of length n — all values equal to v
-static std::vector<D> make_constant(std::size_t n, double v = 1.0)
-{
-    return std::vector<D>(n, D(v));
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §1  distribution_degenerate

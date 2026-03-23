@@ -121,7 +121,10 @@ namespace palvalidator
 		  std::uint64_t candidate_id = 0,
 		  std::size_t   rank = 0,
 		  bool          is_chosen = false,
-		  bool accelIsReliable = true)
+		  bool accelIsReliable = true,
+	  bool algorithmIsReliable = true,
+	  bool excessiveBias = false,
+	  double excessBias = 0.0)
 	: m_method(method),
 	  m_mean(mean),
 	  m_lower(lower),
@@ -147,7 +150,10 @@ namespace palvalidator
 	  m_candidate_id(candidate_id),
 	  m_rank(rank),
 	  m_is_chosen(is_chosen),
-	  m_accel_is_reliable(accelIsReliable)
+	  m_accel_is_reliable(accelIsReliable),
+	  m_algorithm_reliable(algorithmIsReliable),
+	  m_excessive_bias(excessiveBias),
+	  m_excess_bias(excessBias)
 	{
 	}
 
@@ -179,6 +185,29 @@ namespace palvalidator
 	// True if no single jackknife observation dominated the acceleration
 	/// estimate. Always true for non-BCa methods (concept does not apply).
 	bool getAccelIsReliable() const { return m_accel_is_reliable; }
+
+	/// True if the bootstrap algorithm's own reliability checks passed.
+	/// For M-out-of-N: reflects MOutOfNPercentileBootstrap::Result::isReliable().
+	/// For BCa and other methods: always true (concept does not apply).
+	/// When false for M-out-of-N, either a hard gate fired (distribution
+	/// degenerate / insufficient spread) or a soft gate fired (excessive bias
+	/// / ratio near boundary). Inspect the diagnostic log for the specific flag.
+	bool getAlgorithmIsReliable() const { return m_algorithm_reliable; }
+
+	/// True when M-out-of-N bootstrap mean deviated substantially from
+	/// theta_hat under rescale_to_n=true, indicating the rescaling centering
+	/// assumption is violated. Always false for non-MOutOfN methods.
+	/// Used by select() to apply the lower bound haircut precisely to the
+	/// failure mode that directly affects interval placement.
+	bool getExcessiveBias() const { return m_excessive_bias; }
+
+	/// The excess bias carried from MOutOfNPercentileBootstrap: the amount
+	/// by which the bias fraction exceeded RELIABILITY_BIAS_FRACTION_THRESHOLD,
+	/// pre-computed as max(0, bias_fraction - threshold). Always 0.0 for
+	/// non-MOutOfN methods and when excessive_bias did not fire.
+	/// Used by select() to compute the adaptive haircut without needing to
+	/// access the threshold constant outside the engine.
+	double getExcessBias() const { return m_excess_bias; }
 	
 	double      getScore() const { return m_score; }
 	double      getInnerFailureRate() const { return m_inner_failure_rate; }
@@ -218,7 +247,10 @@ namespace palvalidator
 			   m_z0, m_accel, m_inner_failure_rate, 
 			   newScore,
 			   m_candidate_id, m_rank, m_is_chosen,
-			   m_accel_is_reliable);  // V2: Preserve metadata
+			   m_accel_is_reliable,
+			   m_algorithm_reliable,
+			   m_excessive_bias,
+			   m_excess_bias);  // preserve all reliability fields
 	}
 
 	Candidate markAsChosen() const
@@ -244,7 +276,10 @@ namespace palvalidator
 			   m_z0, m_accel, m_inner_failure_rate, 
 			   m_score,
 			   id, final_rank, chosen,
-			   m_accel_is_reliable);
+			   m_accel_is_reliable,
+			   m_algorithm_reliable,
+			   m_excessive_bias,
+			   m_excess_bias);  // preserve all reliability fields
 	}
 
       private:
@@ -277,6 +312,9 @@ namespace palvalidator
 	std::size_t   m_rank;
 	bool          m_is_chosen;
 	bool m_accel_is_reliable;
+	bool m_algorithm_reliable;  // M-out-of-N reliability aggregate flag
+	bool m_excessive_bias;      // M-out-of-N: bootstrap mean far from theta_hat
+	double m_excess_bias;       // M-out-of-N: max(0, bias_fraction - threshold), pre-computed
       };
 
       // ===========================================================================

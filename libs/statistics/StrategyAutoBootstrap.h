@@ -467,7 +467,7 @@ namespace palvalidator
 							  rescaleMOutOfN,
 							  m_interval_type);
 
-		    auto res = engine.run(returns, m_sampler_instance, crn);
+		    auto res = engine.run(returns, m_sampler_instance, crn, 0, os);
 		    candidates.push_back(
 		      Selector::template summarizePercentileLike(MethodId::MOutOfN, engine, res));
 		  }
