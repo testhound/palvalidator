@@ -101,6 +101,65 @@ namespace AutoBootstrapConfiguration
   constexpr double kRelativeTieEpsilonScale = 1e-10;
 
   // ===========================================================================
+  // M-OUT-OF-N RELIABILITY CONSTANTS
+  //
+  // These constants govern the two-tier response to M-out-of-N reliability
+  // flag failures identified by MOutOfNPercentileBootstrap::Result::isReliable().
+  //
+  // HARD GATE (distribution_degenerate || insufficient_spread):
+  //   The bootstrap distribution itself is pathological — too discrete or
+  //   too concentrated to support meaningful quantile estimation. The candidate
+  //   is disqualified from the tournament by setting stability_penalty to
+  //   infinity, which triggers the ScoreNonFinite rejection gate. This is
+  //   equivalent to BCa's z0/accel hard rejection gates.
+  //
+  // SOFT GATE (excessive_bias || ratio_near_boundary):
+  //   The distribution is valid but the interval placement is uncertain.
+  //   A finite stability penalty is added to down-weight M-out-of-N relative
+  //   to other valid candidates, without eliminating it as the rescue fallback.
+  //
+  // LOWER BOUND HAIRCUT (excessive_bias, applied post-selection):
+  //   When M-out-of-N wins the tournament despite excessive_bias, the lower
+  //   bound is reduced by this fraction as a conservative adjustment for the
+  //   unreliable rescaling centering. Applied in select() after winner
+  //   determination. A 5% haircut is a conservative starting point — tune
+  //   empirically across markets.
+  //
+  //   Note: The haircut is intentionally applied only for excessive_bias (not
+  //   ratio_near_boundary) because excessive_bias directly affects the interval
+  //   center and therefore the lower bound. ratio_near_boundary affects the
+  //   ratio choice but not the centering of the distribution.
+  // ===========================================================================
+
+  /// Stability penalty added to M-out-of-N when soft reliability flags fire
+  /// (excessive_bias or ratio_near_boundary). Conservative starting point —
+  /// should be large enough to prefer a reliable method when available, but
+  /// not so large that M-out-of-N is effectively eliminated.
+  /// At kRefStability = 0.25, a penalty of 2.0 is 8× the reference — enough
+  /// to lose to any method with moderate stability but not to extreme outliers.
+  constexpr double kMOutOfNUnreliabilityPenalty = 2.0;
+
+  /// Fractional reduction applied to M-out-of-N lower bound when excessive_bias
+  /// fires and M-out-of-N wins the tournament. Conservative default of 5%.
+  /// Tune empirically: increase if strategies with excessive_bias frequently
+  /// underperform their lower bound; decrease if the haircut is too aggressive.
+  constexpr double kMOutOfNExcessiveBiasHaircut = 0.05;
+
+  /// Scale factor applied to excess bias (bias_fraction - threshold) to derive
+  /// the adaptive haircut component. With kMOutOfNHaircutScale=0.10, an excess
+  /// bias of 0.78 produces a raw haircut of 7.8% before capping.
+  /// Tune empirically alongside kMOutOfNMaxHaircutFraction.
+  constexpr double kMOutOfNHaircutScale = 0.10;
+
+  /// Maximum haircut fraction applied to the M-out-of-N lower bound regardless
+  /// of how large the bias fraction is. Caps the adaptive haircut to prevent
+  /// extreme cases (bias_fraction > 2.0, driven by near-breakeven theta_hat
+  /// that slips through RELIABILITY_BIAS_MIN_ABS_THETA) from producing
+  /// nonsensical negative lower bounds. At 20%, even the worst cases produce
+  /// a conservatively adjusted but still meaningful lower bound.
+  constexpr double kMOutOfNMaxHaircutFraction = 0.20;
+
+  // ===========================================================================
   // PERCENTILE-T STABILITY THRESHOLDS
   // ===========================================================================
 

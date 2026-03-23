@@ -139,22 +139,19 @@ namespace palvalidator
         bool        insufficient_spread;      // CV of bootstrap distribution near zero
         bool        ratio_near_boundary;      // computed_ratio at or near valid-range limit
 
+        // The actual bias fraction computed when excessive_bias was evaluated.
+        // Always populated (0.0 when rescale_to_n=false). Carried to the
+        // downstream tournament so the haircut can be calibrated to the
+        // severity of the bias rather than using a fixed fraction.
+        double      bias_fraction;
+
         bool isReliable() const noexcept
-	{
-	  if (distribution_degenerate)
-	    return false;
-
-	  if (insufficient_spread)
-	    return false;
-
-	  if (excessive_bias)
-	    return false;  // only set when rescale_to_n=true anyway
-
-	  if (ratio_near_boundary)
-	    return false;  // only set in adaptive/clamped anyway
-
-	  return true;
-	}
+        {
+          return !distribution_degenerate
+              && !excessive_bias
+              && !insufficient_spread
+              && !ratio_near_boundary;
+        }
       };
 
       /// Configuration constant: maximum allowed fraction of degenerate replicates
@@ -192,6 +189,17 @@ namespace palvalidator
       static constexpr double RELIABILITY_UNIQUE_RATIO_THRESHOLD = 0.05;
       static constexpr double RELIABILITY_BIAS_FRACTION_THRESHOLD = 0.20;
       static constexpr double RELIABILITY_MIN_CV_THRESHOLD = 0.01;
+
+      // Minimum absolute value of theta_hat used as denominator when computing
+      // the excessive_bias fraction. Prevents the fraction from becoming
+      // arbitrarily large when theta_hat is near zero (e.g., near-breakeven
+      // strategies), where tiny absolute differences in mean_boot produce
+      // enormous relative fractions that do not reflect genuine bootstrap
+      // pathology. This is a property of the bias fraction measurement itself
+      // and belongs here alongside the other reliability thresholds.
+      // Set to 0.001 (10 basis points) — approximately the smallest meaningful
+      // per-period return in typical trading strategy validation contexts.
+      static constexpr double RELIABILITY_BIAS_MIN_ABS_THETA = 0.001;
 
     public:
       // ====================================================================
@@ -643,6 +651,18 @@ namespace palvalidator
             && !m_diagInsufficientSpread
             && !m_diagRatioNearBoundary;
       }
+
+      /// Returns the bias fraction computed during the most recent run.
+      /// Always 0.0 when rescale_to_n=false. When rescale_to_n=true, reflects
+      /// |mean_boot - theta_hat| / max(|theta_hat|, RELIABILITY_BIAS_MIN_ABS_THETA).
+      /// Used by the downstream tournament to calibrate the lower bound haircut
+      /// proportionally to the severity of the bias rather than a fixed fraction.
+      double getBiasFraction() const
+      {
+        std::lock_guard<std::mutex> lock(*m_diagMutex);
+        ensureDiagnosticsAvailable();
+        return m_diagBiasFraction;
+      }
       
     private:
       void ensureDiagnosticsAvailable() const
@@ -985,9 +1005,12 @@ namespace palvalidator
         // is being violated. When rescale_to_n=false the bias is expected and
         // the flag is suppressed to avoid spurious warnings.
         const double theta_hat_d_rel = num::to_double(theta_hat);
+        // Use max(|theta_hat|, RELIABILITY_BIAS_MIN_ABS_THETA) as denominator
+        // to prevent the fraction exploding when theta_hat is near zero.
+        const double bias_denom = std::max(std::abs(theta_hat_d_rel),
+                                           RELIABILITY_BIAS_MIN_ABS_THETA);
         const double biasFraction =
-            std::abs(mean_boot - theta_hat_d_rel)
-            / (std::abs(theta_hat_d_rel) + 1e-10);
+            std::abs(mean_boot - theta_hat_d_rel) / bias_denom;
         const bool excessive_bias =
             m_rescale_to_n && (biasFraction > RELIABILITY_BIAS_FRACTION_THRESHOLD);
 
@@ -1008,11 +1031,9 @@ namespace palvalidator
         const double lower_boundary = 3.0 / static_cast<double>(n);
         const double upper_boundary =
             static_cast<double>(n - 2) / static_cast<double>(n);
+        const bool ratio_near_boundary =
+            (reported_ratio < lower_boundary) || (reported_ratio > upper_boundary);
 
-	const bool ratio_near_boundary =
-	  (isAdaptiveMode() || (m_sub != m_sub_before_clamp) || (m_sub_override > 0))
-	  && ((reported_ratio < lower_boundary) || (reported_ratio > upper_boundary));
- 
         // Log reliability issues if a diagnostic stream is available
         if (diagnosticLog)
         {
@@ -1057,6 +1078,7 @@ namespace palvalidator
           m_diagExcessiveBias           = excessive_bias;
           m_diagInsufficientSpread      = insufficient_spread;
           m_diagRatioNearBoundary       = ratio_near_boundary;
+          m_diagBiasFraction            = biasFraction;
           m_diagValid                   = true;
         }
 
@@ -1077,7 +1099,8 @@ namespace palvalidator
           /*distribution_degenerate =*/ distribution_degenerate,
           /*excessive_bias          =*/ excessive_bias,
           /*insufficient_spread     =*/ insufficient_spread,
-          /*ratio_near_boundary     =*/ ratio_near_boundary
+          /*ratio_near_boundary     =*/ ratio_near_boundary,
+          /*bias_fraction           =*/ biasFraction
         };
       }
 
@@ -1133,6 +1156,7 @@ namespace palvalidator
       mutable bool                m_diagExcessiveBias{false};
       mutable bool                m_diagInsufficientSpread{false};
       mutable bool                m_diagRatioNearBoundary{false};
+      mutable double              m_diagBiasFraction{0.0};
       IntervalType m_interval_type;
     };
   }
