@@ -5,6 +5,7 @@
 #include <limits>
 #include "BootstrapPenaltyCalculator.h"
 #include "AutoBootstrapSelector.h"
+#include "BootstrapTestMocks.h"
 #include "StatUtils.h"
 #include "AutoBootstrapConfiguration.h"
 #include "DecimalConstants.h"
@@ -186,15 +187,12 @@ TEST_CASE("BootstrapPenaltyCalculator: computeBCaStabilityPenalty basic function
 
 TEST_CASE("BootstrapPenaltyCalculator: computePercentileTStability functionality", "[BootstrapPenaltyCalculator][PercentileTStability]")
 {
-  // Mock result structure
-  struct MockResult {
-    std::size_t B_outer = 1000;
-    std::size_t B_inner = 100;
-    std::size_t skipped_outer = 0;
-    std::size_t skipped_inner_total = 0;
-    std::size_t effective_B = 1000;
-    std::size_t inner_attempted_total = 100000;
-  };
+  // Use the shared mock result from BootstrapTestMocks.h.
+  // MockPercentileTResult<Num> has the same fields as the local MockResult that
+  // was previously defined here, plus the new fields (skew_pivot, reliability
+  // flags) required by computePercentileTStability.  All fields carry safe
+  // defaults so existing test sections are unaffected.
+  using MockResult = test_mocks::MockPercentileTResult<Num>;
 
   SECTION("No penalty for good performance") {
     MockResult res;
@@ -233,6 +231,121 @@ TEST_CASE("BootstrapPenaltyCalculator: computePercentileTStability functionality
     res.inner_attempted_total = 0; // No inner attempts
     penalty = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res);
     REQUIRE(penalty == std::numeric_limits<double>::infinity());
+  }
+}
+
+// =========================================================================
+// PERCENTILE-T STABILITY: PIVOT SKEWNESS PENALTY (component 4)
+// =========================================================================
+
+TEST_CASE("BootstrapPenaltyCalculator: computePercentileTStability pivot skewness penalties",
+          "[BootstrapPenaltyCalculator][PercentileTStability][SkewPivot]")
+{
+  // All existing components are held at their zero-penalty defaults so that
+  // only the skew_pivot component contributes.  This isolates the fourth
+  // penalty component added by the isReliable() work.
+  using MockResult = test_mocks::MockPercentileTResult<Num>;
+
+  SECTION("No penalty when |skew_pivot| is below soft threshold (2.0)")
+  {
+    MockResult res;
+    res.skew_pivot = 1.5;  // below kPercentileTSkewSoftThreshold = 2.0
+    double penalty = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res);
+    REQUIRE(penalty == 0.0);
+  }
+
+  SECTION("No penalty when skew_pivot is exactly zero")
+  {
+    MockResult res;
+    res.skew_pivot = 0.0;
+    double penalty = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res);
+    REQUIRE(penalty == 0.0);
+  }
+
+  SECTION("Soft penalty accrues when |skew_pivot| exceeds soft threshold (2.0)")
+  {
+    // skew_pivot = 2.5: excess = 0.5, penalty = 0.5^2 * kPercentileTSkewPenaltyScale
+    MockResult res;
+    res.skew_pivot = 2.5;
+    double penalty = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res);
+
+    const double excess   = 2.5 - AutoBootstrapConfiguration::kPercentileTSkewSoftThreshold;
+    const double expected = excess * excess * AutoBootstrapConfiguration::kPercentileTSkewPenaltyScale;
+    REQUIRE(penalty == Catch::Approx(expected).margin(1e-12));
+    REQUIRE(penalty > 0.0);
+  }
+
+  SECTION("Larger |skew_pivot| produces larger penalty (quadratic growth)")
+  {
+    MockResult res_moderate, res_severe;
+    res_moderate.skew_pivot = 2.5;   // moderate excess
+    res_severe.skew_pivot   = 4.0;   // severe excess, above hard threshold
+
+    double p_moderate = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res_moderate);
+    double p_severe   = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res_severe);
+
+    REQUIRE(p_severe > p_moderate);
+  }
+
+  SECTION("Negative skew_pivot is treated symmetrically (absolute value used)")
+  {
+    MockResult pos, neg;
+    pos.skew_pivot =  2.5;
+    neg.skew_pivot = -2.5;
+
+    double p_pos = BootstrapPenaltyCalculator<Num>::computePercentileTStability(pos);
+    double p_neg = BootstrapPenaltyCalculator<Num>::computePercentileTStability(neg);
+
+    REQUIRE(p_pos == Catch::Approx(p_neg).margin(1e-12));
+  }
+
+  SECTION("Penalty formula matches kPercentileTSkewPenaltyScale exactly")
+  {
+    // Verify the penalty matches the documented quadratic formula:
+    //   penalty = (|skew_pivot| - soft_threshold)^2 * scale
+    const double skew       = 3.5;   // above both soft (2.0) and hard (3.0) thresholds
+    const double soft       = AutoBootstrapConfiguration::kPercentileTSkewSoftThreshold;
+    const double scale      = AutoBootstrapConfiguration::kPercentileTSkewPenaltyScale;
+    const double expected   = (skew - soft) * (skew - soft) * scale;
+
+    MockResult res;
+    res.skew_pivot = skew;
+    double penalty = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res);
+
+    REQUIRE(penalty == Catch::Approx(expected).margin(1e-12));
+  }
+
+  SECTION("Non-finite skew_pivot produces no skew penalty (other components still run)")
+  {
+    // Non-finite skew_pivot is guarded by std::isfinite() in the implementation
+    // so the skew component is silently skipped.  With all other fields at
+    // safe defaults the overall penalty should remain 0.0.
+    MockResult res;
+    res.skew_pivot = std::numeric_limits<double>::quiet_NaN();
+    double penalty = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res);
+    REQUIRE(penalty == 0.0);
+  }
+
+  SECTION("Skew penalty is additive with other penalty components")
+  {
+    // Combine a failing outer rate with a high skew_pivot and verify
+    // the total exceeds what either component would contribute alone.
+    MockResult res;
+    res.skipped_outer = 200;    // 20% outer failure rate — well above 10% threshold
+    res.skew_pivot    = 2.5;    // soft skew penalty
+
+    double penalty_combined = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res);
+
+    // Isolate each component
+    MockResult res_outer_only;
+    res_outer_only.skipped_outer = 200;
+    double penalty_outer = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res_outer_only);
+
+    MockResult res_skew_only;
+    res_skew_only.skew_pivot = 2.5;
+    double penalty_skew = BootstrapPenaltyCalculator<Num>::computePercentileTStability(res_skew_only);
+
+    REQUIRE(penalty_combined == Catch::Approx(penalty_outer + penalty_skew).margin(1e-12));
   }
 }
 

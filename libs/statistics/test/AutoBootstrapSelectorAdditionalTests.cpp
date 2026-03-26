@@ -32,6 +32,7 @@
 
 #include "AutoBootstrapSelector.h"
 #include "BootstrapPenaltyCalculator.h"
+#include "BootstrapTestMocks.h"
 #include "number.h"
 
 // Alias for convenience
@@ -45,6 +46,11 @@ using MethodId       = Result::MethodId;
 using SelectionDiagnostics = Result::SelectionDiagnostics;
 using ScoreBreakdown = SelectionDiagnostics::ScoreBreakdown;
 using mkc_timeseries::StatisticSupport;
+
+// Use the shared mock types from BootstrapTestMocks.h.
+// MockPercentileTResult is in namespace test_mocks to avoid a redeclaration
+// conflict with the template name itself at file scope.
+using MockPercentileTResult = test_mocks::MockPercentileTResult<Decimal>;
 
 // -----------------------------------------------------------------------------
 // Helper functions for creating test candidates
@@ -123,21 +129,6 @@ std::vector<double> createNormalLikeBootstrapDist(double mean, double sd, std::s
 /**
  * @brief Creates a PercentileT result structure for testing stability calculations
  */
-struct MockPercentileTResult
-{
-    Decimal mean;
-    Decimal lower;
-    Decimal upper;
-    double cl;
-    std::size_t n;
-    std::size_t B_outer;
-    std::size_t B_inner;
-    std::size_t effective_B;
-    std::size_t skipped_outer;
-    std::size_t skipped_inner_total;
-    std::size_t inner_attempted_total;
-    double se_hat;
-};
 
 // -----------------------------------------------------------------------------
 // Tests for computePercentileTStability

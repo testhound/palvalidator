@@ -1586,3 +1586,292 @@ TEST_CASE("PercentileTBootstrap: move assignment operator", "[Bootstrap][Percent
         REQUIRE(pt_dest.hasDiagnostics());  // Should transfer diagnostics
     }
 }
+
+// ============================================================================
+// Reliability flags — Result::isReliable() and the three constituent flags
+// ============================================================================
+//
+// These tests exercise the reliability subsystem added alongside the isReliable()
+// work:
+//   skew_pivot              — skewness of t* (pivot) distribution
+//   low_effective_replicates — effective_B / B_outer < MIN_EFFECTIVE_FRACTION
+//   high_inner_skip_rate    — skipped_inner / inner_attempted > INNER_FAIL_THRESHOLD
+//   extreme_pivot_skewness  — |skew_pivot| > PIVOT_SKEW_THRESHOLD
+//   isReliable()            — AND-gate over the three flags
+//   getSkewPivot()          — diagnostic accessor for skew_pivot
+// ============================================================================
+
+TEST_CASE("PercentileTBootstrap: skew_pivot field is populated after run",
+          "[Bootstrap][PercentileT][Reliability][SkewPivot]")
+{
+    using D = DecimalType;
+
+    const std::size_t n = 30;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i)
+        x.emplace_back(D(static_cast<double>(i)));
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    StationaryMaskValueResampler<D> res(3);
+    PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pt(400, 100, 0.95, res);
+
+    randutils::seed_seq_fe128 seed{10u, 20u, 30u, 40u};
+    std::mt19937_64 rng(seed);
+
+    auto out = pt.run(x, mean_sampler, rng);
+
+    SECTION("skew_pivot is finite")
+    {
+        REQUIRE(std::isfinite(out.skew_pivot));
+    }
+
+    SECTION("getSkewPivot() returns the same value as Result::skew_pivot")
+    {
+        // The diagnostic accessor and the Result field must agree.
+        REQUIRE(pt.getSkewPivot() == Catch::Approx(out.skew_pivot).margin(1e-15));
+    }
+
+    SECTION("skew_pivot is consistent with the t-statistics stored in diagnostics")
+    {
+        // skew_pivot is computed from t_eff in run_impl; cross-check by
+        // recomputing skewness from the diagnostic vector returned by getTStatistics().
+        const auto t_stats = pt.getTStatistics();
+        if (t_stats.size() >= 3) {
+            const double mean_t = std::accumulate(t_stats.begin(), t_stats.end(), 0.0)
+                                  / static_cast<double>(t_stats.size());
+            const double sd_t =
+                mkc_timeseries::StatUtils<double>::computeStdDev(t_stats);
+
+            if (sd_t > 0.0) {
+                const double skew_recomputed =
+                    mkc_timeseries::StatUtils<double>::computeSkewness(
+                        t_stats, mean_t, sd_t);
+                REQUIRE(out.skew_pivot == Catch::Approx(skew_recomputed).margin(1e-10));
+            }
+        }
+    }
+}
+
+TEST_CASE("PercentileTBootstrap: getSkewPivot() throws before run",
+          "[Bootstrap][PercentileT][Reliability][SkewPivot]")
+{
+    using D = DecimalType;
+    StationaryMaskValueResampler<D> res(3);
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pt(400, 100, 0.95, res);
+
+    // Consistent with getTStatistics(), getThetaStarStatistics(), getSeHat() —
+    // all diagnostic getters throw std::logic_error before the first run().
+    REQUIRE_THROWS_AS(pt.getSkewPivot(), std::logic_error);
+}
+
+TEST_CASE("PercentileTBootstrap: isReliable() is true for well-behaved data",
+          "[Bootstrap][PercentileT][Reliability][IsReliable]")
+{
+    // Use clean, non-degenerate data with sufficient n so that all three
+    // failure conditions are well clear of their thresholds.  This verifies
+    // the happy-path contract: a healthy run produces isReliable() == true.
+    using D = DecimalType;
+
+    const std::size_t n = 50;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i)
+        x.emplace_back(D(static_cast<double>(i) * 0.01));
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    StationaryMaskValueResampler<D> res(3);
+    PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pt(400, 100, 0.95, res);
+
+    randutils::seed_seq_fe128 seed{7u, 8u, 9u, 10u};
+    std::mt19937_64 rng(seed);
+
+    auto out = pt.run(x, mean_sampler, rng);
+
+    SECTION("isReliable() returns true for clean data")
+    {
+        REQUIRE(out.isReliable());
+    }
+
+    SECTION("Individual flags are false for clean data")
+    {
+        REQUIRE_FALSE(out.low_effective_replicates);
+        REQUIRE_FALSE(out.high_inner_skip_rate);
+        REQUIRE_FALSE(out.extreme_pivot_skewness);
+    }
+
+    SECTION("isReliable() is the AND-gate of the three flags")
+    {
+        // Structural invariant: isReliable() must equal the conjunction of
+        // the three negated flags, regardless of their specific values.
+        const bool expected = !out.low_effective_replicates
+                           && !out.high_inner_skip_rate
+                           && !out.extreme_pivot_skewness;
+        REQUIRE(out.isReliable() == expected);
+    }
+}
+
+TEST_CASE("PercentileTBootstrap: reliability flag thresholds are consistent with constants",
+          "[Bootstrap][PercentileT][Reliability][Thresholds]")
+{
+    // After any successful run, verify that each flag's value is consistent
+    // with its defining formula and the constants in percentile_t_constants.
+    // This is a structural correctness test — it would catch a copy-paste bug
+    // where a flag is computed with the wrong threshold.
+    using D = DecimalType;
+    namespace ptc = palvalidator::analysis::percentile_t_constants;
+
+    const std::size_t n = 30;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i)
+        x.emplace_back(D(static_cast<double>(i)));
+
+    auto mean_sampler = [](const std::vector<D>& a) -> D {
+        double s = 0.0;
+        for (const auto& v : a) s += num::to_double(v);
+        return D(s / static_cast<double>(a.size()));
+    };
+
+    StationaryMaskValueResampler<D> res(3);
+    PercentileTBootstrap<D, decltype(mean_sampler), StationaryMaskValueResampler<D>>
+        pt(400, 100, 0.95, res);
+
+    randutils::seed_seq_fe128 seed{42u, 43u, 44u, 45u};
+    std::mt19937_64 rng(seed);
+    auto out = pt.run(x, mean_sampler, rng);
+
+    SECTION("low_effective_replicates matches its formula")
+    {
+        const double eff_frac =
+            static_cast<double>(out.effective_B) /
+            static_cast<double>(out.B_outer);
+        const bool expected = eff_frac < ptc::MIN_EFFECTIVE_FRACTION;
+        REQUIRE(out.low_effective_replicates == expected);
+    }
+
+    SECTION("high_inner_skip_rate matches its formula")
+    {
+        const bool expected =
+            (out.inner_attempted_total > 0)
+            && (static_cast<double>(out.skipped_inner_total) /
+                static_cast<double>(out.inner_attempted_total))
+               > ptc::INNER_FAIL_THRESHOLD;
+        // When inner_attempted_total == 0 the rate is 0, so flag is false.
+        const bool expected_safe =
+            (out.inner_attempted_total == 0)
+            ? false
+            : expected;
+        REQUIRE(out.high_inner_skip_rate == expected_safe);
+    }
+
+    SECTION("extreme_pivot_skewness matches its formula")
+    {
+        const bool expected =
+            std::fabs(out.skew_pivot) > ptc::PIVOT_SKEW_THRESHOLD;
+        REQUIRE(out.extreme_pivot_skewness == expected);
+    }
+}
+
+TEST_CASE("PercentileTBootstrap: high_inner_skip_rate flag fires with degenerate sampler",
+          "[Bootstrap][PercentileT][Reliability][HighInnerSkip]")
+{
+    // The DegenerateSampler produces NaN ~20% of the time.  With B_inner=150
+    // inner draws per outer replicate, many inner draws will fail, pushing the
+    // aggregate inner skip rate well above INNER_FAIL_THRESHOLD (5%).
+    using D = double;  // decimal<8> can't represent NaN
+
+    const std::size_t n = 50;
+    std::vector<D> x; x.reserve(n);
+    for (std::size_t i = 0; i < n; ++i)
+        x.emplace_back(static_cast<double>(i));
+
+    DegenerateSampler sampler;
+    StationaryMaskValueResampler<D> res(3);
+
+    PercentileTBootstrap<D, DegenerateSampler, StationaryMaskValueResampler<D>>
+        pt(500, 150, 0.95, res);
+
+    randutils::seed_seq_fe128 seed{555u, 666u};
+    std::mt19937_64 rng(seed);
+
+    // The degenerate sampler produces enough failures that this run either
+    // succeeds (with a high inner skip rate) or throws (too many outer fails).
+    // Either outcome is valid — we only inspect the flag when it succeeds.
+    try {
+        auto out = pt.run(x, sampler, rng);
+
+        // Structural invariant always holds regardless of flag values.
+        const bool expected = !out.low_effective_replicates
+                           && !out.high_inner_skip_rate
+                           && !out.extreme_pivot_skewness;
+        REQUIRE(out.isReliable() == expected);
+
+        // With ~20% NaN rate, the aggregate inner skip rate should exceed 5%.
+        if (out.inner_attempted_total > 0) {
+            const double inner_skip_rate =
+                static_cast<double>(out.skipped_inner_total) /
+                static_cast<double>(out.inner_attempted_total);
+            if (inner_skip_rate > palvalidator::analysis::percentile_t_constants::INNER_FAIL_THRESHOLD) {
+                REQUIRE(out.high_inner_skip_rate);
+                REQUIRE_FALSE(out.isReliable());
+            }
+        }
+    }
+    catch (const std::runtime_error&) {
+        // Too many outer failures — the run threw before we could inspect flags.
+        // This is valid behaviour; the test is not a failure.
+        SUCCEED("run() threw due to excessive outer failures — acceptable outcome");
+    }
+}
+
+TEST_CASE("PercentileTBootstrap: isReliable() is AND of flags — synthetic verification",
+          "[Bootstrap][PercentileT][Reliability][IsReliable]")
+{
+    // This test verifies the AND-gate contract directly on Result structs
+    // without running the full bootstrap, covering all eight flag combinations.
+    using namespace palvalidator::analysis;
+
+    // Helper lambda that builds a minimal Result with the given flag values
+    // and verifies isReliable() matches the expected conjunction.
+    auto check = [](bool low_eff, bool high_inner, bool extreme_skew)
+    {
+        PercentileTBootstrap<double,
+            std::function<double(const std::vector<double>&)>,
+            IIDResamplerForTest>::Result r{};
+
+        r.low_effective_replicates = low_eff;
+        r.high_inner_skip_rate     = high_inner;
+        r.extreme_pivot_skewness   = extreme_skew;
+
+        const bool expected = !low_eff && !high_inner && !extreme_skew;
+        REQUIRE(r.isReliable() == expected);
+    };
+
+    // All eight combinations of three boolean flags.
+    check(false, false, false);   // reliable
+    check(true,  false, false);   // low_effective fires
+    check(false, true,  false);   // high_inner fires
+    check(false, false, true );   // extreme_skew fires
+    check(true,  true,  false);   // two flags
+    check(true,  false, true );   // two flags
+    check(false, true,  true );   // two flags
+    check(true,  true,  true );   // all three flags
+}

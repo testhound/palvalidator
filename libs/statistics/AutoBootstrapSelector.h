@@ -1167,6 +1167,27 @@ namespace palvalidator
 	      static_cast<double>(res.inner_attempted_total);
 	  }
 
+	// algorithmIsReliable: AND-gate over the three structural reliability flags
+	// computed by run_impl and stored in Result:
+	//   low_effective_replicates  — too few finite pivots (hard gate)
+	//   high_inner_skip_rate      — SE* estimates corrupted (hard gate)
+	//   extreme_pivot_skewness    — pivot distribution too skewed (soft penalty)
+	// Downstream, the tournament already enforces the hard-gate conditions via
+	// the PercentileTLowEffB / PercentileTInnerFails rejection mask entries.
+	// algorithmIsReliable propagates the combined signal into SelectionDiagnostics
+	// so callers can inspect it without recomputing from raw thresholds.
+	const bool algorithm_is_reliable = res.isReliable();
+
+	if (os && !algorithm_is_reliable)
+	  {
+	    (*os) << "summarizePercentileT: algorithmIsReliable=false"
+	          << " low_effective_replicates=" << res.low_effective_replicates
+	          << " high_inner_skip_rate="     << res.high_inner_skip_rate
+	          << " extreme_pivot_skewness="   << res.extreme_pivot_skewness
+	          << " skew_pivot="               << res.skew_pivot
+	          << std::endl;
+	  }
+
 	return Candidate(MethodId::PercentileT,
 			 res.mean, res.lower, res.upper, res.cl, res.n,
 			 res.B_outer, res.B_inner,
@@ -1175,14 +1196,15 @@ namespace palvalidator
 			 se_ref, skew_boot, median_boot,
 			 center_shift_in_se, normalized_length,
 			 ordering_penalty, length_penalty, stability_penalty,
-			 0.0,            // z0
-			 0.0,            // accel
-			 inner_failure_rate,                          // (param 21)
-			 std::numeric_limits<double>::quiet_NaN(),    // score  (param 22)
-			 0,                                           // candidate_id (param 23)
-			 0,                                           // rank (param 24)
-			 false,                                       // is_chosen (param 25)
-			 true                                         // accelIsReliable (param 26)
+			 0.0,                 // z0
+			 0.0,                 // accel
+			 inner_failure_rate,  // (param 21)
+			 std::numeric_limits<double>::quiet_NaN(), // score  (param 22)
+			 0,                   // candidate_id (param 23)
+			 0,                   // rank (param 24)
+			 false,               // is_chosen (param 25)
+			 true,                // accelIsReliable (param 26) — N/A for PT
+			 algorithm_is_reliable // algorithmIsReliable (param 27)
 			 );
       }
 

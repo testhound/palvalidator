@@ -170,6 +170,22 @@ namespace AutoBootstrapConfiguration
   constexpr double kPercentileTInnerPenaltyScale      = 200.0; ///< Penalty scale for inner failures
   constexpr double kPercentileTEffectiveBPenaltyScale = 50.0;  ///< Penalty scale for low effective B
 
+  /// |skew(t*)| above which the soft pivot-skewness penalty begins to accrue.
+  /// Mirrors BCa's kBcaSkewThreshold (2.0). Below this value no skew penalty
+  /// is applied to Percentile-T; above it the quadratic penalty grows with
+  /// kPercentileTSkewPenaltyScale.
+  constexpr double kPercentileTSkewSoftThreshold = 2.0;
+
+  /// |skew(t*)| above which extreme_pivot_skewness fires in Result::isReliable().
+  /// Treated as a hard reliability flag (analogous to kBcaSkewHardLimit = 3.0).
+  /// Feeds algorithmIsReliable in the tournament but does NOT produce a hard
+  /// rejection mask — the soft penalty path handles the tournament response.
+  constexpr double kPercentileTSkewHardThreshold = 3.0;
+
+  /// Quadratic scale applied to the excess pivot skewness when
+  /// |skew(t*)| > kPercentileTSkewSoftThreshold. Mirrors kBcaSkewPenaltyScale.
+  constexpr double kPercentileTSkewPenaltyScale  = 5.0;
+
   // ===========================================================================
   // NORMALIZATION REFERENCE VALUES
   //

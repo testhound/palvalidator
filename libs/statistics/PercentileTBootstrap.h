@@ -88,6 +88,29 @@ namespace palvalidator
 
       /// Relative epsilon for SE* stabilization (1.5%) - stop when change is less than this
       constexpr double      REL_EPS     = 0.015;
+
+      // -----------------------------------------------------------------------
+      // Reliability thresholds — govern the three flags in Result::isReliable().
+      // Values are kept here (self-contained in the bootstrap header) so the
+      // engine does not depend on AutoBootstrapConfiguration. The tournament
+      // mirrors these values in kPercentileT* constants.
+      // -----------------------------------------------------------------------
+
+      /// Minimum fraction of outer replicates that must yield a finite pivot.
+      /// Mirrors AutoBootstrapConfiguration::kPercentileTMinEffectiveFraction.
+      constexpr double MIN_EFFECTIVE_FRACTION  = 0.70;
+
+      /// Inner SE* failure rate above which high_inner_skip_rate fires.
+      /// Mirrors AutoBootstrapConfiguration::kPercentileTInnerFailThreshold.
+      constexpr double INNER_FAIL_THRESHOLD    = 0.05;
+
+      /// |skew(t*)| above which extreme_pivot_skewness fires (hard reliability flag).
+      /// Mirrors AutoBootstrapConfiguration::kPercentileTSkewHardThreshold.
+      constexpr double PIVOT_SKEW_THRESHOLD    = 3.0;
+
+      /// |skew(t*)| above which the soft stability penalty begins to accrue.
+      /// Mirrors AutoBootstrapConfiguration::kPercentileTSkewSoftThreshold.
+      constexpr double PIVOT_SKEW_SOFT_THRESHOLD = 2.0;
     }
 
     /**
@@ -130,12 +153,54 @@ namespace palvalidator
         std::size_t m_inner;               // inner subsample size
         std::size_t L;                     // resampler L (diagnostic)
         double      se_hat;                // sd(theta*) over effective outer reps
+        double      skew_pivot;            // skewness of the t* (pivot) distribution
+
+        // ----------------------------------------------------------------
+        // Reliability flags — analogous to BCa's AccelerationReliability
+        // and M-out-of-N's four-flag decomposition. The three flags capture
+        // distinct failure modes of the double-bootstrap machinery:
+        //
+        // low_effective_replicates:
+        //   effective_B / B_outer < MIN_EFFECTIVE_FRACTION (0.70).
+        //   The empirical t-distribution is too thinly populated for
+        //   reliable quantile inversion. Hard gate in the tournament.
+        //
+        // high_inner_skip_rate:
+        //   skipped_inner / inner_attempted > INNER_FAIL_THRESHOLD (0.05).
+        //   Too many inner resamples produced non-finite statistics, so
+        //   the SE* denominators feeding the pivots are corrupted. Hard
+        //   gate in the tournament (mirrors the existing rejection mask).
+        //
+        // extreme_pivot_skewness:
+        //   |skew(t*)| > PIVOT_SKEW_THRESHOLD (3.0).
+        //   The pivot distribution is too skewed for the CI inversion
+        //   to be reliable. Soft penalty in the tournament (calibrated
+        //   haircut on stability score, not an outright hard gate).
+        //
+        // isReliable():
+        //   Convenience AND-gate over all three flags. Downstream
+        //   selectors (AutoBootstrapSelector) use this as algorithmIsReliable.
+        // ----------------------------------------------------------------
+        bool        low_effective_replicates;  // effective_B fraction too low
+        bool        high_inner_skip_rate;      // inner SE* failures too frequent
+        bool        extreme_pivot_skewness;    // t* distribution too skewed
+
+        bool isReliable() const noexcept
+        {
+          return !low_effective_replicates
+              && !high_inner_skip_rate
+              && !extreme_pivot_skewness;
+        }
       };
 
       // For backward compatibility, expose constants as class static members
-      static constexpr std::size_t MIN_INNER   = percentile_t_constants::MIN_INNER;
-      static constexpr std::size_t CHECK_EVERY = percentile_t_constants::CHECK_EVERY;
-      static constexpr double      REL_EPS     = percentile_t_constants::REL_EPS;
+      static constexpr std::size_t MIN_INNER              = percentile_t_constants::MIN_INNER;
+      static constexpr std::size_t CHECK_EVERY            = percentile_t_constants::CHECK_EVERY;
+      static constexpr double      REL_EPS                = percentile_t_constants::REL_EPS;
+      static constexpr double      MIN_EFFECTIVE_FRACTION = percentile_t_constants::MIN_EFFECTIVE_FRACTION;
+      static constexpr double      INNER_FAIL_THRESHOLD   = percentile_t_constants::INNER_FAIL_THRESHOLD;
+      static constexpr double      PIVOT_SKEW_THRESHOLD   = percentile_t_constants::PIVOT_SKEW_THRESHOLD;
+      static constexpr double      PIVOT_SKEW_SOFT_THRESHOLD = percentile_t_constants::PIVOT_SKEW_SOFT_THRESHOLD;
 
     public:
       PercentileTBootstrap(std::size_t      B_outer,
@@ -154,6 +219,7 @@ namespace palvalidator
         , m_diagTValues()
         , m_diagThetaStars()
         , m_diagSeHat(0.0)
+        , m_diagSkewPivot(0.0)
         , m_diagValid(false)
         , m_interval_type(interval_type)
       {
@@ -181,6 +247,7 @@ namespace palvalidator
         , m_diagTValues()
         , m_diagThetaStars()
         , m_diagSeHat(0.0)
+        , m_diagSkewPivot(0.0)
         , m_diagValid(false)
         , m_interval_type(other.m_interval_type)
       {}
@@ -189,19 +256,20 @@ namespace palvalidator
       PercentileTBootstrap& operator=(const PercentileTBootstrap& other)
       {
         if (this != &other) {
-          const_cast<std::size_t&>(m_B_outer)      = other.m_B_outer;
-          const_cast<std::size_t&>(m_B_inner)      = other.m_B_inner;
-          const_cast<double&>(m_CL)                = other.m_CL;
-          const_cast<Resampler&>(m_resampler)       = other.m_resampler;
-          const_cast<double&>(m_ratio_outer)        = other.m_ratio_outer;
-          const_cast<double&>(m_ratio_inner)        = other.m_ratio_inner;
-          m_interval_type                           = other.m_interval_type;
+          m_B_outer      = other.m_B_outer;
+          m_B_inner      = other.m_B_inner;
+          m_CL           = other.m_CL;
+          m_resampler    = other.m_resampler;
+          m_ratio_outer  = other.m_ratio_outer;
+          m_ratio_inner  = other.m_ratio_inner;
+          m_interval_type = other.m_interval_type;
 
           std::lock_guard<std::mutex> lock(m_diagMutex);
           m_diagTValues.clear();
           m_diagThetaStars.clear();
-          m_diagSeHat = 0.0;
-          m_diagValid = false;
+          m_diagSeHat     = 0.0;
+          m_diagSkewPivot = 0.0;
+          m_diagValid     = false;
         }
         return *this;
       }
@@ -217,6 +285,7 @@ namespace palvalidator
         , m_diagTValues(std::move(other.m_diagTValues))
         , m_diagThetaStars(std::move(other.m_diagThetaStars))
         , m_diagSeHat(other.m_diagSeHat)
+        , m_diagSkewPivot(other.m_diagSkewPivot)
         , m_diagValid(other.m_diagValid)
         , m_interval_type(other.m_interval_type)
       {
@@ -229,20 +298,23 @@ namespace palvalidator
       {
         if (this != &other)
         {
-          std::lock_guard<std::mutex> lock_this(m_diagMutex);
-          std::lock_guard<std::mutex> lock_other(other.m_diagMutex);
+          // Acquire both mutexes simultaneously to prevent lock-ordering
+          // deadlock if two threads concurrently move-assign a pair of objects
+          // in opposite directions (e.g. a=move(b) vs b=move(a)).
+          std::scoped_lock guard(m_diagMutex, other.m_diagMutex);
 
-          const_cast<std::size_t&>(m_B_outer)      = other.m_B_outer;
-          const_cast<std::size_t&>(m_B_inner)      = other.m_B_inner;
-          const_cast<double&>(m_CL)                = other.m_CL;
-          const_cast<Resampler&>(m_resampler)       = std::move(other.m_resampler);
-          const_cast<double&>(m_ratio_outer)        = other.m_ratio_outer;
-          const_cast<double&>(m_ratio_inner)        = other.m_ratio_inner;
-          m_interval_type                           = other.m_interval_type;
+          m_B_outer      = other.m_B_outer;
+          m_B_inner      = other.m_B_inner;
+          m_CL           = other.m_CL;
+          m_resampler    = std::move(other.m_resampler);
+          m_ratio_outer  = other.m_ratio_outer;
+          m_ratio_inner  = other.m_ratio_inner;
+          m_interval_type = other.m_interval_type;
 
           m_diagTValues    = std::move(other.m_diagTValues);
           m_diagThetaStars = std::move(other.m_diagThetaStars);
           m_diagSeHat      = other.m_diagSeHat;
+          m_diagSkewPivot  = other.m_diagSkewPivot;
           m_diagValid      = other.m_diagValid;
         }
         return *this;
@@ -321,45 +393,63 @@ namespace palvalidator
 
       // Return COPIES to avoid returning references that could be invalidated
       // by a concurrent run().
+      // Each getter holds the lock for the entire duration of the validity check
+      // and the copy, eliminating the TOCTOU gap that existed when
+      // ensureDiagnosticsAvailable() released the lock before the caller
+      // re-acquired it.
       std::vector<double> getTStatistics() const
       {
-        ensureDiagnosticsAvailable();
         std::lock_guard<std::mutex> lock(m_diagMutex);
+        if (!m_diagValid)
+          throw std::logic_error(
+            "PercentileTBootstrap diagnostics are not available: "
+            "run() has not been called successfully on this instance.");
         return m_diagTValues;
       }
 
       std::vector<double> getThetaStarStatistics() const
       {
-        ensureDiagnosticsAvailable();
         std::lock_guard<std::mutex> lock(m_diagMutex);
+        if (!m_diagValid)
+          throw std::logic_error(
+            "PercentileTBootstrap diagnostics are not available: "
+            "run() has not been called successfully on this instance.");
         return m_diagThetaStars;
       }
 
       double getSeHat() const
       {
-        ensureDiagnosticsAvailable();
         std::lock_guard<std::mutex> lock(m_diagMutex);
-        return m_diagSeHat;
-      }
-
-    private:
-      void ensureDiagnosticsAvailable() const
-      {
-        std::lock_guard<std::mutex> lock(m_diagMutex);
-        if (!m_diagValid) {
+        if (!m_diagValid)
           throw std::logic_error(
             "PercentileTBootstrap diagnostics are not available: "
             "run() has not been called successfully on this instance.");
-        }
+        return m_diagSeHat;
       }
 
+      /// Returns the skewness of the t* (pivot) distribution from the most
+      /// recent successful run. Positive values indicate right-skewed pivots;
+      /// negative values indicate left-skewed pivots. Values with |skew| > 3.0
+      /// trigger extreme_pivot_skewness in Result::isReliable().
+      double getSkewPivot() const
+      {
+        std::lock_guard<std::mutex> lock(m_diagMutex);
+        if (!m_diagValid)
+          throw std::logic_error(
+            "PercentileTBootstrap diagnostics are not available: "
+            "run() has not been called successfully on this instance.");
+        return m_diagSkewPivot;
+      }
+
+    private:
       void clearDiagnostics_unsafe() const noexcept
       {
         // Caller must hold m_diagMutex.
         m_diagTValues.clear();
         m_diagThetaStars.clear();
-        m_diagSeHat = 0.0;
-        m_diagValid = false;
+        m_diagSeHat     = 0.0;
+        m_diagSkewPivot = 0.0;
+        m_diagValid     = false;
       }
 
       // -----------------------------------------------------------------------
@@ -484,7 +574,8 @@ namespace palvalidator
               push_inner(v);
 
               if (eff_inner >= MIN_INNER && ((eff_inner % CHECK_EVERY) == 0)) {
-                const double se_now = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner)));
+                // Use sample variance (÷ N-1) for an unbiased SE* estimate.
+                const double se_now = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner - 1)));
                 if (std::isfinite(se_now) &&
                     std::fabs(se_now - last_se) <= REL_EPS * std::max(se_now, 1e-300)) {
                   break;
@@ -498,7 +589,9 @@ namespace palvalidator
               return;
             }
 
-            const double se_star = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner)));
+            // Use sample variance (÷ N-1, Bessel-corrected) for an unbiased SE*.
+            // eff_inner >= MIN_INNER >= 2 here, so eff_inner - 1 >= 1 is safe.
+            const double se_star = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner - 1)));
             if (!(se_star > 0.0) || !std::isfinite(se_star)) {
               skipped_outer.fetch_add(1, std::memory_order_relaxed);
               return;
@@ -542,6 +635,22 @@ namespace palvalidator
 
         const double se_hat = mkc_timeseries::StatUtils<double>::computeStdDev(theta_eff);
 
+        // Guard: if all effective outer replicates produced the same statistic
+        // (e.g. constant data), se_hat will be 0, which would collapse both CI
+        // bounds to theta_hat. Treat this as a degenerate / un-bootstrappable
+        // dataset and surface a clear error rather than silently returning a
+        // zero-width interval.
+        if (!std::isfinite(se_hat) || se_hat == 0.0) {
+          {
+            std::lock_guard<std::mutex> lock(m_diagMutex);
+            clearDiagnostics_unsafe();
+          }
+          throw std::runtime_error(
+            "PercentileTBootstrap: se_hat is zero or non-finite. "
+            "All effective outer replicates produced identical statistics; "
+            "the data may be constant or nearly so.");
+        }
+
         const double alpha = 1.0 - m_CL;
 
         double lower_quantile, upper_quantile;
@@ -570,42 +679,95 @@ namespace palvalidator
         const double lower_d = theta_hat_d - t_hi * se_hat;
         const double upper_d = theta_hat_d - t_lo * se_hat;
 
+        // -------------------------------------------------------------------------
+        // Pivot (t*) skewness — computed from t_eff, the same vector used for
+        // quantile inversion. This is deliberately distinct from the θ* skewness
+        // (computed by the selector from getThetaStarStatistics()), which describes
+        // the data distribution. The pivot skewness describes whether the
+        // studentisation is working: a symmetric pivot distribution indicates a
+        // well-behaved statistic; a heavily skewed one indicates the t-distribution
+        // approximation is degrading.
+        // -------------------------------------------------------------------------
+        double skew_pivot = 0.0;
+        if (t_eff.size() >= 3) {
+          double sum_t = 0.0;
+          for (double v : t_eff) sum_t += v;
+          const double mean_t = sum_t / static_cast<double>(t_eff.size());
+          const double sd_t   = mkc_timeseries::StatUtils<double>::computeStdDev(t_eff);
+          if (sd_t > 0.0)
+            skew_pivot = mkc_timeseries::StatUtils<double>::computeSkewness(
+                           t_eff, mean_t, sd_t);
+        }
+
+        // -------------------------------------------------------------------------
+        // Reliability flags — mirror the M-out-of-N four-flag pattern.
+        // Flags 1 and 2 are also enforced as hard gates in the tournament rejection
+        // mask (PercentileTLowEffB, PercentileTInnerFails); they are duplicated
+        // here so callers who only hold a Result can inspect them without
+        // recomputing against AutoBootstrapConfiguration thresholds.
+        // Flag 3 drives a soft stability penalty in the tournament (not a hard gate).
+        // -------------------------------------------------------------------------
+        const double eff_fraction =
+          static_cast<double>(effective_B) / static_cast<double>(m_B_outer);
+        const double inner_attempted_d =
+          static_cast<double>(inner_attempted_total.load(std::memory_order_relaxed));
+        const double inner_fail_rate =
+          (inner_attempted_d > 0.0)
+          ? static_cast<double>(skipped_inner_total.load(std::memory_order_relaxed))
+            / inner_attempted_d
+          : 0.0;
+
+        const bool low_effective_replicates =
+          eff_fraction < percentile_t_constants::MIN_EFFECTIVE_FRACTION;
+        const bool high_inner_skip_rate =
+          inner_fail_rate > percentile_t_constants::INNER_FAIL_THRESHOLD;
+        const bool extreme_pivot_skewness =
+          std::fabs(skew_pivot) > percentile_t_constants::PIVOT_SKEW_THRESHOLD;
+
         // Store diagnostics for the most recent successful run (thread-safe).
         {
           std::lock_guard<std::mutex> lock(m_diagMutex);
           m_diagTValues    = t_eff;
           m_diagThetaStars = theta_eff;
           m_diagSeHat      = se_hat;
+          m_diagSkewPivot  = skew_pivot;
           m_diagValid      = true;
         }
 
         Result R;
-        R.mean                  = theta_hat;
-        R.lower                 = Decimal(lower_d);
-        R.upper                 = Decimal(upper_d);
-        R.cl                    = m_CL;
-        R.B_outer               = m_B_outer;
-        R.B_inner               = m_B_inner;
-        R.effective_B           = effective_B;
-        R.skipped_outer         = skipped_outer.load(std::memory_order_relaxed);
-        R.skipped_inner_total   = skipped_inner_total.load(std::memory_order_relaxed);
-        R.inner_attempted_total = inner_attempted_total.load(std::memory_order_relaxed);
-        R.n                     = n;
-        R.m_outer               = m_outer;
-        R.m_inner               = m_inner;
-        R.L                     = Ldiag;
-        R.se_hat                = se_hat;
+        R.mean                      = theta_hat;
+        R.lower                     = Decimal(lower_d);
+        R.upper                     = Decimal(upper_d);
+        R.cl                        = m_CL;
+        R.B_outer                   = m_B_outer;
+        R.B_inner                   = m_B_inner;
+        R.effective_B               = effective_B;
+        R.skipped_outer             = skipped_outer.load(std::memory_order_relaxed);
+        R.skipped_inner_total       = skipped_inner_total.load(std::memory_order_relaxed);
+        R.inner_attempted_total     = inner_attempted_total.load(std::memory_order_relaxed);
+        R.n                         = n;
+        R.m_outer                   = m_outer;
+        R.m_inner                   = m_inner;
+        R.L                         = Ldiag;
+        R.se_hat                    = se_hat;
+        R.skew_pivot                = skew_pivot;
+        R.low_effective_replicates  = low_effective_replicates;
+        R.high_inner_skip_rate      = high_inner_skip_rate;
+        R.extreme_pivot_skewness    = extreme_pivot_skewness;
         return R;
       }
 
     private:
-      // Immutable configuration after construction
-      const std::size_t  m_B_outer;
-      const std::size_t  m_B_inner;
-      const double       m_CL;
-      const Resampler    m_resampler;
-      const double       m_ratio_outer;
-      const double       m_ratio_inner;
+      // Configuration set at construction. Not declared const so that copy/move
+      // assignment operators can assign them directly without undefined-behaviour
+      // const_cast tricks (writing through a const_cast to a genuinely const
+      // object is UB in C++).
+      std::size_t  m_B_outer;
+      std::size_t  m_B_inner;
+      double       m_CL;
+      Resampler    m_resampler;
+      double       m_ratio_outer;
+      double       m_ratio_inner;
 
       // Diagnostics for most recent successful run (protected by m_diagMutex).
       // Getters return copies to avoid reference invalidation by concurrent run().
@@ -613,6 +775,7 @@ namespace palvalidator
       mutable std::vector<double> m_diagTValues;
       mutable std::vector<double> m_diagThetaStars;
       mutable double              m_diagSeHat;
+      mutable double              m_diagSkewPivot;   // skewness of t* (pivot) distribution
       mutable bool                m_diagValid;
       IntervalType                m_interval_type;
     };
