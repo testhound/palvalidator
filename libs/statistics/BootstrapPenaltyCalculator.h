@@ -239,6 +239,13 @@ namespace palvalidator
        * Penalizes high failure rates and low effective sample sizes that indicate
        * the double-bootstrap procedure is struggling (e.g., small n, heavy tails).
        *
+       * Four components are evaluated:
+       *   1. Outer resample failure rate (must be <= 10%)
+       *   2. Inner SE* failure rate       (must be <= 5%)
+       *   3. Effective sample size        (must be >= 70% of B_outer)
+       *   4. Pivot (t*) skewness          (soft penalty above |skew| = 2.0,
+       *                                    mirrors BCa's skewness penalty)
+       *
        * @param res Result structure from Percentile-T engine
        * @return Stability penalty >= 0 (infinity for invalid inputs)
        */
@@ -277,7 +284,7 @@ namespace palvalidator
           penalty += excess * excess * AutoBootstrapConfiguration::kPercentileTOuterPenaltyScale;
         }
 
-        // 2. INNER SE FAILURE RATE  
+        // 2. INNER SE FAILURE RATE
         double inner_failure_rate = std::clamp(skipped_inner / inner_attempted_total, 0.0, 1.0);
         const double kInnerThreshold = AutoBootstrapConfiguration::kPercentileTInnerFailThreshold;
 
@@ -296,6 +303,32 @@ namespace palvalidator
           const double deficit_fraction = (min_effective - effective_B) / B_outer;
           penalty += deficit_fraction * deficit_fraction *
             AutoBootstrapConfiguration::kPercentileTEffectiveBPenaltyScale;
+        }
+
+        // 4. PIVOT (t*) SKEWNESS
+        // Heavy skewness in the pivot distribution indicates the studentisation
+        // is degrading and the CI inversion is reading from an ill-shaped
+        // distribution. Mirrors BCa's skewness penalty exactly in structure:
+        // quadratic beyond the soft threshold, scaled by kPercentileTSkewPenaltyScale.
+        //
+        // res.skew_pivot is the skewness of t_eff (the finite pivot values),
+        // computed in run_impl and stored in Result. This is distinct from the
+        // θ* skewness used elsewhere in the selector, which measures the data
+        // distribution rather than the pivot distribution quality.
+        //
+        // No penalty is applied if skew_pivot is not finite (e.g., t_eff was
+        // empty or constant — those conditions are already penalised above).
+        if (std::isfinite(res.skew_pivot))
+        {
+          const double kSkewSoft  = AutoBootstrapConfiguration::kPercentileTSkewSoftThreshold;
+          const double kSkewScale = AutoBootstrapConfiguration::kPercentileTSkewPenaltyScale;
+          const double skew_abs   = std::fabs(res.skew_pivot);
+
+          if (skew_abs > kSkewSoft)
+          {
+            const double excess = skew_abs - kSkewSoft;
+            penalty += excess * excess * kSkewScale;
+          }
         }
 
         return penalty;

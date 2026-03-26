@@ -19,6 +19,7 @@
 
 #include "AutoBootstrapSelector.h"
 #include "BiasCorrectedBootstrap.h"
+#include "BootstrapTestMocks.h"
 #include "number.h"
 
 // Alias for convenience
@@ -29,36 +30,14 @@ using Result         = Selector::Result;
 using ScoringWeights = Selector::ScoringWeights;
 using MethodId       = Result::MethodId;
 
+// Use the shared mock types from BootstrapTestMocks.h.
+using MockPercentileTEngine = test_mocks::MockPercentileTEngine<Decimal>;
+
 
 // -----------------------------------------------------------------------------
 // Mock PercentileT Engine for Testing
 // -----------------------------------------------------------------------------
-struct MockPercentileTEngine
-{
-    struct Result
-    {
-        Decimal     mean;
-        Decimal     lower;
-        Decimal     upper;
-        double      cl;
-        std::size_t n;
-        std::size_t B_outer;
-        std::size_t B_inner;
-        std::size_t effective_B;
-        std::size_t skipped_outer;
-        std::size_t skipped_inner_total;
-        std::size_t inner_attempted_total;
-        double      se_hat;
-    };
-
-    bool diagnosticsReady = false;
-    std::vector<double> theta_star_stats;  // Actual statistic values (e.g., Profit Factors)
-    std::vector<double> t_stats;           // T-statistics (standardized values)
-
-    bool hasDiagnostics() const { return diagnosticsReady; }
-    const std::vector<double>& getThetaStarStatistics() const { return theta_star_stats; }
-    const std::vector<double>& getTStatistics() const { return t_stats; }
-};
+// (Replaced by the shared MockPercentileTEngine<Decimal> from BootstrapTestMocks.h)
 
 TEST_CASE("PercentileT: Median computed from theta* stats, not T* stats (BUG FIX)",
           "[AutoBootstrapSelector][PercentileT][Median][BugFix]")

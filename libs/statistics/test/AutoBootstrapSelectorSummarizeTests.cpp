@@ -20,6 +20,7 @@
 #include <numeric>
 
 #include "AutoBootstrapSelector.h"
+#include "BootstrapTestMocks.h"
 #include "number.h"
 
 // Alias for convenience
@@ -30,16 +31,20 @@ using Result         = Selector::Result;
 using ScoringWeights = Selector::ScoringWeights;
 using MethodId       = Result::MethodId;
 
+// Use the shared mock types from BootstrapTestMocks.h.
+using MockPercentileTEngine = test_mocks::MockPercentileTEngine<Decimal>;
+
 // =============================================================================
 // MOCK BOOTSTRAP ENGINE CLASSES
 // =============================================================================
-// These mock classes provide the minimum interface required by the 
-// summarizePercentileLike and summarizePercentileT methods for testing.
+// MockPercentileLikeEngine is defined locally below because it is only needed
+// by this file.  MockPercentileTEngine comes from BootstrapTestMocks.h via the
+// using alias above.
 // =============================================================================
 
 /**
  * @brief Mock engine for testing summarizePercentileLike.
- * 
+ *
  * This mock simulates the interface of percentile-like bootstrap engines
  * (e.g., Percentile, Basic, M-out-of-N, Normal methods).
  */
@@ -100,67 +105,7 @@ private:
     Result m_result;
 };
 
-/**
- * @brief Mock engine for testing summarizePercentileT.
- * 
- * This mock simulates the interface of the Percentile-T bootstrap engine,
- * which requires additional fields for double-bootstrap diagnostics.
- */
-class MockPercentileTEngine
-{
-public:
-    struct Result
-    {
-        Decimal mean;
-        Decimal lower;
-        Decimal upper;
-        double cl;
-        std::size_t n;
-        std::size_t B_outer;
-        std::size_t B_inner;
-        std::size_t effective_B;
-        std::size_t skipped_outer;
-        std::size_t skipped_inner_total;
-        std::size_t inner_attempted_total;
-        double se_hat;
-    };
-    
-    MockPercentileTEngine() : m_has_diagnostics(false) {}
-    
-    // Configure the mock with test data
-    void setThetaStarStatistics(const std::vector<double>& stats)
-    {
-        m_theta_star_stats = stats;
-        m_has_diagnostics = true;
-    }
-    
-    // ADD THIS METHOD: Configure t-statistics for testing
-    void setTStatistics(const std::vector<double>& t_stats)
-    {
-        m_t_stats = t_stats;
-    }
-    
-    void setResult(const Result& res)
-    {
-        m_result = res;
-    }
-    
-    // Required interface methods
-    bool hasDiagnostics() const { return m_has_diagnostics; }
-    
-    const std::vector<double>& getThetaStarStatistics() const { return m_theta_star_stats; }
-    
-    // ADD THIS METHOD: Return t-statistics (required by new undercoverage penalty)
-    const std::vector<double>& getTStatistics() const { return m_t_stats; }
-    
-    const Result& getResult() const { return m_result; }
-    
-private:
-    bool m_has_diagnostics;
-    std::vector<double> m_theta_star_stats;
-    std::vector<double> m_t_stats;  // ADD THIS MEMBER
-    Result m_result;
-};
+
 
 // =============================================================================
 // UNIT TESTS FOR summarizePercentileLike
@@ -965,5 +910,131 @@ TEST_CASE("summarizePercentileT: Comparison with different quality levels",
     SECTION("Good quality has lower inner failure rate")
     {
         REQUIRE(good_candidate.getInnerFailureRate() < poor_candidate.getInnerFailureRate());
+    }
+}
+
+// =============================================================================
+// algorithmIsReliable propagation from Result::isReliable() to Candidate
+// =============================================================================
+//
+// summarizePercentileT() computes algorithm_is_reliable = res.isReliable() and
+// passes it as param 27 (algorithmIsReliable) to the Candidate constructor.
+// The tests below verify that each of the three reliability flags independently
+// propagates to Candidate::getAlgorithmIsReliable(), and that the happy path
+// (all flags false) produces getAlgorithmIsReliable() == true.
+// =============================================================================
+
+TEST_CASE("summarizePercentileT: algorithmIsReliable propagates from Result::isReliable()",
+          "[AutoBootstrapSelector][summarizePercentileT][AlgorithmIsReliable]")
+{
+    // Common setup: minimal theta* stats and a well-formed base result.
+    // Each section overrides exactly one reliability flag to isolate its effect.
+    std::vector<double> theta_stats = {0.45, 0.48, 0.50, 0.52, 0.55};
+
+    auto make_base_res = []() -> MockPercentileTEngine::Result {
+        MockPercentileTEngine::Result res;
+        res.mean                   = 0.50;
+        res.lower                  = 0.46;
+        res.upper                  = 0.54;
+        res.cl                     = 0.95;
+        res.n                      = 100;
+        res.B_outer                = 1000;
+        res.B_inner                = 200;
+        res.effective_B            = 990;
+        res.skipped_outer          = 5;
+        res.skipped_inner_total    = 100;
+        res.inner_attempted_total  = 10000;
+        res.se_hat                 = 0.05;
+        // All reliability flags default to false → isReliable() == true
+        return res;
+    };
+
+    SECTION("getAlgorithmIsReliable() is true when all flags are false (healthy result)")
+    {
+        MockPercentileTEngine engine;
+        engine.setThetaStarStatistics(theta_stats);
+
+        auto res = make_base_res();
+        // Defaults: all flags false, isReliable() == true
+        engine.setResult(res);
+
+        Candidate c = Selector::summarizePercentileT(engine, res);
+        REQUIRE(c.getAlgorithmIsReliable());
+    }
+
+    SECTION("getAlgorithmIsReliable() is false when low_effective_replicates fires")
+    {
+        MockPercentileTEngine engine;
+        engine.setThetaStarStatistics(theta_stats);
+
+        auto res = make_base_res();
+        res.low_effective_replicates = true;   // flag 1 fires
+        engine.setResult(res);
+
+        Candidate c = Selector::summarizePercentileT(engine, res);
+        REQUIRE_FALSE(c.getAlgorithmIsReliable());
+    }
+
+    SECTION("getAlgorithmIsReliable() is false when high_inner_skip_rate fires")
+    {
+        MockPercentileTEngine engine;
+        engine.setThetaStarStatistics(theta_stats);
+
+        auto res = make_base_res();
+        res.high_inner_skip_rate = true;       // flag 2 fires
+        engine.setResult(res);
+
+        Candidate c = Selector::summarizePercentileT(engine, res);
+        REQUIRE_FALSE(c.getAlgorithmIsReliable());
+    }
+
+    SECTION("getAlgorithmIsReliable() is false when extreme_pivot_skewness fires")
+    {
+        MockPercentileTEngine engine;
+        engine.setThetaStarStatistics(theta_stats);
+
+        auto res = make_base_res();
+        res.extreme_pivot_skewness = true;     // flag 3 fires
+        engine.setResult(res);
+
+        Candidate c = Selector::summarizePercentileT(engine, res);
+        REQUIRE_FALSE(c.getAlgorithmIsReliable());
+    }
+
+    SECTION("getAlgorithmIsReliable() is false when all three flags fire simultaneously")
+    {
+        MockPercentileTEngine engine;
+        engine.setThetaStarStatistics(theta_stats);
+
+        auto res = make_base_res();
+        res.low_effective_replicates = true;
+        res.high_inner_skip_rate     = true;
+        res.extreme_pivot_skewness   = true;
+        engine.setResult(res);
+
+        Candidate c = Selector::summarizePercentileT(engine, res);
+        REQUIRE_FALSE(c.getAlgorithmIsReliable());
+    }
+
+    SECTION("getAlgorithmIsReliable() mirrors res.isReliable() exactly")
+    {
+        // Structural invariant: the Candidate field must always equal the
+        // source Result's isReliable() regardless of which combination fires.
+        for (bool lef : {false, true})
+        for (bool his : {false, true})
+        for (bool eps : {false, true})
+        {
+            MockPercentileTEngine engine;
+            engine.setThetaStarStatistics(theta_stats);
+
+            auto res = make_base_res();
+            res.low_effective_replicates = lef;
+            res.high_inner_skip_rate     = his;
+            res.extreme_pivot_skewness   = eps;
+            engine.setResult(res);
+
+            Candidate c = Selector::summarizePercentileT(engine, res);
+            REQUIRE(c.getAlgorithmIsReliable() == res.isReliable());
+        }
     }
 }
