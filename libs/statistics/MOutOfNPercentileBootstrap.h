@@ -106,10 +106,21 @@ namespace palvalidator
         // distributed across the bootstrap distribution rather than
         // concentrated in a single scalar parameter.
         //
+        // NOTE: These flags are INDEPENDENT of degenerate_warning above.
+        // degenerate_warning measures NaN/non-finite replicates (resampling
+        // failures). The flags below assess whether the *valid* replicates
+        // form a structurally meaningful bootstrap distribution. Both can
+        // be set simultaneously and should be interpreted separately.
+        //
         // distribution_degenerate:
         //   True when the bootstrap distribution has very few distinct
         //   values relative to B, indicating m_sub is too small for the
         //   statistic to vary meaningfully across subsamples.
+        //   NOTE: uniqueness is measured via exact double equality (std::set),
+        //   which is a structural heuristic. For discrete statistics this is
+        //   reliable; for continuous statistics, tiny floating-point differences
+        //   may inflate the apparent unique count slightly. The 5% threshold
+        //   is intentionally conservative so genuine degeneracy is still caught.
         //
         // excessive_bias:
         //   True (only meaningful when rescale_to_n=true) when the
@@ -121,6 +132,12 @@ namespace palvalidator
         //   True when the coefficient of variation of the bootstrap
         //   distribution is near zero, indicating the distribution is
         //   too concentrated to produce a meaningful interval.
+        //   NOTE: when |mean_boot| is near zero (< 1e-10), the test
+        //   switches from a relative CV check to an absolute SE check
+        //   to avoid division by a near-zero mean. The flag interpretation
+        //   therefore changes regime depending on the mean magnitude:
+        //   away from zero it is a relative spread test; near zero it is
+        //   an absolute spread test. Both are heuristic thresholds.
         //
         // ratio_near_boundary:
         //   True when the computed ratio is very close to either the
@@ -887,8 +904,10 @@ namespace palvalidator
         // correct M-out-of-N inference (coverage for size n) rather than conservative
         // subsample-based inference (coverage for size m_sub).
         //
-        // The rescaling factor sqrt(n/m_sub) adjusts the standard error from
-        // SE(θ̂_m) to SE(θ̂_n), assuming the variance scales as 1/sample_size.
+        // The rescaling factor sqrt(m_sub/n) contracts the m-subsample
+        // fluctuations (O(1/sqrt(m_sub))) down to n-sample scale (O(1/sqrt(n))),
+        // assuming variance scales as 1/sample_size. Note: this is sqrt(m_sub/n),
+        // NOT sqrt(n/m_sub) — the contraction shrinks deviations toward theta_hat.
         //
         // Note: Skewness is a scale-invariant statistic, so it doesn't change.
         // ====================================================================
@@ -956,11 +975,11 @@ namespace palvalidator
           
           case IntervalType::ONE_SIDED_LOWER:
             pl = alpha;              // 5% for CL=0.95 - less conservative lower bound
-            pu = 1.0 - 1e-10;        // ~100% - upper bound effectively unbounded
+            pu = 1.0 - 1e-10;        // extreme upper empirical quantile (not truly unbounded)
             break;
           
           case IntervalType::ONE_SIDED_UPPER:
-            pl = 1e-10;              // ~0% - lower bound effectively unbounded
+            pl = 1e-10;              // extreme lower empirical quantile (not truly unbounded)
             pu = 1.0 - alpha;        // 95% for CL=0.95 - less conservative upper bound
             break;
         }
@@ -1028,11 +1047,20 @@ namespace palvalidator
         // the lower limit (2/n) or upper limit ((n-1)/n). This indicates that
         // clamping fired or the adaptive policy pushed the ratio into a
         // degenerate region where subsample behaviour is unreliable.
+        //
+        // The guard (isAdaptiveMode() || clamping fired || m_sub_override > 0)
+        // is intentional: a caller who explicitly chose a small fixed ratio
+        // should NOT be flagged — they made a deliberate choice. The flag
+        // is only meaningful when the ratio was computed or adjusted
+        // internally (adaptive policy, clamping, or override), where an
+        // extreme value signals a pathological internal outcome rather than
+        // a deliberate user decision.
         const double lower_boundary = 3.0 / static_cast<double>(n);
         const double upper_boundary =
             static_cast<double>(n - 2) / static_cast<double>(n);
         const bool ratio_near_boundary =
-            (reported_ratio < lower_boundary) || (reported_ratio > upper_boundary);
+            (isAdaptiveMode() || (m_sub != m_sub_before_clamp) || (m_sub_override > 0))
+            && ((reported_ratio < lower_boundary) || (reported_ratio > upper_boundary));
 
         // Log reliability issues if a diagnostic stream is available
         if (diagnosticLog)
