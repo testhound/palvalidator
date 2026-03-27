@@ -91,34 +91,38 @@ namespace palvalidator
         return m_numBootStrapReplications;
       }
 
+      /// Compute the number of inner Percentile-T replicates as B_outer / ratio.
+      ///
+      /// No upper cap is applied: the PercentileTBootstrap engine's adaptive early
+      /// stopping (halts when SE* stabilises to +/-1.5%) governs actual compute cost,
+      /// making a hard cap here redundant and — more importantly — incorrect: the cap
+      /// previously caused B_inner to be independent of B_outer at all production
+      /// replication counts (B_outer >= 20,000 with ratio=10 → B_inner=2000=cap).
+      ///
+      /// Only a lower floor is enforced so that degenerate ratios or very small
+      /// B_outer values never produce fewer than percentile_t_constants::MIN_INNER
+      /// inner draws (the engine's own hard requirement for SE* stability).
+      ///
+      /// Example B_inner values at ratio = 10:
+      ///   B_outer =  5,000 → B_inner =   500
+      ///   B_outer = 10,000 → B_inner = 1,000
+      ///   B_outer = 25,000 → B_inner = 2,500
+      ///   B_outer = 50,000 → B_inner = 5,000
       std::size_t getPercentileTNumInnerReplications(double ratio) const
       {
-	const std::size_t outer_replications = m_numBootStrapReplications;
-
-	// Use the publicly accessible constant from PercentileTBootstrap
+	// Minimum inner draws required for stable SE* estimation (engine hard gate).
 	constexpr std::size_t kMinInnerReplications = percentile_t_constants::MIN_INNER;
 
-	// Practical cap: diminishing returns beyond this because the PT engine
-	// already has early stopping in the inner loop.
-	constexpr std::size_t kMaxInnerReplications = 2000;
+	// Guard against nonsensical ratio — fall back to minimum workable inner size.
+	if (!std::isfinite(ratio) || !(ratio > 0.0))
+	  return kMinInnerReplications;
 
-	// If ratio is nonsensical, fall back to the minimum workable inner size.
-	if (!(std::isfinite(ratio)) || !(ratio > 0.0))
-	  {
-	    return std::min<std::size_t>(std::max<std::size_t>(kMinInnerReplications, 1),
-					 kMaxInnerReplications);
-	  }
+	const double inner_d =
+	  static_cast<double>(m_numBootStrapReplications) / ratio;
 
-	const double outer = static_cast<double>(outer_replications);
-	double inner_d = outer / ratio;
-
-	// Clamp inner draws to a sane / usable range
-	if (inner_d < static_cast<double>(kMinInnerReplications))
-	  inner_d = static_cast<double>(kMinInnerReplications);
-	if (inner_d > static_cast<double>(kMaxInnerReplications))
-	  inner_d = static_cast<double>(kMaxInnerReplications);
-
-	return static_cast<std::size_t>(inner_d);
+	// Floor only — no cap. See doc comment above for rationale.
+	return static_cast<std::size_t>(
+	  std::max(inner_d, static_cast<double>(kMinInnerReplications)));
       }
 
     private:
@@ -219,7 +223,8 @@ namespace palvalidator
 
       /**
        * @brief Constructor accepting a specific statistic instance.
-       * * @param sampler_instance An instance of Sampler. This allows passing a configured
+       *
+       * @param sampler_instance An instance of Sampler. This allows passing a configured
        * statistic (e.g., LogProfitFactorStat with a specific stop-loss) rather than
        * default-constructing one. Defaults to Sampler() if not provided.
        */
@@ -247,10 +252,37 @@ namespace palvalidator
        *
        * @return AutoCIResult<Decimal> encapsulating the chosen method and all candidates.
        *
+       * @throws std::invalid_argument if @p returns contains fewer than 2 elements.
        * @throws std::runtime_error if no engine produced a usable candidate.
        */
       Result run(const std::vector<SampleType>& returns, std::ostream* os = nullptr)
       {
+	// CONCERN-B: verify that the runtime flag in BootstrapConfiguration agrees
+	// with the compile-time SampleType deduction.
+	//
+	// isTradeLevelBootstrappingEnabled() is stored for external inspection only;
+	// actual dispatch is controlled by "if constexpr (is_same_v<SampleType,Decimal>)"
+	// below. A mismatch means the caller passed the wrong flag value for the
+	// instantiated SampleType — the flag is wrong, not the code path.
+	//
+	// static_assert cannot reference member variables, so we emit a runtime
+	// warning to the log stream when a mismatch is detected. Compile-time
+	// enforcement would require the flag to be a template parameter.
+	if (os)
+	  {
+	    constexpr bool isBarLevel = std::is_same_v<SampleType, Decimal>;
+	    const bool flagSaysTradeLevel =
+	      m_bootstrapConfiguration.isTradeLevelBootstrappingEnabled();
+	    if (isBarLevel == flagSaysTradeLevel)  // flag disagrees with SampleType
+	      {
+		(*os) << "   [AutoCI] WARNING: isTradeLevelBootstrappingEnabled()="
+		      << (flagSaysTradeLevel ? "true" : "false")
+		      << " conflicts with compile-time SampleType ("
+		      << (isBarLevel ? "bar-level/Decimal" : "trade-level")
+		      << "). The flag is informational only; actual dispatch follows SampleType.\n";
+	      }
+	  }
+
 	std::vector<Candidate> candidates;
 	candidates.reserve(6);
 
@@ -267,8 +299,17 @@ namespace palvalidator
 	const std::uint64_t fold            = m_bootstrapConfiguration.getFold();
 	const std::size_t B_outer_percentileT =
 	  m_bootstrapConfiguration.getPercentileTNumOuterReplications();
+
+	// B_inner = B_outer / kPercentileTInnerRatio.
+	// The PercentileTBootstrap engine's adaptive early stopping means actual
+	// inner work is typically ~180 iterations per outer replicate regardless
+	// of this budget; the ratio governs the maximum spend when stopping takes
+	// longer (high-skew or borderline-stable SE*).
+	// No upper cap is applied in getPercentileTNumInnerReplications — see its
+	// doc comment for the full rationale.
+	constexpr double kPercentileTInnerRatio = 10.0;
 	const std::size_t B_inner_percentileT =
-	  m_bootstrapConfiguration.getPercentileTNumInnerReplications(10.0);
+	  m_bootstrapConfiguration.getPercentileTNumInnerReplications(kPercentileTInnerRatio);
 
 	// Shared resampler for percentile-like / Percentile-t engines.
 	// Bar-level resamplers are constructed with a block size; IIDResampler
@@ -443,33 +484,48 @@ namespace palvalidator
 		    // small trade populations typical in backtesting.
 		    constexpr double TRADE_LEVEL_MOUTOFN_RATIO = 0.75;
 
-		    const std::size_t n_trades    = returns.size();
-		    const double n23_floor    = std::pow(static_cast<double>(n_trades), 2.0/3.0)
-                            / static_cast<double>(n_trades);
-		    const double min_m6_floor = 6.0 / static_cast<double>(n_trades);
+		    const std::size_t n_trades = returns.size();
 
-		    // TRADE_LEVEL_MOUTOFN_RATIO (0.75) dominates at all expected N (>= 9).
-		    // The floors are purely defensive — they only fire if N falls below
-		    // the minimum expected sample size, preventing degenerate subsamples.
-		    const double trade_ratio  = std::max({TRADE_LEVEL_MOUTOFN_RATIO,
-			n23_floor,
-			min_m6_floor});
-		    auto [engine, crn] =
-		      m_factory.template makeMOutOfN<Decimal, Sampler, Resampler, Executor, SampleType>(
-							  B_single,
-							  cl,
-							  trade_ratio,
-							  resampler,
-							  m_strategy,
-							  stageTag,
-							  static_cast<uint64_t>(blockSize),
-							  fold,
-							  rescaleMOutOfN,
-							  m_interval_type);
+		    // BUG-2 FIX: Require at least 6 trades so the subsample has a
+		    // minimum of ~4 observations (0.75 * 6 = 4.5 → 4).
+		    // For n_trades < 6 the min_m6_floor below would exceed 1.0, asking
+		    // the engine to draw more observations than exist in the original
+		    // sample — oversampling, not subsampling. Skip the engine instead.
+		    if (n_trades < 6)
+		      {
+			if (os)
+			  (*os) << "   [AutoCI] MOutOfNPercentileBootstrap skipped: "
+				   "fewer than 6 trades (n=" << n_trades << ")\n";
+		      }
+		    else
+		      {
+			const double n23_floor    = std::pow(static_cast<double>(n_trades), 2.0/3.0)
+			                  / static_cast<double>(n_trades);
+			const double min_m6_floor = 6.0 / static_cast<double>(n_trades);
 
-		    auto res = engine.run(returns, m_sampler_instance, crn, 0, os);
-		    candidates.push_back(
-		      Selector::template summarizePercentileLike(MethodId::MOutOfN, engine, res));
+			// Defensive floors ensure at least 6-obs subsamples at tiny N.
+			// Cap at 1.0: a ratio > 1.0 means oversampling, not subsampling.
+			// TRADE_LEVEL_MOUTOFN_RATIO (0.75) dominates at all N >= 9.
+			const double trade_ratio = std::min(1.0,
+			  std::max({TRADE_LEVEL_MOUTOFN_RATIO, n23_floor, min_m6_floor}));
+
+			auto [engine, crn] =
+			  m_factory.template makeMOutOfN<Decimal, Sampler, Resampler, Executor, SampleType>(
+							      B_single,
+							      cl,
+							      trade_ratio,
+							      resampler,
+							      m_strategy,
+							      stageTag,
+							      static_cast<uint64_t>(blockSize),
+							      fold,
+							      rescaleMOutOfN,
+							      m_interval_type);
+
+			auto res = engine.run(returns, m_sampler_instance, crn, 0, os);
+			candidates.push_back(
+			  Selector::template summarizePercentileLike(MethodId::MOutOfN, engine, res));
+		      }
 		  }
 	      }
 	    catch (const std::exception& e)
@@ -531,7 +587,7 @@ namespace palvalidator
 		auto bcaEngine =
 		  m_factory.template makeBCa<Decimal, Resampler, Executor>(
 								    returns,
-								    static_cast<unsigned>(B_single),
+								    B_single,
 								    cl,
 								    statFn,
 								    resampler,
@@ -571,30 +627,39 @@ namespace palvalidator
 	    const auto& chosen      = result.getChosenCandidate();
 
 	    if (result.getChosenMethod() == MethodId::MOutOfN)
-	      {
-		(*os) << "\n   [AutoCI] M-out-of-N selected — ";
+	      (*os) << "\n   [AutoCI] M-out-of-N selected\n";
 
-		// Explain the primary reason BCa did not win, in priority order.
-		// These flags are mutually exclusive in practice but we check in
-		// severity order so the most fundamental reason is reported first.
-		if (!diagnostics.hasBCaCandidate())
-		  (*os) << "BCa was not evaluated\n";
-		else if (diagnostics.wasBCaRejectedForNonFiniteParameters())
-		  (*os) << "BCa disqualified: non-finite z0 or acceleration\n";
+	    // CONCERN-A FIX: emit BCa rejection explanation whenever BCa competed
+	    // but did not win, regardless of which method was chosen. Previously
+	    // this block only fired when MOutOfN won, giving no diagnostic output
+	    // for the common case where Percentile-T outscored BCa.
+	    if (diagnostics.hasBCaCandidate() && !diagnostics.isBCaChosen())
+	      {
+		(*os) << "   [AutoCI] BCa not selected — ";
+
+		// Explain the primary reason, in severity order.
+		if (diagnostics.wasBCaRejectedForNonFiniteParameters())
+		  (*os) << "disqualified: non-finite z0 or acceleration\n";
 		else if (diagnostics.wasBCaRejectedForDomain())
-		  (*os) << "BCa disqualified: interval violates domain constraints\n";
+		  (*os) << "disqualified: interval violates domain constraints\n";
 		else if (diagnostics.wasBCaRejectedForInstability())
-		  (*os) << "BCa disqualified: unstable acceleration estimate\n";
+		  (*os) << "disqualified: unstable acceleration estimate\n";
 		else if (diagnostics.wasBCaRejectedForLength())
-		  (*os) << "BCa disqualified: interval too wide\n";
+		  (*os) << "disqualified: interval too wide\n";
 		else
-		  (*os) << "outscored all other valid candidates\n";
+		  (*os) << "outscored by winner\n";
 
 		// When BCa was disqualified for instability, print the parameters
 		// that triggered the gates. getAccelIsReliable() flags whether a
 		// single jackknife observation dominated the cubic influence sum —
 		// that is the canonical BCa failure mode and the most actionable fact.
-		if (diagnostics.hasBCaCandidate() && diagnostics.wasBCaRejectedForInstability())
+		//
+		// BUG-1 FIX: threshold annotations now reference the actual gate
+		// constants from AutoBootstrapConfiguration rather than magic
+		// literals. The previous annotations used 0.4 (not a defined gate)
+		// for z0 and unlabelled 0.1 for accel; both are now labelled with
+		// their correct gate type (hard vs soft).
+		if (diagnostics.wasBCaRejectedForInstability())
 		  {
 		    for (const auto& cand : result.getCandidates())
 		      {
@@ -603,24 +668,42 @@ namespace palvalidator
 			(*os) << "   [AutoCI]   BCa instability detail:\n";
 
 			(*os) << "   [AutoCI]     z0 (bias):        " << cand.getZ0();
-			if (std::abs(cand.getZ0()) > 0.4)
-			  (*os) << "  <- |z0| > 0.4 threshold";
+			if (!std::isfinite(cand.getZ0()))
+			  (*os) << "  <- non-finite (hard gate)";
+			else if (std::abs(cand.getZ0()) > AutoBootstrapConfiguration::kBcaZ0HardLimit)
+			  (*os) << "  <- |z0| > " << AutoBootstrapConfiguration::kBcaZ0HardLimit
+				<< " (hard rejection gate)";
+			else if (std::abs(cand.getZ0()) > AutoBootstrapConfiguration::kBcaZ0SoftThreshold)
+			  (*os) << "  <- |z0| > " << AutoBootstrapConfiguration::kBcaZ0SoftThreshold
+				<< " (soft penalty threshold)";
 			(*os) << "\n";
 
 			(*os) << "   [AutoCI]     a  (accel):       " << cand.getAccel();
-			if (std::abs(cand.getAccel()) > 0.1)
-			  (*os) << "  <- |a| > 0.1 threshold";
+			if (!std::isfinite(cand.getAccel()))
+			  (*os) << "  <- non-finite (hard gate)";
+			else if (std::abs(cand.getAccel()) > AutoBootstrapConfiguration::kBcaAHardLimit)
+			  (*os) << "  <- |a| > " << AutoBootstrapConfiguration::kBcaAHardLimit
+				<< " (hard rejection gate)";
+			else if (std::abs(cand.getAccel()) > AutoBootstrapConfiguration::kBcaASoftThreshold)
+			  (*os) << "  <- |a| > " << AutoBootstrapConfiguration::kBcaASoftThreshold
+				<< " (soft penalty threshold)";
 			(*os) << "\n";
 
 			(*os) << "   [AutoCI]     accel reliable:   "
 			      << (cand.getAccelIsReliable() ? "yes" : "NO — dominant jackknife observation")
 			      << "\n";
 
+			(*os) << "   [AutoCI]     skew(boot):       " << cand.getSkewBoot();
+			if (std::isfinite(cand.getSkewBoot()) &&
+			    std::abs(cand.getSkewBoot()) > AutoBootstrapConfiguration::kBcaSkewHardLimit)
+			  (*os) << "  <- |skew| > " << AutoBootstrapConfiguration::kBcaSkewHardLimit
+				<< " (hard rejection gate)";
+			(*os) << "\n";
+
 			(*os) << "   [AutoCI]     stability penalty: "
 			      << cand.getStabilityPenalty() << "\n";
 		      }
 		  }
-		(*os) << "\n";
 	      }
 
 	    (*os) << "   [AutoCI] Selected method="
