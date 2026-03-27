@@ -1622,6 +1622,13 @@ namespace {
       WilsonPValueComputationPolicy<DecimalType>,
       SyntheticNullModel::N1_MaxDestruction,
       ThresholdEarlyStoppingPolicy<DecimalType>>;
+
+  using NoStopTester = DefaultPermuteMarketChangesPolicy<   // <-- the '<' must be on THIS line
+      DecimalType,
+      DeterministicStatPolicy,
+      PValueReturnPolicy<DecimalType>,
+      PermutationTestingNullTestStatisticPolicy<DecimalType>,
+      concurrency::SingleThreadExecutor>;
 } // anonymous namespace
 
 TEST_CASE("ThresholdEarlyStoppingPolicy: stops early for clearly passing strategy",
@@ -1789,7 +1796,10 @@ TEST_CASE("ThresholdEarlyStoppingPolicy: early stopping reduces runtime",
   const DecimalType baseline("0.1");  // all permutations extreme → clear fail
 
   auto t0 = std::chrono::high_resolution_clock::now();
-  DefaultPermuteMarketChangesPolicy<DecimalType, DeterministicStatPolicy> noStop;
+  // Use SingleThreadExecutor to match EarlyStopTester — ensures both policies
+  // pay identical per-permutation overhead so the timing delta isolates the
+  // early-stopping benefit rather than executor differences.
+  NoStopTester noStop;
   noStop.runPermutationTest(bt, N, baseline);
   auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -1797,7 +1807,7 @@ TEST_CASE("ThresholdEarlyStoppingPolicy: early stopping reduces runtime",
   earlyStop.runPermutationTest(bt, N, baseline);
   auto t2 = std::chrono::high_resolution_clock::now();
 
-  const auto noStopMs   = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+  const auto noStopMs    = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
   const auto earlyStopMs = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
 
   INFO("NoEarlyStop: " << noStopMs << "us, EarlyStop: " << earlyStopMs << "us");
