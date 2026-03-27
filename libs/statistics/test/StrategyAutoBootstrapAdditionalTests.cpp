@@ -29,6 +29,7 @@
 #include "StrategyAutoBootstrap.h"
 #include "TradingBootstrapFactory.h"
 #include "AutoBootstrapSelector.h"
+#include "PercentileTBootstrap.h"
 #include "StatUtils.h"
 #include "StationaryMaskResamplers.h"
 #include "number.h"
@@ -198,8 +199,14 @@ TEST_CASE("BootstrapConfiguration: Large B values",
     REQUIRE(cfg.getPercentileTNumOuterReplications() == largeB);
 
     const std::size_t innerB = cfg.getPercentileTNumInnerReplications(10.0);
-    const std::size_t expected = std::min<std::size_t>(
-						       static_cast<std::size_t>(largeB / 10.0), 2000u);
+    
+    // B_inner = B_outer / ratio with a floor at MIN_INNER only.
+    // The old implementation capped at 2000, making B_inner independent of
+    // B_outer at production scale. The cap was removed so the ratio is meaningful.
+    const std::size_t expected = std::max<std::size_t>(
+						       static_cast<std::size_t>(largeB / 10.0),
+						       palvalidator::analysis::percentile_t_constants::MIN_INNER);   // = max(10000, 100) = 10000
+    
     REQUIRE(innerB == expected);
 }
 
