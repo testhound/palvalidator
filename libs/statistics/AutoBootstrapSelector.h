@@ -1234,6 +1234,24 @@ namespace palvalidator
 	const double  accel   = num::to_double(accelD);
 	const bool accel_is_reliable = bca.getAccelerationReliability().isReliable();
 
+	// Read the BCa percentile-transform stability diagnostic.
+	// isStable()   — near-singular denominator; geometrically impossible within
+	//                the existing kBcaZ0HardLimit / kBcaAHardLimit parameter space,
+	//                so this check is confirmatory only (asserted in debug builds).
+	// isMonotone() — α₁ ≤ α₂ after the BCa transform.  A non-monotone mapping
+	//                means the correction reversed direction; bounds are still valid
+	//                after the silent swap in calculateBCaBounds(), but the method
+	//                is degraded.  A soft penalty is applied below.
+	const auto transform_stability = bca.getBcaTransformStability();
+	const bool transform_monotone  = transform_stability.isMonotone();
+	// isStable() cannot fire for any BCa candidate that passes the upstream
+	// kBcaZ0HardLimit / kBcaAHardLimit gates (the denominator 1 - a*(z0+za) is
+	// bounded away from zero in that parameter region).  Assert here so that any
+	// future relaxation of those limits is immediately caught.
+	assert(transform_stability.isStable() &&
+	       "BcaTransformStability::isStable() fired within valid parameter space — "
+	       "review kBcaZ0HardLimit / kBcaAHardLimit if this assertion trips.");
+
 	const auto& statsD = bca.getBootstrapStatistics();
 	if (statsD.size() < 2)
 	  {
@@ -1298,13 +1316,37 @@ namespace palvalidator
 	// STABILITY PENALTY (z0 / accel / skew thresholds etc.)
 	// ====================================================================
 	// Pass the AutoBootstrapSelector::ScoringWeights directly to the penalty calculator
-	const double stability_penalty = BootstrapPenaltyCalculator<Decimal>::computeBCaStabilityPenalty(
+	double stability_penalty = BootstrapPenaltyCalculator<Decimal>::computeBCaStabilityPenalty(
 								    z0,
 								    accel,
 								    skew_boot,
 								    weights,
 								    os
 								    );
+
+	// NON-MONOTONE TRANSFORM SOFT PENALTY
+	// When the BCa percentile mapping inverted (α₁ > α₂), calculateBCaBounds()
+	// silently swapped the indices so the bounds remain valid.  The correction
+	// nevertheless reversed direction, making this candidate less trustworthy.
+	// Apply a soft penalty rather than a hard rejection: BCa can still win when
+	// no other method scores lower after the penalty is accounted for.
+	if (!transform_monotone)
+	{
+	    stability_penalty +=
+	        AutoBootstrapConfiguration::kBcaTransformNonMonotonePenalty;
+	    if (os)
+	        (*os) << "[BCa] Non-monotone transform penalty applied: "
+	              << AutoBootstrapConfiguration::kBcaTransformNonMonotonePenalty
+	              << " (denom_lo=" << transform_stability.getDenomLo()
+	              << " denom_hi=" << transform_stability.getDenomHi() << ")\n";
+	}
+
+	// algorithmIsReliable: AND-gate over both BCa-specific failure modes.
+	// accel_is_reliable   — jackknife acceleration not dominated by a single outlier.
+	// transform_monotone  — BCa percentile mapping preserved order (α₁ ≤ α₂).
+	// These are distinct failure modes; getAccelIsReliable() and
+	// getBcaTransformMonotone() expose them individually for diagnostics.
+	const bool algorithm_is_reliable = accel_is_reliable && transform_monotone;
 
 	const double ordering_penalty = 0.0;
 
@@ -1331,9 +1373,10 @@ namespace palvalidator
 			 0,                                           // rank (param 24)
 			 false,                                       // is_chosen (param 25)
 			 accel_is_reliable,                           // accelIsReliable (param 26)
-			 accel_is_reliable,                           // algorithmIsReliable (param 27) — equals accel reliability for BCa
+			 algorithm_is_reliable,                       // algorithmIsReliable (param 27)
 			 false,                                       // excessiveBias (param 28) — N/A for BCa
-			 0.0                                          // excessBias    (param 29) — N/A for BCa
+			 0.0,                                         // excessBias    (param 29) — N/A for BCa
+			 transform_monotone                           // bcaTransformMonotone (param 30)
 			 );
       }
       
@@ -1662,6 +1705,18 @@ namespace palvalidator
 	      rejected_for_instability = true;
 	    }
 
+	  // BCa transform non-monotone: the percentile mapping inverted direction
+	  // (α₁ > α₂ before clamping/swapping).  Bounds are valid after the silent swap
+	  // in calculateBCaBounds(), but the BCa correction reversed direction.
+	  // Treated as instability for diagnostic purposes, consistent with the
+	  // accel-reliability gate above.  The soft penalty in summarizeBCa() already
+	  // down-weighted this candidate during scoring; this flag surfaces the event
+	  // in SelectionDiagnostics::wasBCaRejectedForInstability().
+	  if (!bca.getBcaTransformMonotone())
+	    {
+	      rejected_for_instability = true;
+	    }
+
           // Skew hard gate: Edgeworth expansion breaks down at extreme skewness
           if (std::isfinite(bca.getSkewBoot()) &&
               std::fabs(bca.getSkewBoot()) > AutoBootstrapConfiguration::kBcaSkewHardLimit)
@@ -1929,7 +1984,8 @@ namespace palvalidator
             pre_haircut_winner.getAccelIsReliable(),
             pre_haircut_winner.getAlgorithmIsReliable(),
             pre_haircut_winner.getExcessiveBias(),
-            pre_haircut_winner.getExcessBias()
+            pre_haircut_winner.getExcessBias(),
+            pre_haircut_winner.getBcaTransformMonotone()  // param 30
           );
         }
         

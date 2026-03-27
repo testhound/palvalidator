@@ -558,6 +558,19 @@ struct MockBCaEngine
     {
       return mkc_timeseries::AccelerationReliability(true, 0.0, 0, 0, 1.0);
     }
+
+    // Returns a well-behaved (stable, monotone) transform stability object.
+    // The mock represents a normal BCa run with no near-singularity or
+    // mapping inversion, which is the expected case for all test scenarios
+    // exercised in this file.
+    mkc_timeseries::BcaTransformStability getBcaTransformStability() const
+    {
+        return mkc_timeseries::BcaTransformStability(
+            true,   // isStable   -- denominators safely away from zero
+            true,   // isMonotone -- alpha1 <= alpha2 (mapping preserved order)
+            1.0,    // denomLo    -- 1 - a*(z0 + z_alpha_lo), a=0 limit
+            1.0);   // denomHi    -- 1 - a*(z0 + z_alpha_hi), a=0 limit
+    }
   
     const std::vector<Decimal>& getBootstrapStatistics() const {
         return bootstrap_statistics;
