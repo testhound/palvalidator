@@ -656,6 +656,94 @@ namespace mkc_timeseries
   };
 
   /**
+   * @class BcaTransformStability
+   * @brief Diagnostic result for the BCa percentile-transform step.
+   *
+   * The BCa adjusted percentiles are computed via (Efron 1987, eq. 6.8):
+   *
+   *   α₁ = Φ( z₀ + (z₀ + zα_lo) / (1 − a·(z₀ + zα_lo)) )
+   *   α₂ = Φ( z₀ + (z₀ + zα_hi) / (1 − a·(z₀ + zα_hi)) )
+   *
+   * The denominator  1 − a·(z₀ + zα)  can approach zero when |a| is large and
+   * z₀ + zα ≈ 1/a.  Near that singularity the adjusted z-score explodes in
+   * magnitude and can flip sign abruptly as the denominator crosses zero,
+   * causing the adjusted percentile to jump toward 0 or 1 very aggressively.
+   *
+   * This class captures two diagnostics around that singularity, following the
+   * same pattern as AccelerationReliability for the jackknife/acceleration step:
+   *
+   *   isStable()   — false if either denominator is within kSingularityEpsilon
+   *                  of zero.  When false the BCa transform is near-singular;
+   *                  the clamped bounds are a best-effort fallback, not a
+   *                  statistically reliable interval.
+   *
+   *   isMonotone() — false if α₁ > α₂ after the transform.  A well-behaved BCa
+   *                  mapping must be monotone (α₁ ≤ α₂).  Inversion signals
+   *                  severe numerical instability or a sign-flip through the
+   *                  singularity.  The bound computation silently swaps the
+   *                  indices in this case; this flag makes the event visible.
+   *
+   * getDenomLo() / getDenomHi() expose the raw denominator values so callers
+   * can assess the proximity to the singularity quantitatively.
+   *
+   * In practice, isStable() is false only when the acceleration parameter |a|
+   * is large (which AccelerationReliability already flags independently) and
+   * the nominal quantile z_alpha happens to nearly cancel 1/a.  Both conditions
+   * must hold simultaneously, so near-singularity in the transform is rare for
+   * well-behaved data.  The diagnostic exists for observability, not for altering
+   * the computation itself.
+   */
+  class BcaTransformStability
+  {
+  public:
+    /// Denominators whose absolute value is below this threshold are considered
+    /// near-singular.  Matches the guard value recommended by the code review.
+    static constexpr double kSingularityEpsilon = 1e-10;
+
+    /**
+     * @brief Constructs a fully-computed stability result.
+     *
+     * @param isStable    True if both |denom_lo| and |denom_hi| exceed
+     *                    kSingularityEpsilon.
+     * @param isMonotone  True if α₁ ≤ α₂ (mapping is order-preserving).
+     * @param denomLo     1 − a·(z₀ + zα_lo): lower denominator value.
+     * @param denomHi     1 − a·(z₀ + zα_hi): upper denominator value.
+     */
+    BcaTransformStability(bool   isStable,
+                          bool   isMonotone,
+                          double denomLo,
+                          double denomHi)
+      : m_isStable(isStable),
+        m_isMonotone(isMonotone),
+        m_denomLo(denomLo),
+        m_denomHi(denomHi)
+    {}
+
+    /// True if both BCa transform denominators are safely away from zero.
+    /// False signals near-singular behaviour; the clamped bounds are a
+    /// best-effort fallback.
+    bool   isStable()    const { return m_isStable; }
+
+    /// True if the BCa mapping preserved order (α₁ ≤ α₂).
+    /// False signals a sign-flip through the singularity or severe instability.
+    bool   isMonotone()  const { return m_isMonotone; }
+
+    /// 1 − a·(z₀ + zα_lo).  Values near zero indicate near-singularity on the
+    /// lower tail.
+    double getDenomLo()  const { return m_denomLo; }
+
+    /// 1 − a·(z₀ + zα_hi).  Values near zero indicate near-singularity on the
+    /// upper tail.
+    double getDenomHi()  const { return m_denomHi; }
+
+  private:
+    bool   m_isStable;
+    bool   m_isMonotone;
+    double m_denomLo;
+    double m_denomHi;
+  };
+
+  /**
    * @class BCaBootStrap
    * @brief Bias-Corrected and Accelerated (BCa) bootstrap confidence intervals.
    *
@@ -675,6 +763,19 @@ namespace mkc_timeseries
    *   1. Check getZ0() and getAcceleration() after calculation
    *   2. Consider using PercentileT or MOutOfN bootstrap for extreme cases
    *   3. Or use AutoBootstrapSelector, which automatically handles these checks
+   *
+   * TRANSFORM STABILITY:
+   * After calculation, getBcaTransformStability() exposes two additional
+   * diagnostics about the BCa percentile-transform step (Efron 1987, eq. 6.8):
+   *
+   *   isStable()   — false if either denominator 1 − a·(z₀ + zα) was within
+   *                  BcaTransformStability::kSingularityEpsilon of zero.
+   *                  The computation still proceeds (bounds are clamped), but
+   *                  the result should be treated as unreliable.
+   *
+   *   isMonotone() — false if the adjusted percentiles were inverted (α₁ > α₂).
+   *                  The bound indices are silently swapped to prevent an invalid
+   *                  result; this flag makes the event visible to the caller.
    *
    * GENERALIZATION (trade-level bootstrap):
    *   The 5th template parameter SampleType (default: Decimal) controls the
@@ -917,6 +1018,34 @@ namespace mkc_timeseries
       return m_accelReliability.value(); // safe: ensureCalculated() guarantees population
     }
 
+    /**
+     * @brief Returns stability diagnostics for the BCa percentile-transform step.
+     *
+     * Provides two diagnostics for the denominator  1 − a·(z₀ + zα)  in the
+     * BCa transform (Efron 1987, eq. 6.8):
+     *
+     *   isStable()   — false if either denominator was within
+     *                  BcaTransformStability::kSingularityEpsilon of zero.
+     *                  When false the transform was near-singular; the bounds
+     *                  are a clamped best-effort result, not a reliable interval.
+     *
+     *   isMonotone() — false if the adjusted percentiles were inverted (α₁ > α₂).
+     *                  The bound indices are silently swapped; this flag surfaces
+     *                  the event for diagnostics and downstream decision logic.
+     *
+     * getDenomLo() / getDenomHi() expose the raw denominator values so callers
+     * can assess their proximity to zero quantitatively.
+     *
+     * This diagnostic is populated by calculateBCaBounds(). For the degenerate
+     * all-equal path, isStable() and isMonotone() are both true by convention
+     * (the BCa transform is never applied in that case).
+     */
+    BcaTransformStability getBcaTransformStability() const
+    {
+      ensureCalculated();
+      return m_bcaTransformStability.value(); // safe: ensureCalculated() guarantees population
+    }
+
     double getConfidenceLevel() const
     {
       return m_confidence_level;
@@ -1038,7 +1167,8 @@ namespace mkc_timeseries
     // BCa diagnostics
     double               m_z0;
     Decimal              m_accel;
-    std::optional<AccelerationReliability> m_accelReliability; // populated by calculateBCaBounds()
+    std::optional<AccelerationReliability>  m_accelReliability;        // populated by calculateBCaBounds()
+    std::optional<BcaTransformStability>    m_bcaTransformStability;   // populated by calculateBCaBounds()
     std::vector<Decimal> m_bootstrapStats;   // bootstrap θ*'s (unsorted)
     IntervalType         m_interval_type;
 
@@ -1106,6 +1236,13 @@ namespace mkc_timeseries
      *
      *   5. m_theta_hat is no longer overwritten in the degenerate all-equal
      *      path; it retains the value computed from the original sample.
+     *
+     *   6. The BCa transform denominators (1 − a·(z₀ + zα)) are computed
+     *      explicitly before dividing, and the results are stored in
+     *      m_bcaTransformStability. This records near-singularity (either
+     *      denominator within BcaTransformStability::kSingularityEpsilon of
+     *      zero) and non-monotone mapping (α₁ > α₂) without changing any
+     *      existing clamping or index-swap behaviour.
      *
      * All z0, acceleration, and bound calculations operate on std::vector<Decimal>
      * and are unaffected by the SampleType generalization.
@@ -1326,6 +1463,10 @@ namespace mkc_timeseries
 	  // effect on the interval. No dominance possible; cancellation ratio 1.0
 	  // by convention (no cubic signal to cancel).
 	  m_accelReliability = AccelerationReliability(true, 0.0, 0, 0, 1.0);
+	  // BCa transform is never applied in the degenerate case.
+	  // isStable and isMonotone are both true by convention; denominator
+	  // values are reported as 1.0 (the a=0 limit of 1 − a·(z₀ + zα)).
+	  m_bcaTransformStability = BcaTransformStability(true, true, 1.0, 1.0);
 	  m_bootstrapStats = boot_stats;
 	  m_is_calculated  = true;
 	  return;
@@ -1413,6 +1554,12 @@ namespace mkc_timeseries
       // indicates a completely degenerate bootstrap distribution. In that case
       // the BCa method has broken down regardless, and the unadjusted quantile
       // is used as a safe fallback.
+      //
+      // Denominators are computed explicitly before dividing so that values
+      // near zero can be recorded in m_bcaTransformStability. The existing
+      // clamp01 and min/max index guards are unchanged; the stability object
+      // makes near-singularity and non-monotone events visible to callers
+      // without altering the fallback behaviour.
       const double alpha = computeAlpha(m_confidence_level, m_interval_type);
 
       double z_alpha_lo, z_alpha_hi;
@@ -1453,17 +1600,37 @@ namespace mkc_timeseries
       // In practice this branch is dead code: the [1e-10, 1-1e-10] clamping
       // of prop_less in step (3) ensures inverseNormalCdf always returns a
       // finite z0 (|z0| <= ~6.36). It is fixed here for mathematical correctness.
+      //
+      // Near-singularity guard: explicitly compute the denominators before
+      // dividing so that near-zero values can be detected and recorded in
+      // m_bcaTransformStability. The clamping below still prevents out-of-range
+      // indices in all cases; the stability object makes the event observable.
+      // When z0 is non-finite the denominators are reported as 1.0 by convention
+      // (the BCa formula is not applied in that branch).
+      const double denom_lo = z0_finite ? (1.0 - a_d * (z0 + z_alpha_lo)) : 1.0;
+      const double denom_hi = z0_finite ? (1.0 - a_d * (z0 + z_alpha_hi)) : 1.0;
+
+      const bool denom_stable =
+        std::fabs(denom_lo) >= BcaTransformStability::kSingularityEpsilon &&
+        std::fabs(denom_hi) >= BcaTransformStability::kSingularityEpsilon;
+
       const double alpha1 =
 	!z0_finite
 	? NormalDistribution::standardNormalCdf(z_alpha_lo)
 	: NormalDistribution::standardNormalCdf(
-	    z0 + (z0 + z_alpha_lo) / (1.0 - a_d * (z0 + z_alpha_lo)));
+	    z0 + (z0 + z_alpha_lo) / denom_lo);
 
       const double alpha2 =
 	!z0_finite
 	? NormalDistribution::standardNormalCdf(z_alpha_hi)
 	: NormalDistribution::standardNormalCdf(
-	    z0 + (z0 + z_alpha_hi) / (1.0 - a_d * (z0 + z_alpha_hi)));
+	    z0 + (z0 + z_alpha_hi) / denom_hi);
+
+      // Record transform stability before clamping / swapping so the flags
+      // reflect the raw BCa output, not the post-correction values.
+      const bool mapping_monotone = (alpha1 <= alpha2);
+      m_bcaTransformStability =
+        BcaTransformStability(denom_stable, mapping_monotone, denom_lo, denom_hi);
 
       const auto clamp01 = [](double v) noexcept {
         return (v <= 0.0) ? std::nextafter(0.0, 1.0)
