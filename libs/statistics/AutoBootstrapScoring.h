@@ -427,7 +427,8 @@ namespace palvalidator
 	  if (requested < 2)
 	    return false;
         
-	  constexpr std::size_t kMinEffectiveAbsolute = 200;
+	  constexpr std::size_t kMinEffectiveAbsolute =
+	    AutoBootstrapConfiguration::kMinEffectiveBAbsolute;
         
 	  // Method-specific minimum fraction requirements
 	  double min_frac = 0.90;

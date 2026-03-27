@@ -40,6 +40,13 @@ namespace AutoBootstrapConfiguration
   /// still being excluded for truly degenerate sample sizes.
   constexpr std::size_t kBcaMinSampleSize = 8;
 
+  /// Minimum absolute number of effective bootstrap replicates required for
+  /// any method to pass the effective-B gate in CandidateGateKeeper::passesEffectiveBGate.
+  /// Referenced by both passesEffectiveBGate (AutoBootstrapScoring.h) and the
+  /// diagnostic mirror in analyzeBcaRejection (AutoBootstrapSelector.h).
+  /// Both sites must agree — a single constant here guarantees that.
+  constexpr std::size_t kMinEffectiveBAbsolute = 200;
+
   // ===========================================================================
   // PERCENTILE-T HARD REJECTION LIMITS
   // ===========================================================================
