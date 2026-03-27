@@ -643,16 +643,53 @@ namespace palvalidator
 		else if (diagnostics.wasBCaRejectedForDomain())
 		  (*os) << "disqualified: interval violates domain constraints\n";
 		else if (diagnostics.wasBCaRejectedForInstability())
-		  (*os) << "disqualified: unstable acceleration estimate\n";
+		  {
+		    // wasBCaRejectedForInstability() fires for two distinct causes;
+		    // inspect the BCa candidate directly to emit the specific message.
+		    bool accel_bad   = false;
+		    bool nonmono_bad = false;
+		    for (const auto& cand : result.getCandidates())
+		      {
+			if (cand.getMethod() != MethodId::BCa) continue;
+			accel_bad   = !cand.getAccelIsReliable();
+			nonmono_bad = !cand.getBcaTransformMonotone();
+			break;
+		      }
+
+		    if (accel_bad && nonmono_bad)
+		      (*os) << "disqualified: dominant jackknife observation"
+			       " + non-monotone BCa transform\n";
+		    else if (accel_bad)
+		      (*os) << "disqualified: dominant jackknife observation"
+			       " in acceleration estimate\n";
+		    else if (nonmono_bad)
+		      (*os) << "disqualified: BCa percentile-transform"
+			       " mapping reversed direction\n";
+		    else
+		      (*os) << "disqualified: BCa parameter instability"
+			       " (sample size or skew gate)\n";
+		  }
 		else if (diagnostics.wasBCaRejectedForLength())
 		  (*os) << "disqualified: interval too wide\n";
 		else
 		  (*os) << "outscored by winner\n";
 
 		// When BCa was disqualified for instability, print the parameters
-		// that triggered the gates. getAccelIsReliable() flags whether a
-		// single jackknife observation dominated the cubic influence sum —
-		// that is the canonical BCa failure mode and the most actionable fact.
+		// that triggered the gates.  Two independent failure modes can set
+		// wasBCaRejectedForInstability(); both are surfaced here:
+		//
+		//   getAccelIsReliable()      — false if a single jackknife LOO
+		//     observation contributed > 50% of the total absolute cubic
+		//     influence Σ|d³|.  The acceleration estimate is then an
+		//     artifact of that observation, not a distributional property,
+		//     regardless of â's magnitude, z0, or skew_boot.
+		//
+		//   getBcaTransformMonotone() — false if the BCa percentile-transform
+		//     mapping produced α₁ > α₂ (inverted order).  The bounds are still
+		//     valid after the silent swap in calculateBCaBounds(), but the BCa
+		//     correction reversed direction.  A soft penalty of
+		//     kBcaTransformNonMonotonePenalty is applied in the tournament;
+		//     this detail line makes the event visible in the log.
 		//
 		// BUG-1 FIX: threshold annotations now reference the actual gate
 		// constants from AutoBootstrapConfiguration rather than magic
@@ -692,6 +729,19 @@ namespace palvalidator
 			(*os) << "   [AutoCI]     accel reliable:   "
 			      << (cand.getAccelIsReliable() ? "yes" : "NO — dominant jackknife observation")
 			      << "\n";
+
+			(*os) << "   [AutoCI]     transform monotone: "
+			      << (cand.getBcaTransformMonotone()
+				    ? "yes"
+				    : "NO — BCa percentile mapping reversed direction (bounds swapped)")
+			      << "\n";
+			// When non-monotone, note that a soft penalty was already applied in
+			// the tournament so the caller knows the stability_penalty below
+			// already incorporates kBcaTransformNonMonotonePenalty = 0.5.
+			if (!cand.getBcaTransformMonotone())
+			  (*os) << "   [AutoCI]       (stability_penalty includes "
+				<< AutoBootstrapConfiguration::kBcaTransformNonMonotonePenalty
+				<< " non-monotone soft penalty)\n";
 
 			(*os) << "   [AutoCI]     skew(boot):       " << cand.getSkewBoot();
 			if (std::isfinite(cand.getSkewBoot()) &&

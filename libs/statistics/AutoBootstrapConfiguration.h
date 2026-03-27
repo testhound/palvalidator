@@ -104,6 +104,32 @@ namespace AutoBootstrapConfiguration
   constexpr double kBcaLengthRejectionThreshold = 1.0; ///< Triggers BCa rejection diagnosis in analyzeBcaRejection
   constexpr double kBcaLengthOverflowScale      = 2.0; ///< Quadratic scale applied to length overflow
 
+  // ===========================================================================
+  // BCa TRANSFORM STABILITY PENALTY
+  // ===========================================================================
+
+  /// Soft stability penalty added to a BCa candidate whose percentile-transform
+  /// mapping was non-monotone (α₁ > α₂ before clamping/swapping).
+  ///
+  /// A non-monotone mapping means the BCa correction reversed direction: the
+  /// adjusted lower-tail quantile ended up above the upper-tail quantile.
+  /// calculateBCaBounds() silently swaps the indices so the interval bounds are
+  /// still valid, but the correction is degraded.  This is NOT a hard rejection
+  /// gate because the resulting interval is technically correct.  The soft penalty
+  /// down-weights BCa in the tournament without eliminating it as a fallback when
+  /// all alternatives score worse.
+  ///
+  /// Magnitude rationale: at kRefStability=0.25, a raw penalty of 0.5 normalises
+  /// to 2.0 — 8× the reference — making the candidate noticeably less competitive
+  /// than a BCa run with a well-conditioned transform, without eliminating it when
+  /// every other candidate is also penalised.
+  ///
+  /// Note: BcaTransformStability::isStable() (near-singular denominator) is NOT
+  /// penalised here because it is geometrically impossible within the existing
+  /// kBcaZ0HardLimit / kBcaAHardLimit parameter space; those hard gates already
+  /// exclude every parameter combination that can trigger a near-zero denominator.
+  constexpr double kBcaTransformNonMonotonePenalty = 0.5;
+
   // Floating-point tie tolerance scale used in ImprovedTournamentSelector
   constexpr double kRelativeTieEpsilonScale = 1e-10;
 

@@ -94,6 +94,18 @@ namespace palvalidator
 	 * @param candidate_id [V2] Unique identifier within the tournament (default: 0).
 	 * @param rank [V2] Ranking by score, 1-based (default: 0 = unranked).
 	 * @param is_chosen [V2] True if this candidate won the tournament (default: false).
+	 * @param accelIsReliable True if the BCa jackknife acceleration estimate was not
+	 *        dominated by a single outlier observation. Always true for non-BCa methods.
+	 * @param algorithmIsReliable Combined algorithm reliability flag. For BCa: false if
+	 *        accelIsReliable is false OR the percentile-transform mapping was non-monotone.
+	 *        For M-out-of-N: reflects engine reliability. Always true for other methods.
+	 * @param excessiveBias M-out-of-N only: true when the bootstrap mean deviated
+	 *        substantially from theta_hat. Always false for non-MOutOfN methods.
+	 * @param excessBias M-out-of-N only: max(0, bias_fraction - threshold), pre-computed.
+	 * @param bcaTransformMonotone BCa only: true if the BCa percentile-transform mapping
+	 *        preserved order (α₁ ≤ α₂). False means the adjusted percentiles were inverted
+	 *        and silently swapped in calculateBCaBounds(); the interval is valid but the
+	 *        correction reversed direction. Always true for non-BCa methods.
 	 */
 	Candidate(MethodId    method,
 		  Decimal     mean,
@@ -124,7 +136,8 @@ namespace palvalidator
 		  bool accelIsReliable = true,
 	  bool algorithmIsReliable = true,
 	  bool excessiveBias = false,
-	  double excessBias = 0.0)
+	  double excessBias = 0.0,
+	  bool bcaTransformMonotone = true)   // param 30 — BCa transform order preserved
 	: m_method(method),
 	  m_mean(mean),
 	  m_lower(lower),
@@ -153,7 +166,8 @@ namespace palvalidator
 	  m_accel_is_reliable(accelIsReliable),
 	  m_algorithm_reliable(algorithmIsReliable),
 	  m_excessive_bias(excessiveBias),
-	  m_excess_bias(excessBias)
+	  m_excess_bias(excessBias),
+	  m_bca_transform_monotone(bcaTransformMonotone)
 	{
 	}
 
@@ -185,6 +199,13 @@ namespace palvalidator
 	// True if no single jackknife observation dominated the acceleration
 	/// estimate. Always true for non-BCa methods (concept does not apply).
 	bool getAccelIsReliable() const { return m_accel_is_reliable; }
+
+	/// True if the BCa percentile-transform mapping preserved order (α₁ ≤ α₂).
+	/// False signals that the adjusted percentiles were inverted before clamping;
+	/// the bound indices are silently swapped in calculateBCaBounds() so the
+	/// interval remains valid, but the BCa correction reversed direction.
+	/// Always true for non-BCa methods (concept does not apply).
+	bool getBcaTransformMonotone() const { return m_bca_transform_monotone; }
 
 	/// True if the bootstrap algorithm's own reliability checks passed.
 	/// For M-out-of-N: reflects MOutOfNPercentileBootstrap::Result::isReliable().
@@ -250,7 +271,8 @@ namespace palvalidator
 			   m_accel_is_reliable,
 			   m_algorithm_reliable,
 			   m_excessive_bias,
-			   m_excess_bias);  // preserve all reliability fields
+			   m_excess_bias,
+			   m_bca_transform_monotone);  // param 30
 	}
 
 	Candidate markAsChosen() const
@@ -279,7 +301,8 @@ namespace palvalidator
 			   m_accel_is_reliable,
 			   m_algorithm_reliable,
 			   m_excessive_bias,
-			   m_excess_bias);  // preserve all reliability fields
+			   m_excess_bias,
+			   m_bca_transform_monotone);  // param 30
 	}
 
       private:
@@ -312,9 +335,10 @@ namespace palvalidator
 	std::size_t   m_rank;
 	bool          m_is_chosen;
 	bool m_accel_is_reliable;
-	bool m_algorithm_reliable;  // M-out-of-N reliability aggregate flag
-	bool m_excessive_bias;      // M-out-of-N: bootstrap mean far from theta_hat
-	double m_excess_bias;       // M-out-of-N: max(0, bias_fraction - threshold), pre-computed
+	bool m_algorithm_reliable;       // combined algorithm reliability (BCa: accel && transform)
+	bool m_excessive_bias;           // M-out-of-N: bootstrap mean far from theta_hat
+	double m_excess_bias;            // M-out-of-N: max(0, bias_fraction - threshold), pre-computed
+	bool m_bca_transform_monotone;   // BCa: true if α₁ ≤ α₂ (transform preserved order)
       };
 
       // ===========================================================================
