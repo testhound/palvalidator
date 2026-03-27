@@ -180,10 +180,43 @@ namespace palvalidator
         // isReliable():
         //   Convenience AND-gate over all three flags. Downstream
         //   selectors (AutoBootstrapSelector) use this as algorithmIsReliable.
+        //
+        // API CONTRACT — proceed threshold vs. reliability threshold:
+        //   run() throws only when effective_B falls below the hard-abort
+        //   floor (max(16, B_outer/25), i.e. ~4%). A Result is therefore
+        //   returned — and isReliable() may return false — for any run
+        //   that clears the 4% floor but does not clear the 70%
+        //   MIN_EFFECTIVE_FRACTION threshold. This is intentional: the
+        //   algorithm returns the best available estimate rather than
+        //   discarding it, and labels it unreliable so callers can
+        //   decide. Callers must not assume a returned Result is reliable
+        //   without checking isReliable().
         // ----------------------------------------------------------------
         bool        low_effective_replicates;  // effective_B fraction too low
         bool        high_inner_skip_rate;      // inner SE* failures too frequent
         bool        extreme_pivot_skewness;    // t* distribution too skewed
+
+        // The interval type used to produce lower/upper.
+        //
+        // TWO_SIDED:       Both bounds are computed finite values.
+        //
+        // ONE_SIDED_LOWER [L, +sentinel]:
+        //   lower is the finite, meaningful CI bound.
+        //   upper is a finite surrogate for +infinity: the value at quantile
+        //   (1 - 1e-10) of the empirical pivot distribution, i.e. the most
+        //   extreme observed upper tail. It is always a valid Decimal value.
+        //
+        // ONE_SIDED_UPPER [-sentinel, U]:
+        //   lower is a finite surrogate for -infinity: the value at quantile
+        //   1e-10 of the empirical pivot distribution.
+        //   upper is the finite, meaningful CI bound.
+        //
+        // Floating-point infinity is NOT used because Decimal may be a
+        // fixed-point type (e.g. dec::decimal<8>) that cannot represent it
+        // and for which std::numeric_limits<Decimal>::max() may be 0.
+        // Callers MUST inspect interval_type to identify which bound is the
+        // true constraint and which is the surrogate sentinel.
+        IntervalType interval_type;
 
         bool isReliable() const noexcept
         {
@@ -203,6 +236,38 @@ namespace palvalidator
       static constexpr double      PIVOT_SKEW_SOFT_THRESHOLD = percentile_t_constants::PIVOT_SKEW_SOFT_THRESHOLD;
 
     public:
+      /**
+       * @param B_outer        Number of outer bootstrap replicates (>= 400).
+       * @param B_inner        Number of inner bootstrap replicates per outer
+       *                       replicate (>= 100). Used to estimate SE*.
+       * @param confidence_level  Nominal coverage in (0.5, 1.0).
+       * @param resampler      Resampling policy (copied per parallel task).
+       * @param m_ratio_outer  Fraction of n used for each outer resample, in
+       *                       (0, 1]. Default 1.0 gives the standard full-sample
+       *                       percentile-t bootstrap.
+       *                       @warning Values < 1.0 activate the m-out-of-n
+       *                       bootstrap variant. Standard percentile-t asymptotic
+       *                       theory does not automatically apply: validity
+       *                       requires separate theoretical justification (e.g.
+       *                       Bickel, Götze & van Zwet 1997). Use sub-unity ratios
+       *                       only when deliberately targeting the m-out-of-n
+       *                       studentized bootstrap and document the choice.
+       * @param m_ratio_inner  Fraction of m_outer used for each inner resample,
+       *                       in (0, 1]. Default 1.0 is the standard choice.
+       *                       @warning Values < 1.0 compound the m-out-of-n
+       *                       concern above and are rarely justified.
+       * @param interval_type  TWO_SIDED (default), ONE_SIDED_LOWER, or
+       *                       ONE_SIDED_UPPER. For one-sided intervals the
+       *                       unused Result bound receives a finite extreme-
+       *                       quantile surrogate (quantile 1e-10 or 1-1e-10
+       *                       of the empirical pivot distribution) rather
+       *                       than floating-point infinity, which is not
+       *                       representable in all Decimal types. The
+       *                       Result::interval_type field identifies which
+       *                       bound is the true constraint and which is the
+       *                       surrogate. Callers must not treat a one-sided
+       *                       result as a two-sided interval.
+       */
       PercentileTBootstrap(std::size_t      B_outer,
                            std::size_t      B_inner,
                            double           confidence_level,
@@ -653,28 +718,69 @@ namespace palvalidator
 
         const double alpha = 1.0 - m_CL;
 
+        // -----------------------------------------------------------------------
+        // Quantile selection and CI inversion.
+        //
+        // The pivot inversion is:
+        //   lower = theta_hat - t_hi * se_hat
+        //   upper = theta_hat - t_lo * se_hat
+        //
+        // For two-sided intervals both quantiles are computed normally.
+        //
+        // For one-sided intervals the unused bound receives a finite extreme-
+        // quantile surrogate:
+        //
+        // ONE_SIDED_LOWER  [L, surrogate_upper]:
+        //   Tight lower bound: t_hi = quantile(t*, 1-alpha)
+        //     → lower = theta_hat - t_hi * se_hat  (full alpha on lower side)
+        //   Surrogate upper:   t_lo = quantile(t*, 1e-10)
+        //     → upper = theta_hat - t_lo * se_hat  (near-zero t_lo → very large upper)
+        //   Result.upper is a valid Decimal value, not infinity.
+        //   Callers must use Result::interval_type to identify it as a surrogate.
+        //
+        // ONE_SIDED_UPPER  [surrogate_lower, U]:
+        //   Tight upper bound: t_lo = quantile(t*, alpha)
+        //     → upper = theta_hat - t_lo * se_hat  (full alpha on upper side)
+        //   Surrogate lower:   t_hi = quantile(t*, 1-1e-10)
+        //     → lower = theta_hat - t_hi * se_hat  (very large t_hi → very small lower)
+        //   Symmetric reasoning to ONE_SIDED_LOWER.
+        //
+        // Floating-point infinity is deliberately avoided: Decimal may be a
+        // fixed-point type (e.g. dec::decimal<8>) that cannot represent it,
+        // and std::numeric_limits<Decimal>::max() may be 0 for such types.
+        // -----------------------------------------------------------------------
         double lower_quantile, upper_quantile;
         switch (m_interval_type)
           {
-          case IntervalType::TWO_SIDED:
-          default:
-            lower_quantile = alpha / 2.0;
-            upper_quantile = 1.0 - alpha / 2.0;
-            break;
-
           case IntervalType::ONE_SIDED_LOWER:
+            // lower = theta_hat - t_hi * se_hat  →  tight lower bound needs
+            //   t_hi at the (1-alpha) quantile (full alpha on one side).
+            // upper = theta_hat - t_lo * se_hat  →  surrogate +∞ upper needs
+            //   t_lo at the 1e-10 quantile (near-zero → very large upper).
             lower_quantile = 1e-10;
             upper_quantile = 1.0 - alpha;
             break;
 
           case IntervalType::ONE_SIDED_UPPER:
+            // upper = theta_hat - t_lo * se_hat  →  tight upper bound needs
+            //   t_lo at the alpha quantile (full alpha on one side).
+            // lower = theta_hat - t_hi * se_hat  →  surrogate -∞ lower needs
+            //   t_hi at the (1-1e-10) quantile (very large → very small lower).
             lower_quantile = alpha;
             upper_quantile = 1.0 - 1e-10;
             break;
+
+          case IntervalType::TWO_SIDED:
+          default:
+            lower_quantile = alpha / 2.0;
+            upper_quantile = 1.0 - alpha / 2.0;
+            break;
           }
 
-        const double t_lo = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(t_eff, lower_quantile);
-        const double t_hi = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(t_eff, upper_quantile);
+        const double t_lo = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(
+                              t_eff, lower_quantile);
+        const double t_hi = mkc_timeseries::StatUtils<double>::quantileType7Unsorted(
+                              t_eff, upper_quantile);
 
         const double lower_d = theta_hat_d - t_hi * se_hat;
         const double upper_d = theta_hat_d - t_lo * se_hat;
@@ -735,9 +841,9 @@ namespace palvalidator
         }
 
         Result R;
-        R.mean                      = theta_hat;
-        R.lower                     = Decimal(lower_d);
-        R.upper                     = Decimal(upper_d);
+        R.mean  = theta_hat;
+        R.lower = Decimal(lower_d);
+        R.upper = Decimal(upper_d);
         R.cl                        = m_CL;
         R.B_outer                   = m_B_outer;
         R.B_inner                   = m_B_inner;
@@ -754,6 +860,7 @@ namespace palvalidator
         R.low_effective_replicates  = low_effective_replicates;
         R.high_inner_skip_rate      = high_inner_skip_rate;
         R.extreme_pivot_skewness    = extreme_pivot_skewness;
+        R.interval_type             = m_interval_type;
         return R;
       }
 
@@ -824,6 +931,12 @@ namespace palvalidator
       //
       // This is the primary constructor for bar-level and trade-level use
       // when deterministic per-replicate seeds are not required.
+      //
+      // num_resamples must be >= 400 to match PercentileTBootstrap's own
+      // B_outer >= 400 requirement. Passing a value in [100, 400) would pass
+      // this guard and then immediately throw inside the wrapped object; the
+      // threshold is kept consistent here to give a clear error at the point
+      // of construction.
       // -----------------------------------------------------------------------
       template <class P = Provider, std::enable_if_t<std::is_void_v<P>, int> = 0>
       BCaCompatibleTBootstrap(const std::vector<SampleType>& returns,
@@ -837,7 +950,7 @@ namespace palvalidator
         , m_statistic(std::move(statistic))
         , m_cached_result()
       {
-        if (m_returns.empty() || num_resamples < 100u ||
+        if (m_returns.empty() || num_resamples < 400u ||
             confidence_level <= 0.0 || confidence_level >= 1.0)
           throw std::invalid_argument(
             "BCaCompatibleTBootstrap: Invalid construction arguments.");
@@ -848,6 +961,9 @@ namespace palvalidator
       //
       // Enabled only when Provider != void. Uses provider.make_engine(b) to
       // supply a deterministic RNG per outer replicate.
+      //
+      // num_resamples must be >= 400 for the same reason as the Provider=void
+      // constructor above; see that constructor's comment.
       // -----------------------------------------------------------------------
       template <class P = Provider, std::enable_if_t<!std::is_void_v<P>, int> = 0>
       BCaCompatibleTBootstrap(const std::vector<SampleType>& returns,
@@ -863,7 +979,7 @@ namespace palvalidator
         , m_provider(provider)
         , m_cached_result()
       {
-        if (m_returns.empty() || num_resamples < 100u ||
+        if (m_returns.empty() || num_resamples < 400u ||
             confidence_level <= 0.0 || confidence_level >= 1.0)
           throw std::invalid_argument(
             "BCaCompatibleTBootstrap: Invalid construction arguments.");
