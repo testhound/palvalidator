@@ -665,6 +665,10 @@ namespace palvalidator
          * @brief Constructs a weight profile.
          *
          * @param wCenterShift Weight for the center shift penalty (default 1.0).
+         *        NOTE: This weight does NOT influence BCa or Percentile-T selection.
+         *        Both methods intentionally hard-code center_shift_in_se = 0.0 because
+         *        they are designed to produce asymmetric intervals. wCenterShift only
+         *        differentiates among Normal, Percentile, Basic, and M-out-of-N candidates.
          * @param wSkew Weight for skewness fidelity (default 0.5).
          * @param wLength Weight for length efficiency (default 0.25).
          * @param wStability Weight for numerical stability (default 1.0).
@@ -819,14 +823,6 @@ namespace palvalidator
 	  }
 	return mask;
       }
-      
-      bool checkSupportViolation(const Candidate& candidate,
-				 const StatisticSupport& support)
-      {
-	double lower = candidate.getLower();
-	return support.violatesLowerBound(lower);
-      }
-      
       
       /**
        * @brief Extract support bounds from a StatisticSupport constraint.
@@ -1334,7 +1330,10 @@ namespace palvalidator
 			 0,                                           // candidate_id (param 23)
 			 0,                                           // rank (param 24)
 			 false,                                       // is_chosen (param 25)
-			 accel_is_reliable                            // accelIsReliable (param 26)
+			 accel_is_reliable,                           // accelIsReliable (param 26)
+			 accel_is_reliable,                           // algorithmIsReliable (param 27) — equals accel reliability for BCa
+			 false,                                       // excessiveBias (param 28) — N/A for BCa
+			 0.0                                          // excessBias    (param 29) — N/A for BCa
 			 );
       }
       
@@ -1535,7 +1534,14 @@ namespace palvalidator
         std::iota(idx.begin(), idx.end(), 0);
         
         std::sort(idx.begin(), idx.end(), [&](std::size_t a, std::size_t b) {
-          return enriched[a].getScore() < enriched[b].getScore();
+          const double sa = enriched[a].getScore();
+          const double sb = enriched[b].getScore();
+          // NaN-safe: treat NaN as +infinity so degenerate candidates sort last.
+          // A plain "sa < sb" comparator violates strict-weak-ordering when either
+          // operand is NaN, producing undefined behaviour in std::sort.
+          if (std::isnan(sa)) return false;
+          if (std::isnan(sb)) return true;
+          return sa < sb;
         });
         
         // Get winner ID before we modify anything
@@ -1650,7 +1656,7 @@ namespace palvalidator
             rejected_for_instability = true;
           }
 
-	  // NEW: data-adaptive acceleration reliability gate
+	  // Data-adaptive acceleration reliability gate
 	  if (!bca.getAccelIsReliable())
 	    {
 	      rejected_for_instability = true;
@@ -1666,16 +1672,23 @@ namespace palvalidator
           // Effective-B gate: mirrors passesEffectiveBGate logic for BCa.
           // Without this, a BCa candidate eliminated solely by low effective_B
           // would leave all four rejection flags false while bca_chosen=false,
-          // silently misreporting in SelectionDiagnostics (Bug 2).
+          // silently misreporting in SelectionDiagnostics.
+          //
+          // BUG-5 NOTE: kMinEffectiveAbsolute (200) is also defined as a local
+          // constexpr inside CandidateGateKeeper::passesEffectiveBGate in
+          // AutoBootstrapScoring.h. Both values MUST remain in sync. The correct
+          // long-term fix is to promote this constant to
+          // AutoBootstrapConfiguration::kMinEffectiveBAbsolute and reference it
+          // from both sites.
           {
-            constexpr std::size_t kMinEffectiveAbsolute = 200;
+
             const std::size_t requested_B = bca.getBOuter();
             if (requested_B >= 2)
             {
               const std::size_t required_by_frac = static_cast<std::size_t>(
                 std::ceil(0.90 * static_cast<double>(requested_B)));
               const std::size_t required =
-                std::max(kMinEffectiveAbsolute, required_by_frac);
+                std::max(AutoBootstrapConfiguration::kMinEffectiveBAbsolute, required_by_frac);
               if (bca.getEffectiveB() < required)
                 rejected_for_instability = true;
             }
@@ -1689,6 +1702,16 @@ namespace palvalidator
           
           break; // Only one BCa candidate
         }
+
+        // BUG-4 NOTE: BcaRejectionAnalysis currently has no "rejected_for_score"
+        // field. When BCa passes all hard gates above but is simply outscored by
+        // another method, all four rejection flags remain false while bca_chosen is
+        // also false. Callers can detect this "fairly outscored" state by checking:
+        //   has_bca_candidate=true  &&  bca_chosen=false
+        //   &&  !rejected_for_instability  &&  !rejected_for_length
+        //   &&  !rejected_for_domain       &&  !rejected_for_non_finite
+        // The complete fix is to add a rejected_for_score field to BcaRejectionAnalysis
+        // in AutoBootstrapScoring.h so the tournament result is unambiguously reported.
         
         return detail::BcaRejectionAnalysis(true, // has_bca_candidate
 					    false, // bca_chosen (we already checked this)
@@ -1836,6 +1859,47 @@ namespace palvalidator
           const double lo_adjusted = lo - std::abs(lo) * haircut;
           const Decimal lo_adjusted_d(lo_adjusted);
 
+          // ---------------------------------------------------------------
+          // CONCERN-A FIX: recompute length metrics for the adjusted interval
+          // so that getNormalizedLength() / getLengthPenalty() on the winner
+          // reflect [lo_adjusted, upper] rather than the pre-haircut values.
+          //
+          // We recover ideal_len without the bootstrap stats by inverting:
+          //   normalized_length = actual_len / ideal_len
+          //   => ideal_len = actual_len / normalized_length
+          // Then:
+          //   new_normalized_length = new_len / ideal_len
+          //
+          // The MOutOfN quadratic band [kLengthMin, kLengthMaxMOutOfN] is
+          // then reapplied analytically.  The score stored on the candidate
+          // is intentionally left unchanged — it reflects the pre-haircut
+          // tournament result that determined the winner.
+          // ---------------------------------------------------------------
+          const double hi_d     = num::to_double(pre_haircut_winner.getUpper());
+          const double old_len  = hi_d - lo;
+          const double old_norm = pre_haircut_winner.getNormalizedLength();
+
+          double new_normalized_length = old_norm;
+          double new_length_penalty    = pre_haircut_winner.getLengthPenalty();
+
+          if (old_norm > 0.0 && old_len > 0.0)
+          {
+            const double ideal_len        = old_len / old_norm;
+            const double new_len          = hi_d - lo_adjusted;
+            new_normalized_length         = new_len / ideal_len;
+
+            const double lmin = AutoBootstrapConfiguration::kLengthMin;
+            const double lmax = AutoBootstrapConfiguration::kLengthMaxMOutOfN;
+            if (new_normalized_length < lmin)
+              new_length_penalty =
+                (lmin - new_normalized_length) * (lmin - new_normalized_length);
+            else if (new_normalized_length > lmax)
+              new_length_penalty =
+                (new_normalized_length - lmax) * (new_normalized_length - lmax);
+            else
+              new_length_penalty = 0.0;
+          }
+
           enriched[winner_idx] = Candidate(
             pre_haircut_winner.getMethod(),
             pre_haircut_winner.getMean(),
@@ -1851,14 +1915,14 @@ namespace palvalidator
             pre_haircut_winner.getSkewBoot(),
             pre_haircut_winner.getMedianBoot(),
             pre_haircut_winner.getCenterShiftInSe(),
-            pre_haircut_winner.getNormalizedLength(),
+            new_normalized_length,                    // updated: reflects adjusted interval
             pre_haircut_winner.getOrderingPenalty(),
-            pre_haircut_winner.getLengthPenalty(),
+            new_length_penalty,                       // updated: reflects adjusted interval
             pre_haircut_winner.getStabilityPenalty(),
             pre_haircut_winner.getZ0(),
             pre_haircut_winner.getAccel(),
             pre_haircut_winner.getInnerFailureRate(),
-            pre_haircut_winner.getScore(),
+            pre_haircut_winner.getScore(),            // unchanged: pre-haircut tournament score
             pre_haircut_winner.getCandidateId(),
             pre_haircut_winner.getRank(),
             pre_haircut_winner.isChosen(),
