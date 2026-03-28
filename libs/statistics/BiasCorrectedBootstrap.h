@@ -64,6 +64,7 @@
 #include "NormalDistribution.h"
 #include "ParallelExecutors.h"
 #include "ParallelFor.h"
+#include "AutoBootstrapConfiguration.h"
 
 namespace mkc_timeseries
 {
@@ -1018,6 +1019,24 @@ namespace mkc_timeseries
       return m_accelReliability.value(); // safe: ensureCalculated() guarantees population
     }
 
+    bool isReliable() const
+    {
+      ensureCalculated();
+      if (!std::isfinite(m_z0))
+	return false;
+
+      const auto& accelReliability     = m_accelReliability.value();
+      const auto& transformStability   = m_bcaTransformStability.value();
+      const double absZ0               = std::fabs(m_z0);
+      const double absAcceleration     = std::fabs(num::to_double(m_accel));
+    
+      return accelReliability.isReliable()
+	&& absZ0          <= AutoBootstrapConfiguration::kBcaZ0HardLimit
+	&& absAcceleration <= AutoBootstrapConfiguration::kBcaAHardLimit
+	&& transformStability.isStable()
+	&& transformStability.isMonotone();      
+    }
+
     /**
      * @brief Returns stability diagnostics for the BCa percentile-transform step.
      *
@@ -1611,8 +1630,9 @@ namespace mkc_timeseries
       const double denom_hi = z0_finite ? (1.0 - a_d * (z0 + z_alpha_hi)) : 1.0;
 
       const bool denom_stable =
-        std::fabs(denom_lo) >= BcaTransformStability::kSingularityEpsilon &&
-        std::fabs(denom_hi) >= BcaTransformStability::kSingularityEpsilon;
+	!z0_finite
+	|| (std::fabs(denom_lo) >= BcaTransformStability::kSingularityEpsilon
+	    && std::fabs(denom_hi) >= BcaTransformStability::kSingularityEpsilon);
 
       const double alpha1 =
 	!z0_finite
