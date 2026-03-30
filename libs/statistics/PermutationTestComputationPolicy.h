@@ -3,6 +3,22 @@
 // Proprietary and confidential
 // Written by Michael K. Collison <collison956@gmail.com>, November 2017
 //
+
+/**
+ * @file PermutationTestComputationPolicy.h
+ * @brief P-value computation policies, early stopping policies, and the main
+ *        Monte-Carlo permutation test driver for trading strategies.
+ *
+ * This header provides the policy classes that together implement a configurable
+ * permutation testing framework:
+ *   - StandardPValueComputationPolicy / WilsonPValueComputationPolicy for
+ *     computing the final p-value from extreme and total counts.
+ *   - NoEarlyStoppingPolicy / ThresholdEarlyStoppingPolicy for controlling
+ *     whether the permutation loop may terminate before all permutations run.
+ *   - DefaultPermuteMarketChangesPolicy, the main driver that orchestrates
+ *     synthetic series generation, backtesting, and statistical aggregation.
+ */
+
 #ifndef __PERMUTATION_TEST_COMPUTATION_POLICY_H
 #define __PERMUTATION_TEST_COMPUTATION_POLICY_H 1
 

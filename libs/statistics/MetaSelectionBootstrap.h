@@ -1,3 +1,14 @@
+/**
+ * @file MetaSelectionBootstrap.h
+ * @brief Meta-level bootstrap for selection-bias-corrected confidence intervals.
+ *
+ * Implements a two-layer bootstrap: the outer layer resamples strategies from
+ * a pool, and the inner layer estimates the selected statistic, producing a
+ * bias-corrected confidence interval that accounts for strategy selection effects.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>
@@ -39,9 +50,8 @@ namespace palvalidator
     }
     
     /**
-     * MetaSelectionBootstrap (synchronised blocks)
+     * @brief Selection-aware outer bootstrap for a single meta-strategy using synchronised blocks.
      *
-     * Selection-aware outer bootstrap for a single meta-strategy.
      * For each replicate:
      *   1) Build a SHARED stationary-bootstrap index path of length m = min_i n_i
      *      using mean block length L (probability p = 1/L of restart).
@@ -49,13 +59,14 @@ namespace palvalidator
      *      produce a resampled component series of length m.
      *   3) Rebuild the meta using `metaBuilder(resampledComponents)`.
      *   4) Record the per-period GeoMean (log-aware) statistic.
-     * Return a percentile CI (lower bound per-period + annualized).
      *
-     * Notes
-     * - Synchronized restarts/extensions preserve cross-strategy timing co-movement,
-     *   reducing optimism relative to independent per-strategy resampling.
-     * - We use percentile on the outer layer (simple, robust); inner layers in your
-     *   pipeline already use BCa where appropriate.
+     * Returns a percentile CI (lower bound per-period + annualised).
+     *
+     * Synchronised restarts/extensions preserve cross-strategy timing co-movement,
+     * reducing optimism relative to independent per-strategy resampling.
+     *
+     * @tparam Num Numeric type for returns (e.g., dec::decimal<8>).
+     * @tparam Rng Random-number generator type (default: randutils::mt19937_rng).
      */
     template <class Num,
 	      class Rng = randutils::mt19937_rng>
@@ -65,13 +76,22 @@ namespace palvalidator
       using Matrix  = std::vector<Series>;
       using Builder = std::function<Series(const Matrix&)>;
 
+      /// @brief Holds the output of a meta-selection bootstrap run.
       struct Result {
-	Num      lbPerPeriod;
-	Num      lbAnnualized;
-	double   cl;
-	std::size_t B;
+	Num      lbPerPeriod;    ///< Per-period lower bound.
+	Num      lbAnnualized;   ///< Annualised lower bound.
+	double   cl;             ///< Confidence level.
+	std::size_t B;           ///< Number of bootstrap replicates used.
       };
 
+      /**
+       * @brief Construct a meta-selection bootstrap engine.
+       *
+       * @param B                Number of bootstrap replicates.
+       * @param confidenceLevel  Confidence level in (0, 1).
+       * @param meanBlockLength  Mean block length L for the stationary bootstrap.
+       * @param periodsPerYear   Annualisation factor (e.g., 252 for daily).
+       */
       MetaSelectionBootstrap(std::size_t B,
 			     double confidenceLevel,
 			     std::size_t meanBlockLength,

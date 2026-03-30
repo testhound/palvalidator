@@ -1,3 +1,13 @@
+/**
+ * @file PALRomanoWolfMonteCarloValidation.h
+ * @brief Romano–Wolf stepwise permutation test with flexible strategy partitioning.
+ *
+ * Supports partitioning by direction (Long/Short) or by detailed strategy family
+ * via StrategyFamilyPartitioner. Uses parallel execution for permutation runs.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 #include <string>
 #include <vector>
@@ -54,6 +64,11 @@ namespace mkc_timeseries
     using StrategyDataContainerType = StrategyDataContainer<Decimal>;
     using SurvivingStrategiesIterator = typename UnadjustedPValueStrategySelection<Decimal>::ConstSurvivingStrategiesIterator;
 
+    /**
+     * @brief Constructs the validation with a specified number of permutations.
+     * @param numPermutations Number of permutation iterations (must be > 0).
+     * @throws std::invalid_argument If numPermutations is zero.
+     */
     explicit PALRomanoWolfMonteCarloValidation(unsigned long numPermutations)
       : mNumPermutations(numPermutations),
         mStrategySelectionPolicy()
@@ -182,26 +197,31 @@ namespace mkc_timeseries
 
     // --- Accessor methods to retrieve results ---
 
+    /// @brief Iterator to the first surviving strategy.
     SurvivingStrategiesIterator beginSurvivingStrategies() const
     {
       return mStrategySelectionPolicy.beginSurvivingStrategies();
     }
 
+    /// @brief Past-the-end iterator for surviving strategies.
     SurvivingStrategiesIterator endSurvivingStrategies() const
     {
       return mStrategySelectionPolicy.endSurvivingStrategies();
     }
 
+    /// @brief Returns the count of strategies that survived the test.
     unsigned long getNumSurvivingStrategies() const
     {
       return static_cast<unsigned long>(mStrategySelectionPolicy.getNumSurvivingStrategies());
     }
-    
+
+    /// @brief Returns all tested strategies paired with their p-values.
     std::vector<std::pair<StrategyPtr, Decimal>> getAllTestedStrategies() const
     {
       return mStrategySelectionPolicy.getAllTestedStrategies();
     }
 
+    /// @brief Returns the p-value for a specific strategy.
     Decimal getStrategyPValue(StrategyPtr strategy) const
     {
       return mStrategySelectionPolicy.getStrategyPValue(strategy);

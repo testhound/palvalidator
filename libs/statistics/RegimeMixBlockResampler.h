@@ -1,3 +1,13 @@
+/**
+ * @file RegimeMixBlockResampler.h
+ * @brief Regime-aware fixed-length block bootstrap resampler.
+ *
+ * Constructs bootstrap samples that honour a user-specified proportional mix
+ * of volatility regimes using fixed-length homogeneous blocks.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>
@@ -328,6 +338,7 @@ namespace palvalidator
         return th;
       }
 
+      /// @brief Returns the mean block length parameter L.
       std::size_t meanBlockLen() const
       {
         return mL;

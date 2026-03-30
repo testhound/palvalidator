@@ -1,3 +1,15 @@
+/**
+ * @file StrategyAutoBootstrap.h
+ * @brief Strategy-level orchestrator for automatic bootstrap CI selection.
+ *
+ * Defines BootstrapConfiguration (replication count, confidence level, time frame)
+ * and BootstrapAlgorithmsConfiguration (per-method enable flags and parameters),
+ * plus the StrategyAutoBootstrap driver that runs all enabled methods and
+ * delegates winner selection to AutoBootstrapSelector.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>

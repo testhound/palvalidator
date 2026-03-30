@@ -1,3 +1,13 @@
+/**
+ * @file IMastersSelectionBiasAlgorithm.h
+ * @brief Interface for pluggable Masters selection-bias correction algorithms.
+ *
+ * Defines the pure virtual run() method that concrete implementations
+ * (MastersRomanoWolf, MastersRomanoWolfImproved) must provide.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 #include <map>
 #include <memory>

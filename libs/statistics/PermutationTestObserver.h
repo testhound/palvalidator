@@ -4,6 +4,12 @@
 // Written by Michael K. Collison <collison956@gmail.com>, December 2024
 //
 
+/**
+ * @file PermutationTestObserver.h
+ * @brief Abstract observer interface for collecting per-permutation statistics
+ *        during Monte-Carlo permutation testing of trading strategies.
+ */
+
 #ifndef __PERMUTATION_TEST_OBSERVER_H
 #define __PERMUTATION_TEST_OBSERVER_H 1
 
@@ -17,18 +23,18 @@ namespace mkc_timeseries
 
     /**
      * @class PermutationTestObserver
-     * @brief Observer interface for collecting granular permutation test statistics
-     * 
+     * @brief Observer interface for collecting granular permutation test statistics.
+     *
      * This interface defines the contract for observers that collect detailed statistics
      * from permutation testing runs. Observers receive notifications when permutation
      * backtests complete and can extract strategy-specific metrics for analysis.
-     * 
+     *
      * Key Features:
      * - Strategy-specific statistics collection using strategy pointers
      * - Extensible metric types via enum (easy to add new metrics)
      * - Thread-safe implementations expected for concurrent permutation testing
      * - Boost.Accumulators integration for efficient statistics computation
-     * 
+     *
      * @tparam Decimal Numeric type for calculations (e.g., double)
      */
     template <class Decimal>
@@ -37,7 +43,7 @@ namespace mkc_timeseries
         virtual ~PermutationTestObserver() = default;
 
         /**
-         * @brief Extensible statistics retrieval using enum for metric types
+         * @brief Extensible statistics retrieval using enum for metric types.
          *
          * This enum allows adding new metrics without changing the observer interface.
          * Each metric represents a different aspect of strategy performance that can
@@ -52,9 +58,9 @@ namespace mkc_timeseries
         };
 
         /**
-         * @brief Called by subjects when a permutation backtest completes
-         * @param permutedBacktester The BackTester instance after running on synthetic data
-         * @param permutedTestStatistic The performance statistic from this permutation
+         * @brief Called by subjects when a permutation backtest completes.
+         * @param permutedBacktester The BackTester instance after running on synthetic data.
+         * @param permutedTestStatistic The performance statistic from this permutation.
          */
         virtual void update(
             const BackTester<Decimal>& permutedBacktester,
@@ -62,10 +68,10 @@ namespace mkc_timeseries
         ) = 0;
 
         /**
-         * @brief Called by subjects when a specific metric is calculated for a strategy
-         * @param strategy The strategy for which the metric is being reported
-         * @param metricType The type of metric being reported
-         * @param metricValue The calculated metric value
+         * @brief Called by subjects when a specific metric is calculated for a strategy.
+         * @param strategy The strategy for which the metric is being reported.
+         * @param metricType The type of metric being reported.
+         * @param metricValue The calculated metric value.
          */
         virtual void updateMetric(
             const PalStrategy<Decimal>* strategy,
@@ -73,12 +79,39 @@ namespace mkc_timeseries
             const Decimal& metricValue
         ) = 0;
 
-        // Strategy identification handled by observer implementation using strategy pointer
+        /**
+         * @brief Returns the minimum observed value for the given metric and strategy.
+         * @param strategy Pointer to the strategy whose metric is queried.
+         * @param metric   The metric type to retrieve.
+         * @return The minimum value, or std::nullopt if no data has been collected.
+         */
         virtual std::optional<Decimal> getMinMetric(const PalStrategy<Decimal>* strategy, MetricType metric) const = 0;
+
+        /**
+         * @brief Returns the maximum observed value for the given metric and strategy.
+         * @param strategy Pointer to the strategy whose metric is queried.
+         * @param metric   The metric type to retrieve.
+         * @return The maximum value, or std::nullopt if no data has been collected.
+         */
         virtual std::optional<Decimal> getMaxMetric(const PalStrategy<Decimal>* strategy, MetricType metric) const = 0;
+
+        /**
+         * @brief Returns the median observed value for the given metric and strategy.
+         * @param strategy Pointer to the strategy whose metric is queried.
+         * @param metric   The metric type to retrieve.
+         * @return The median as a double, or std::nullopt if no data has been collected.
+         */
         virtual std::optional<double> getMedianMetric(const PalStrategy<Decimal>* strategy, MetricType metric) const = 0;
+
+        /**
+         * @brief Returns the standard deviation of the given metric for a strategy.
+         * @param strategy Pointer to the strategy whose metric is queried.
+         * @param metric   The metric type to retrieve.
+         * @return The standard deviation as a double, or std::nullopt if no data has been collected.
+         */
         virtual std::optional<double> getStdDevMetric(const PalStrategy<Decimal>* strategy, MetricType metric) const = 0;
-        
+
+        /// Clears all collected statistics, resetting the observer to its initial state.
         virtual void clear() = 0;
     };
 }

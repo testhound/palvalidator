@@ -1,3 +1,14 @@
+/**
+ * @file TradeResampling.h
+ * @brief Trade-level resampling primitives for bootstrap confidence intervals.
+ *
+ * Defines the Trade class (atomic multi-day holding period) and the
+ * TradeFlatteningAdapter that concatenates resampled trades back into a flat
+ * return vector so existing StatUtils functions can be applied unchanged.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #ifndef __TRADE_RESAMPLING_H
 #define __TRADE_RESAMPLING_H
 

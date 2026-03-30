@@ -1,3 +1,14 @@
+/**
+ * @file BootstrapPenaltyCalculator.h
+ * @brief Penalty and stability computation engine for bootstrap CI method selection.
+ *
+ * Provides static methods for computing length, stability, skew, domain,
+ * and empirical under-coverage penalties used by AutoBootstrapSelector to
+ * rank candidate confidence intervals in the tournament.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>

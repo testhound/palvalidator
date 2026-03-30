@@ -1,3 +1,14 @@
+/**
+ * @file Annualizer.h
+ * @brief Annualization and de-annualization of per-period returns.
+ *
+ * Provides computeAnnualizationFactor() for deriving the scaling exponent K
+ * from a TimeFrame, and the Annualizer class for stable compound-return
+ * transformations via exp(K · log1p(r)) − 1 with guards against r ≤ −1.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #ifndef __ANNUALIZER_H
 #define __ANNUALIZER_H
 
@@ -113,6 +124,19 @@ namespace mkc_timeseries
   }
 
 
+  /**
+   * @brief Computes a participation-weighted effective annualization factor.
+   *
+   * Keff = max(1, annualizedTrades × medianHoldBars), which adjusts the base
+   * annualization factor for strategies that are not fully invested.
+   *
+   * @tparam NumT Numeric type convertible to double via num::to_double().
+   * @param  annualizedTrades     Annualized trade count for the strategy.
+   * @param  medianHoldBars       Median holding period in bars.
+   * @param  baseAnnualizationFactor The unadjusted annualization factor (e.g., 252).
+   * @param  os                   Optional stream for diagnostic output.
+   * @return The effective annualization factor (clamped to >= 1).
+   */
   template <typename NumT>
   inline double computeEffectiveAnnualizationFactor(NumT annualizedTrades,
 						    unsigned int medianHoldBars,
@@ -131,17 +155,21 @@ namespace mkc_timeseries
   }
 
   /**
-   * Annualizer for per-period returns.
+   * @brief Annualizer for per-period returns.
    *
-   * Provides stable annualization via:  (1 + r)^K - 1
-   * implemented as exp(K * log1p(r)) - 1 with guards around r <= -1.
+   * Provides stable annualization via:  (1 + r)^K − 1
+   * implemented as exp(K · log1p(r)) − 1 with guards around r ≤ −1.
    *
-   * Use annualize_one() for a single value, or annualize_triplet() for (lower, mean, upper).
+   * Use annualize_one() for a single value, or annualize_triplet() for
+   * (lower, mean, upper).
+   *
+   * @tparam Decimal Numeric type (e.g., dec::decimal<8>).
    */
   template <class Decimal>
   class Annualizer
   {
   public:
+    /// Convenience struct holding lower, mean, and upper bounds.
     struct Triplet
     {
       Decimal lower{};
@@ -150,12 +178,21 @@ namespace mkc_timeseries
     };
 
     /**
-     * Annualize a single per-period return r to K periods.
+     * @brief Annualizes a single per-period return r to K periods.
+     *
+     * Computes (1 + r)^K − 1 via exp(K · log1p(r)) − 1.
      *
      * Guards:
-     * - If r <= -1, clamp to (-1 + eps) to keep log1p defined.
-     * - After transform, if numerical underflow produces exactly -1,
-     *   bump to (-1 + bump) so the result remains > -1 in Decimal quantization.
+     * - If r ≤ −1, clamp to (−1 + eps) to keep log1p defined.
+     * - After transform, if numerical underflow produces exactly −1,
+     *   bump to (−1 + bump) so the result remains > −1 in Decimal quantisation.
+     *
+     * @param r    Per-period return.
+     * @param K    Number of periods to compound over. Must be positive and finite.
+     * @param eps  Clamping distance from −1 (default 1e-12).
+     * @param bump Post-transform bump to avoid exact −1 (default 1e-7).
+     * @return Annualised return.
+     * @throws std::invalid_argument If K is non-positive or non-finite.
      */
     static Decimal annualize_one(const Decimal& r, double K,
 				 double eps = 1e-12,
@@ -182,7 +219,15 @@ namespace mkc_timeseries
     }
 
     /**
-     * Annualize (lower, mean, upper) together with the same settings.
+     * @brief Annualizes a (lower, mean, upper) triplet with the same settings.
+     *
+     * @param lower Per-period lower bound.
+     * @param mean  Per-period mean estimate.
+     * @param upper Per-period upper bound.
+     * @param K     Number of periods.
+     * @param eps   Clamping epsilon (see annualize_one()).
+     * @param bump  Post-transform bump (see annualize_one()).
+     * @return Annualised Triplet.
      */
     static Triplet annualize_triplet(const Decimal& lower,
 				     const Decimal& mean,
@@ -199,16 +244,19 @@ namespace mkc_timeseries
     }
 
     /**
-     * De-annualize a K-period compounded return R back to a single-period return r.
+     * @brief De-annualises a K-period compounded return R to a single-period return.
      *
-     * Inverse of annualize_one:
-     *   R = (1 + r)^K - 1   ⇒   r = exp( log1p(R) / K ) - 1
+     * Inverse of annualize_one():
+     *   R = (1 + r)^K − 1  ⇒  r = exp(log1p(R) / K) − 1
      *
-     * Guards mirror annualize_one():
-     * - If K <= 0 or not finite → throw std::invalid_argument.
-     * - If R <= -1 → clamp to (-1 + eps) so log1p(R) stays defined.
-     * - If exp(...) - 1 underflows to exactly -1 in Decimal quantization,
-     *   bump slightly toward > -1 (same 'bump' convention as annualize_one).
+     * Guards mirror annualize_one().
+     *
+     * @param R    Annualised return.
+     * @param K    Number of periods. Must be positive and finite.
+     * @param eps  Clamping epsilon.
+     * @param bump Post-transform bump.
+     * @return Per-period return.
+     * @throws std::invalid_argument If K is non-positive or non-finite.
      */
     static Decimal deannualize_one(const Decimal& R, double K,
 				   double eps = 1e-12,
@@ -238,8 +286,15 @@ namespace mkc_timeseries
     }
 
     /**
-     * De-annualize a (lower, mean, upper) triplet to per-period.
+     * @brief De-annualises a (lower, mean, upper) triplet to per-period returns.
+     *
      * Monotone transform preserves ordering.
+     *
+     * @param t    Annualised Triplet.
+     * @param K    Number of periods.
+     * @param eps  Clamping epsilon.
+     * @param bump Post-transform bump.
+     * @return Per-period Triplet.
      */
     static Triplet deannualize_triplet(const Triplet& t, double K,
 				       double eps = 1e-12,

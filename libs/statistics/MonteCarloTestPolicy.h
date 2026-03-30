@@ -3,6 +3,24 @@
 // Proprietary and confidential
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
+
+/**
+ * @file MonteCarloTestPolicy.h
+ * @brief Policy classes defining how permutation test statistics are computed.
+ *
+ * Each policy extracts a performance metric (log profit factor, mean log return,
+ * etc.) from a BackTester after a permuted or synthetic backtest run. Policies
+ * also specify minimum trade and bar-series thresholds for valid tests.
+ *
+ * All policies share a common static interface:
+ * - getPermutationTestStatistic(bt) -- computes the statistic from one backtest run.
+ * - getMinStrategyTrades() -- minimum closed trades required before the statistic is meaningful.
+ * - getMinTradeFailureTestStatistic() -- neutral sentinel returned when thresholds are not met.
+ *
+ * Some policies additionally define getMinBarSeriesSize() or configurable thresholds such as
+ * getMinProfitFactor() and getTargetProfitFactor().
+ */
+
 #ifndef __MONTE_CARLO_POLICY_H
 #define __MONTE_CARLO_POLICY_H 1
 
@@ -23,6 +41,11 @@ namespace mkc_timeseries
   // Forward declaration
   template <class Decimal> class PalStrategy;
 
+  /**
+   * @brief Policy computing the log-profit-factor over all bar-by-bar returns.
+   *
+   * @tparam Decimal Numeric type for calculations.
+   */
   template <class Decimal>
   class AllHighResLogPFPolicy
   {
@@ -38,20 +61,20 @@ namespace mkc_timeseries
       if (bt->getNumStrategies() != 1) {
 	      throw BackTesterException(
 				  "AllHighResLogPFPolicy::getPermutationTestStatistic - "
-				  "expected one strategy, got " 
+				  "expected one strategy, got "
 				  + std::to_string(bt->getNumStrategies()));
       }
 
       // --- NEW: Enforce minimum activity thresholds ---
       const unsigned int minTradesRequired = AllHighResLogPFPolicy<Decimal>::getMinStrategyTrades();
       const unsigned int minBarsRequired = 10;
-      
+
       // Get the total number of trades for the backtest run.
       uint32_t numTrades = bt->getNumTrades();
-      
+
       // Pull every bar‐by‐bar return (entry→exit and any still‐open):
       std::vector<Decimal> barSeries = bt->getAllHighResReturns((*(bt->beginStrategies())).get());
-      
+
       // If the thresholds are not met, return a neutral (zero) statistic.
       if (numTrades < minTradesRequired || barSeries.size() < minBarsRequired)
       {
@@ -65,13 +88,23 @@ namespace mkc_timeseries
     /// Minimum number of closed trades required to even attempt this test
     static unsigned int getMinStrategyTrades() { return 3; }
 
-    // Return a test statistic constant if we don't meet the minimum trade criteria
+    /// Neutral value returned when minimum trade or bar thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
     }
   };
 
+  /**
+   * @class BootStrappedProfitFactorPolicy
+   * @brief Permutation test policy using a bootstrapped profit factor over high-resolution returns.
+   *
+   * Computes the profit factor from every bar-by-bar return, then applies a bootstrap
+   * resampling step via StatUtils::getBootStrappedStatistic to produce a more robust
+   * estimate of the statistic.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal>
   class BootStrappedProfitFactorPolicy
   {
@@ -118,20 +151,39 @@ namespace mkc_timeseries
     /// Minimum number of closed trades required to even attempt this test
     static unsigned int getMinStrategyTrades() { return 3; }
 
-    // Minimum number of bars in the series to be considered statistically significant
+    /// Minimum bar-series length required for statistical stability.
     static unsigned int getMinBarSeriesSize() { return 10; }
 
-    // Return a test statistic constant if we don't meet the minimum trade criteria
+    /// Neutral value returned when minimum trade or bar thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
     }
   };
 
+  /**
+   * @class BootStrappedLogProfitFactorPolicy
+   * @brief Permutation test policy using a robust log-profit-factor with stop-loss and profit-target priors.
+   *
+   * Computes a robust log-profit-factor from high-resolution bar returns using
+   * StatUtils::computeLogProfitFactorRobust_LogPF, which incorporates automatic
+   * return-to-log conversion, ruin-epsilon clipping, denominator flooring, and
+   * Bayesian prior strength. The strategy's stop-loss and profit-target percentages
+   * are extracted from the PalPattern and passed through to the robust computation.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal>
   class BootStrappedLogProfitFactorPolicy
   {
   public:
+    /**
+     * @brief Compute the robust log-profit-factor incorporating stop-loss and profit-target priors.
+     *
+     * @param bt Single-strategy backtester from which high-resolution returns are extracted.
+     * @return The robust log-profit-factor, or zero if trade/bar thresholds are not met.
+     * @throws BackTesterException If bt does not contain exactly one strategy.
+     */
     static Decimal
     getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
     {
@@ -171,7 +223,7 @@ namespace mkc_timeseries
 
 	      // Profit Target
 	      Decimal profitTargetDec = pattern->getProfitTargetAsDecimal();
-	      auto profitTargetPn = 
+	      auto profitTargetPn =
                 mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(profitTargetDec);
 	      profitTargetPct = num::to_double(profitTargetPn.getAsPercent());
 	    }
@@ -194,15 +246,16 @@ namespace mkc_timeseries
     /// Minimum number of trades required to attempt this test
     static unsigned int getMinStrategyTrades() { return 9; }
 
-    // Minimum bars for statistical significance
+    /// Minimum bar-series length required for statistical stability.
     static unsigned int getMinBarSeriesSize() { return 10; }
 
+    /// Neutral value returned when minimum trade or bar thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
     return DecimalConstants<Decimal>::DecimalZero;
   }
 };
-  
+
 /**
    * @class GeoMeanPolicy
    * @brief Permutation test statistic based on the geometric mean of bar-by-bar returns.
@@ -348,6 +401,17 @@ namespace mkc_timeseries
     }
   };
 
+  /**
+   * @class BootStrappedSharpeRatioPolicy
+   * @brief Permutation test policy using a BCa-bootstrapped Sharpe ratio over log returns.
+   *
+   * Converts bar-by-bar returns to log space, then computes a Sharpe ratio using
+   * stationary-block BCa bootstrap with a block length equal to the median holding
+   * period. Returns the lower BCa confidence bound as a conservative scalar for
+   * permutation testing, taming the right tail per Masters.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal>
   class BootStrappedSharpeRatioPolicy
   {
@@ -385,7 +449,7 @@ namespace mkc_timeseries
 	  // Use your Decimal math: Decimal one(DecimalConstants<Decimal>::DecimalOne);
 	  logBars.push_back(std::log(DecimalConstants<Decimal>::DecimalOne + r));
 	}
-      
+
       const uint32_t nBars = static_cast<uint32_t>(barSeries.size());
 
       if (numTrades < minTradesRequired || nBars < minBarsRequired) {
@@ -431,13 +495,13 @@ namespace mkc_timeseries
       return 5;
     }
 
-    // Minimum number of bars in the series to be considered statistically significant
+    /// Minimum bar-series length required for statistical stability of the Sharpe estimate.
     static unsigned int getMinBarSeriesSize()
     {
       return 20;
     }
 
-    // Return a test statistic constant if we don't meet the minimum trade criteria
+    /// Neutral value returned when minimum trade or bar thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
         return DecimalConstants<Decimal>::DecimalZero;
@@ -446,9 +510,27 @@ namespace mkc_timeseries
   private:
   };
 
+  /**
+   * @class NonGranularProfitFactorPolicy
+   * @brief Permutation test policy using the log-profit-factor from closed-trade history.
+   *
+   * Unlike the high-resolution policies, this policy computes the log-profit-factor
+   * directly from the closed-position history rather than from bar-by-bar returns.
+   * Suitable when high-resolution return data is unavailable or when trade-level
+   * granularity is sufficient.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal> class NonGranularProfitFactorPolicy
   {
   public:
+    /**
+     * @brief Compute the log-profit-factor from the closed-position history.
+     *
+     * @param aBackTester Single-strategy backtester.
+     * @return The log-profit-factor from closed positions.
+     * @throws BackTesterException If aBackTester does not contain exactly one strategy.
+     */
     static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
       if (aBackTester->getNumStrategies() == 1)
@@ -466,11 +548,14 @@ namespace mkc_timeseries
       else
         throw BackTesterException("NonGranularProfitFactorPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
     }
+
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades()
     {
       return 3;
     }
 
+    /// Neutral value (one) returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalOne;
@@ -478,10 +563,25 @@ namespace mkc_timeseries
 
   };
 
-  
+  /**
+   * @class CumulativeReturnPolicy
+   * @brief Permutation test policy using the cumulative return from closed-trade history.
+   *
+   * Computes the cumulative return directly from the closed-position history.
+   * This is a simple, unscaled measure of total strategy profit.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal> class CumulativeReturnPolicy
   {
   public:
+    /**
+     * @brief Compute the cumulative return from the closed-position history.
+     *
+     * @param aBackTester Single-strategy backtester.
+     * @return The cumulative return of all closed positions.
+     * @throws BackTesterException If aBackTester does not contain exactly one strategy.
+     */
     static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
       if (aBackTester->getNumStrategies() == 1)
@@ -494,11 +594,14 @@ namespace mkc_timeseries
       else
         throw BackTesterException("CumulativeReturnPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
     }
+
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades()
     {
       return 3;
     }
 
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
@@ -507,9 +610,28 @@ namespace mkc_timeseries
   };
 
 
+  /**
+   * @class NormalizedReturnPolicy
+   * @brief Permutation test policy using a time-normalized cumulative return.
+   *
+   * Scales the cumulative return by sqrt(numTradingOpportunities) / sqrt(numBarsInMarket)
+   * to normalize for the fraction of time the strategy is actually in the market.
+   * This prevents strategies that are in the market longer from appearing
+   * artificially stronger.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal> class NormalizedReturnPolicy
   {
   public:
+    /**
+     * @brief Compute the cumulative return normalized by square-root time-in-market ratio.
+     *
+     * @param aBackTester Single-strategy backtester.
+     * @return The normalized cumulative return.
+     * @throws BackTesterException If aBackTester does not contain exactly one strategy,
+     *         or if time in market is zero.
+     */
     static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
 
@@ -539,11 +661,14 @@ namespace mkc_timeseries
       else
         throw BackTesterException("NormalizedReturnPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
     }
+
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades()
     {
       return 3;
     }
 
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
@@ -551,10 +676,26 @@ namespace mkc_timeseries
 
   };
 
-  //
+  /**
+   * @class PalProfitabilityPolicy
+   * @brief Permutation test policy using the median PAL profitability from closed trades.
+   *
+   * Extracts the median PAL profitability metric directly from the closed-position
+   * history. PAL profitability measures how often the strategy achieves its
+   * profit target relative to its stop loss, making it a risk-adjusted win-rate metric.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal> class PalProfitabilityPolicy
   {
   public:
+    /**
+     * @brief Compute the median PAL profitability from the closed-position history.
+     *
+     * @param aBackTester Single-strategy backtester.
+     * @return The median PAL profitability.
+     * @throws BackTesterException If aBackTester does not contain exactly one strategy.
+     */
     static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
       if (aBackTester->getNumStrategies() == 1)
@@ -567,11 +708,14 @@ namespace mkc_timeseries
       else
         throw BackTesterException("PalProfitabilityPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
     }
+
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades()
     {
       return 3;
     }
 
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
@@ -579,10 +723,27 @@ namespace mkc_timeseries
 
   };
 
-  //
+  /**
+   * @class PessimisticReturnRatioPolicy
+   * @brief Permutation test policy using the pessimistic return ratio from closed trades.
+   *
+   * The pessimistic return ratio (PRR) is a conservative estimate of strategy
+   * profitability that penalizes small sample sizes. It adjusts the win/loss
+   * ratio downward based on the number of trades, providing a more skeptical
+   * assessment than raw profit factor.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal> class PessimisticReturnRatioPolicy
   {
   public:
+    /**
+     * @brief Compute the pessimistic return ratio from the closed-position history.
+     *
+     * @param aBackTester Single-strategy backtester.
+     * @return The pessimistic return ratio.
+     * @throws BackTesterException If aBackTester does not contain exactly one strategy.
+     */
     static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> aBackTester)
     {
       if (aBackTester->getNumStrategies() == 1)
@@ -596,11 +757,13 @@ namespace mkc_timeseries
         throw BackTesterException("PessimisticReturnRatioPolicy::getPermutationTestStatistic - number of strategies is not equal to one, equal to "  +std::to_string(aBackTester->getNumStrategies()));
     }
 
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades()
     {
       return 3;
     }
 
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
@@ -608,6 +771,18 @@ namespace mkc_timeseries
 
   };
 
+  /**
+   * @class RobustProfitFactorPolicy
+   * @brief Permutation test policy using a winsorized, smoothed log-profit-factor.
+   *
+   * Handles edge cases like small samples and zero-loss trades by winsorizing
+   * returns at the 95th percentile, adding +1 Laplace smoothing to both
+   * numerator and denominator, and using the median of observed losses when
+   * the total loss sum is zero. Returns a neutral profit factor of 1.0 rather
+   * than zero when thresholds are not met.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal>
   class RobustProfitFactorPolicy
   {
@@ -627,24 +802,24 @@ namespace mkc_timeseries
 
       const unsigned int minTradesRequired = getMinStrategyTrades();
       const unsigned int minBarsRequired = 5;
-      
+
       uint32_t numTrades = bt->getNumTrades();
       std::vector<Decimal> barSeries = bt->getAllHighResReturns((*(bt->beginStrategies())).get());
-      
+
       if (numTrades < minTradesRequired || barSeries.size() < minBarsRequired) {
         return getMinTradeFailureTestStatistic();
       }
 
       // Winsorize returns at 95th percentile
       std::vector<Decimal> winsorized = winsorizeReturns(barSeries, 0.05);
-      
+
       Decimal lw(0), ll(0);
       std::vector<Decimal> losses;
-      
+
       for (auto r : winsorized) {
         double m = 1 + num::to_double(r);
         if (m <= 0) continue;
-        
+
         Decimal lr(std::log(m));
         if (r > 0) {
           lw += lr;
@@ -670,23 +845,32 @@ namespace mkc_timeseries
       return pf;
     }
 
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades() { return 2; }
 
+    /// Neutral profit factor (1.0) returned when minimum thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic() {
       return Decimal(1.0); // Neutral PF instead of 0
     }
 
   private:
+    /**
+     * @brief Winsorize returns by clamping values beyond the given percentile tails.
+     *
+     * @param returns The return series to winsorize.
+     * @param percentile Fraction of each tail to clip (e.g., 0.05 for 5%).
+     * @return A new vector with extreme values clamped to the percentile boundaries.
+     */
     static std::vector<Decimal> winsorizeReturns(const std::vector<Decimal>& returns, double percentile) {
       if (returns.empty()) return returns;
-      
+
       std::vector<Decimal> sorted = returns;
       std::sort(sorted.begin(), sorted.end());
-      
+
       size_t upper_idx = static_cast<size_t>((1.0 - percentile) * sorted.size());
       Decimal upper = sorted[std::min(upper_idx, sorted.size()-1)];
       Decimal lower = sorted[std::max(static_cast<size_t>(percentile * sorted.size()), 0UL)];
-      
+
       std::vector<Decimal> winsorized;
       for (auto r : returns) {
         if (r > upper) winsorized.push_back(upper);
@@ -696,6 +880,12 @@ namespace mkc_timeseries
       return winsorized;
     }
 
+    /**
+     * @brief Compute the median of a vector of values.
+     *
+     * @param values The values to compute the median of. Modified in place (sorted).
+     * @return The median value, or zero if the vector is empty.
+     */
     static Decimal median(std::vector<Decimal>& values) {
       if (values.empty()) return Decimal(0);
       std::sort(values.begin(), values.end());
@@ -708,19 +898,38 @@ namespace mkc_timeseries
     }
   };
 
+  /**
+   * @class EnhancedBarScorePolicy
+   * @brief Permutation test policy using a weighted multi-component bar score.
+   *
+   * Evaluates strategy quality by constructing a score vector from four weighted
+   * intra-bar return components (close-to-close, open-to-close, high-to-open,
+   * and a downside penalty from low-to-open), plus an entry-bar close-to-entry
+   * return per trade. The final statistic is the log-profit-factor of this
+   * composite score series.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal>
   class EnhancedBarScorePolicy {
   public:
+    /**
+     * @brief Compute the log-profit-factor of the weighted multi-component bar score series.
+     *
+     * @param bt Single-strategy backtester.
+     * @return The log-profit-factor of the composite score, or one if fewer than 3 metrics.
+     * @throws BackTesterException If bt does not contain exactly one strategy.
+     */
     static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt) {
       if (bt->getNumStrategies() != 1)
 	throw BackTesterException("Expected one strategy");
 
       auto strat = *(bt->beginStrategies());
       const auto& metrics = bt->getExpandedHighResReturns(strat.get());
-      
+
       if (metrics.size() < 3)
 	return DecimalConstants<Decimal>::DecimalOne;
-      
+
       std::vector<Decimal> scores;
 
       // Weight constants
@@ -742,7 +951,7 @@ namespace mkc_timeseries
 	auto barIt = pos->beginPositionBarHistory();
 	if (barIt == pos->endPositionBarHistory())
 	  continue;
-	
+
 	const Decimal& entryPrice = pos->getEntryPrice();
 	const Decimal& entryClose = barIt->second.getCloseValue();
 
@@ -755,12 +964,21 @@ namespace mkc_timeseries
       return StatUtils<Decimal>::computeLogProfitFactor(scores);
     }
 
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades() { return 2; }
 
+    /// Neutral value (one) returned when minimum thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic() {
       return DecimalConstants<Decimal>::DecimalOne;
     }
 
+    /**
+     * @brief Print a detailed breakdown of all score components to the output stream.
+     *
+     * @param bt Single-strategy backtester.
+     * @param os Output stream for the diagnostic report.
+     * @throws BackTesterException If bt does not contain exactly one strategy.
+     */
     static void printDetailedScoreBreakdown(std::shared_ptr<BackTester<Decimal>> bt, std::ostream& os)
     {
       if (bt->getNumStrategies() != 1)
@@ -824,6 +1042,16 @@ namespace mkc_timeseries
     }
   };
 
+/**
+ * @class HybridEnhancedTradeAwarePolicy
+ * @brief Permutation test policy blending EnhancedBarScore with trade-level profitability.
+ *
+ * Dynamically weights two sub-scores using a sigmoid confidence factor keyed to
+ * the number of trades. With few trades the stable EnhancedBarScore dominates;
+ * as trade count rises, realized profitability (PF, PAL penalty) receives more weight.
+ *
+ * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+ */
 template <class Decimal>
 class HybridEnhancedTradeAwarePolicy
 {
@@ -877,13 +1105,13 @@ public:
                 auto pattern = palStrat->getPalPattern();
                 Decimal target = pattern->getProfitTargetAsDecimal();
                 Decimal stop = pattern->getStopLossAsDecimal();
-                
+
                 if (stop > DecimalConstants<Decimal>::DecimalZero)
                 {
                     Decimal payoffRatio = target / stop;
                     Decimal desiredProfitFactor = DecimalConstants<Decimal>::DecimalTwo;
                     Decimal oneHundred = DecimalConstants<Decimal>::DecimalOneHundred;
-                    
+
                     Decimal expectedPALProfitability = (desiredProfitFactor / (desiredProfitFactor + payoffRatio)) * oneHundred;
 
                     // Calculate penalty for underperforming PAL
@@ -899,7 +1127,7 @@ public:
 
         // --- 3. Compute Dynamic Weights based on Confidence ---
         const Decimal baseTradeScoreWeight = Decimal(0.6); // The max weight for the trade score.
-        
+
         // Sigmoid parameters calibrated for a typical 5-15 trade count range.
         const double k = 0.5;   // Steepness of the confidence curve.
         const double x0 = 10.0; // Midpoint (trades at which confidence is 50%).
@@ -912,21 +1140,27 @@ public:
 
         // The enhanced score's weight is the remainder, making it dominant for low-trade strategies.
         Decimal dynamicEnhancedScoreWeight = Decimal(1.0) - dynamicTradeScoreWeight;
-        
+
         // --- 4. Compute Final Blended Score ---
         Decimal finalScore = (enhancedScore * dynamicEnhancedScoreWeight) + (tradeScore * dynamicTradeScoreWeight);
 
         return finalScore;
     }
 
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades() { return 2; }
 
-    // Return zero for failure, as profitable strategies should have a positive score.
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic() {
       return DecimalConstants<Decimal>::DecimalZero;
     }
 
-    // This function is updated to reflect the new scoring logic for easier debugging.
+    /**
+     * @brief Print a detailed breakdown of score components and dynamic weights.
+     *
+     * @param bt Single-strategy backtester.
+     * @param os Output stream for the diagnostic report.
+     */
     static void printDetailedScoreBreakdown(std::shared_ptr<BackTester<Decimal>> bt, std::ostream& os)
     {
         if (bt->getNumStrategies() != 1)
@@ -965,7 +1199,7 @@ public:
                     Decimal desiredProfitFactor = DecimalConstants<Decimal>::DecimalTwo;
                     Decimal oneHundred = DecimalConstants<Decimal>::DecimalOneHundred;
                     expectedPAL = (desiredProfitFactor / (desiredProfitFactor + payoffRatio)) * oneHundred;
-                    
+
                     if (expectedPAL > DecimalConstants<Decimal>::DecimalZero)
                         penaltyRatio = palProfitability / expectedPAL;
 
@@ -982,7 +1216,7 @@ public:
         Decimal confidenceFactor = Decimal(1.0 / (1.0 + std::exp(-k * (num::to_double(Decimal(numTrades)) - x0))));
         Decimal dynamicTradeScoreWeight = baseTradeScoreWeight * confidenceFactor;
         Decimal dynamicEnhancedScoreWeight = Decimal(1.0) - dynamicTradeScoreWeight;
-        
+
         Decimal finalScore = (enhancedScore * dynamicEnhancedScoreWeight) + (tradeScore * dynamicTradeScoreWeight);
 
         os << "\n== Final HybridEnhancedTradeAwarePolicy Breakdown ==\n";
@@ -1004,6 +1238,20 @@ public:
     }
   };
 
+  /**
+   * @class AccumulationSwingIndexPolicy
+   * @brief Permutation test policy based on Welles Wilder's Accumulation Swing Index.
+   *
+   * Evaluates a strategy based on its ability to capture favorable price swings.
+   * Calculates the Swing Index (SI) for each bar within every closed trade,
+   * inverting the SI for short positions so that strong downward moves contribute
+   * positively. The "Limit Move" (T) from the original futures-based formula is
+   * replaced by a volatility normalization using the bar's true range (R).
+   *
+   * The final statistic is the log-profit-factor of the direction-adjusted swing series.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal>
   class AccumulationSwingIndexPolicy
   {
@@ -1077,11 +1325,13 @@ public:
       return StatUtils<Decimal>::computeLogProfitFactor(directionAdjustedSwings);
     }
 
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades()
     {
       return 2;
     }
 
+    /// Neutral log-profit-factor (1.0) returned when minimum thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       // A neutral log-profit-factor is 1.0
@@ -1090,7 +1340,14 @@ public:
 
   private:
     /**
-     * @brief Calculates the Swing Index for a single bar.
+     * @brief Calculate the Swing Index for a single bar using Wilder's formula.
+     *
+     * Replaces the original futures "limit move" (T) with a volatility
+     * normalization using the bar's true range (R), making it applicable to stocks.
+     *
+     * @param currentBar The current bar's OHLC data.
+     * @param prevBar The previous bar's OHLC data.
+     * @return The swing index value, or zero if true range is zero.
      */
     static Decimal calculateSwingIndex(const OpenPositionBar<Decimal>& currentBar, const OpenPositionBar<Decimal>& prevBar)
     {
@@ -1128,13 +1385,13 @@ public:
         {
 	  return DecimalConstants<Decimal>::DecimalZero;
         }
-        
+
       // Step 2: Calculate K (the larger of the two major gap/move values)
       Decimal K = std::max(num::abs(H - C_y), num::abs(L - C_y));
 
       // Step 3: Calculate the unscaled Swing Index
       Decimal numerator = (C - C_y) + DecimalConstants<Decimal>::createDecimal("0.5") * (C - O) + DecimalConstants<Decimal>::createDecimal("0.25") * (C_y - O_y);
-        
+
       // Step 4: Final Swing Index, scaled by 50 and normalized by K/R
       // We use K/R instead of K/T since T (Limit Move) is not applicable to stocks.
       Decimal swingIndex = DecimalConstants<Decimal>::createDecimal("50.0") * (numerator / R) * (K / R);
@@ -1143,7 +1400,17 @@ public:
     }
   };
 
-  //
+  /**
+   * @class HybridSwingTradePolicy
+   * @brief Permutation test policy blending Swing Index quality with trade profitability.
+   *
+   * Combines the AccumulationSwingIndexPolicy score (measuring momentum-capture
+   * quality) with a trade performance score (PF minus one, penalized by PAL ratio).
+   * Dynamic sigmoid weighting shifts emphasis from swing quality to trade profitability
+   * as the number of closed trades increases.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal>
   class HybridSwingTradePolicy
   {
@@ -1192,7 +1459,7 @@ public:
 	      auto pattern = palStrat->getPalPattern();
 	      Decimal target = pattern->getProfitTargetAsDecimal();
 	      Decimal stop = pattern->getStopLossAsDecimal();
-                
+
 	      if (stop > DecimalConstants<Decimal>::DecimalZero)
                 {
 		  Decimal payoffRatio = target / stop;
@@ -1216,15 +1483,17 @@ public:
       Decimal confidenceFactor = Decimal(1.0 / (1.0 + std::exp(-k * (num::to_double(Decimal(numTrades)) - x0))));
       Decimal dynamicTradeScoreWeight = baseTradeScoreWeight * confidenceFactor;
       Decimal dynamicSwingScoreWeight = Decimal(1.0) - dynamicTradeScoreWeight;
-        
+
       // --- 4. Compute Final Blended Score ---
       Decimal finalScore = (swingQualityScore * dynamicSwingScoreWeight) + (tradePerformanceScore * dynamicTradeScoreWeight);
 
       return finalScore;
     }
 
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades() { return 2; }
 
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       // A neutral score in this blended model is zero.
@@ -1233,6 +1502,18 @@ public:
   };
   //
 
+  /**
+   * @class ProfitFactorGatedSwingPolicy
+   * @brief Two-stage policy: hard PF gate followed by swing-quality-adjusted trade score.
+   *
+   * Stage 1 rejects any strategy whose Profit Factor is below getMinProfitFactor().
+   * Stage 2 computes a trade performance score (PF minus one, PAL-penalized) and
+   * multiplies it by a swing-quality bonus derived from AccumulationSwingIndexPolicy.
+   * The bonus is clamped to [0.5, 1.5] so swing quality can differentiate similarly
+   * profitable strategies without dominating the score.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal>
   class ProfitFactorGatedSwingPolicy
   {
@@ -1286,7 +1567,7 @@ public:
 	      auto pattern = palStrat->getPalPattern();
 	      Decimal target = pattern->getProfitTargetAsDecimal();
 	      Decimal stop = pattern->getStopLossAsDecimal();
-                
+
 	      if (stop > DecimalConstants<Decimal>::DecimalZero)
                 {
 		  Decimal payoffRatio = target / stop;
@@ -1301,7 +1582,7 @@ public:
                 }
             }
         }
-        
+
       // Calculate the Swing Quality Score to use as a bonus multiplier
       Decimal swingQualityScore = AccumulationSwingIndexPolicy<Decimal>::getPermutationTestStatistic(bt);
 
@@ -1321,6 +1602,7 @@ public:
 
     // --- Configurable Thresholds ---
 
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades() { return 2; }
 
     /**
@@ -1329,12 +1611,23 @@ public:
      */
     static Decimal getMinProfitFactor() { return Decimal(1.2); }
 
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
     }
   };
-  //
+
+  /**
+   * @class ConfidenceAdjustedPalPolicy
+   * @brief Permutation test policy scoring PAL profitability scaled by trade-count confidence.
+   *
+   * Isolates PAL Profitability as the primary metric. The final score is the product
+   * of the PAL performance ratio (actual / expected, clamped to 1.0) and a sigmoid
+   * confidence factor that discounts strategies with few trades.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal>
   class ConfidenceAdjustedPalPolicy
   {
@@ -1394,7 +1687,7 @@ public:
                 }
             }
         }
-        
+
       // Clamp the ratio to a maximum of 1.0 to prevent outlier scores
       palPerformanceRatio = std::min(palPerformanceRatio, Decimal(1.0));
 
@@ -1411,14 +1704,28 @@ public:
       return finalScore;
     }
 
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades() { return 2; }
 
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
     }
   };
-  //
+
+  /**
+   * @class GatedPerformanceScaledPalPolicy
+   * @brief Multi-stage policy combining a PF gate with PAL and PF performance-ratio scaling.
+   *
+   * Stage 1 (Gatekeeper): rejects strategies below getMinProfitFactor().
+   * Stage 2 (Scaling): computes PAL ratio (actual/expected) and PF ratio (actual/target),
+   * multiplies them into a combined performance score.
+   * Stage 3 (Confidence): scales the combined score by a sigmoid confidence factor
+   * based on the number of trades.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
   template <class Decimal>
   class GatedPerformanceScaledPalPolicy
   {
@@ -1450,7 +1757,7 @@ public:
       if (numTrades < getMinStrategyTrades()) {
 	return getMinTradeFailureTestStatistic();
       }
-        
+
       // --- 1. Gatekeeper Stage ---
       Decimal pf = closedPositions.getProfitFactor();
 
@@ -1515,20 +1822,34 @@ public:
     }
 
     // --- Configurable Thresholds ---
+
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades() { return 3; }
-    
-    // The hard gate for entry
+
+    /// Hard profit-factor gate below which strategies are rejected.
     static Decimal getMinProfitFactor() { return DecimalConstants<Decimal>::DecimalOnePointSevenFive; }
 
-    // The target for performance scaling
+    /// Target profit factor used for performance-ratio scaling.
     static Decimal getTargetProfitFactor() { return DecimalConstants<Decimal>::DecimalTwo; }
 
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
     }
   };
-  //
+
+  /**
+   * @class BootStrappedProfitabilityPFPolicy
+   * @brief High-resolution variant of GatedPerformanceScaledPalPolicy using bootstrapped bar returns.
+   *
+   * Computes Profit Factor and Profitability from the complete series of high-resolution
+   * bar-by-bar returns (via StatUtils::getBootStrappedProfitability) rather than from the
+   * closed trade history. The scoring logic mirrors GatedPerformanceScaledPalPolicy:
+   * profitability and PF performance ratios are multiplied into a combined score.
+   *
+   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   */
 template <class Decimal>
   class BootStrappedProfitabilityPFPolicy
   {
@@ -1580,7 +1901,7 @@ template <class Decimal>
       // Compute Profit Factor and Profitability from the complete return series.
       auto [pf, profitability] = StatUtils<Decimal>::getBootStrappedProfitability(barSeries,
 										  StatUtils<Decimal>::computeProfitability);
-        
+
       // --- 2. Gatekeeper Stage ---
 
       /*
@@ -1635,6 +1956,15 @@ template <class Decimal>
       return finalScore;
     }
 
+    /**
+     * @brief Compute the same performance score without bootstrap resampling.
+     *
+     * Uses computeProfitability directly (no bootstrap) and applies the profit-factor
+     * gate. Useful for deterministic pre-screening before the full permutation test.
+     *
+     * @param backtester Single-strategy backtester.
+     * @return The deterministic combined performance score, or zero if thresholds are not met.
+     */
     static Decimal getDeterministicTestStatistic(std::shared_ptr<BackTester<Decimal>> backtester)
     {
       const auto failureStat = getMinTradeFailureTestStatistic();
@@ -1681,22 +2011,25 @@ template <class Decimal>
 
       Decimal pfPerformanceRatio = pf / getTargetProfitFactor();
       pfPerformanceRatio = std::min(pfPerformanceRatio, DecimalConstants<Decimal>::DecimalOnePointFive);
-      
+
       return profitabilityPerformanceRatio * pfPerformanceRatio;
     }
 
     // --- Configurable Thresholds (kept consistent with the original policy) ---
+
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades() { return 3; }
-    
-    // Minimum number of bars in the series to be considered statistically significant
+
+    /// Minimum bar-series length required for statistical stability.
     static unsigned int getMinBarSeriesSize() { return 10; }
 
-    // The hard gate for entry
+    /// Hard profit-factor gate below which strategies are rejected.
     static Decimal getMinProfitFactor() { return DecimalConstants<Decimal>::DecimalOnePointSevenFive; }
 
-    // The target for performance scaling
+    /// Target profit factor used for performance-ratio scaling.
     static Decimal getTargetProfitFactor() { return DecimalConstants<Decimal>::DecimalTwo; }
 
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
@@ -1727,6 +2060,13 @@ template <class Decimal>
   class BootStrappedLogProfitabilityPFPolicy
   {
   public:
+    /**
+     * @brief Compute the log-space combined performance score from bootstrapped metrics.
+     *
+     * @param bt Single-strategy backtester from which high-resolution returns are extracted.
+     * @return The product of log-profitability and log-PF performance ratios.
+     * @throws BackTesterException If bt does not contain exactly one strategy.
+     */
     static Decimal getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
     {
       if (bt->getNumStrategies() != 1)
@@ -1748,7 +2088,7 @@ template <class Decimal>
 
       // Get bootstrapped median log profit factor and log profitability
       auto [lpf, log_profitability] = StatUtils<Decimal>::getBootStrappedLogProfitability(barSeries);
- 
+
       // --- 2. Performance Scaling Stage (in Log Space) ---
 
       Decimal zero(DecimalConstants<Decimal>::DecimalZero);
@@ -1812,7 +2152,11 @@ template <class Decimal>
     }
 
     // --- Configurable Thresholds for Log Space ---
+
+    /// Minimum closed trades required before the statistic is meaningful.
     static unsigned int getMinStrategyTrades() { return 3; }
+
+    /// Minimum bar-series length required for statistical stability.
     static unsigned int getMinBarSeriesSize() { return 10; }
 
     /**
@@ -1822,17 +2166,16 @@ template <class Decimal>
      */
     static Decimal getTargetLogProfitFactor() { return TargetLogPF; }
 
+    /// Neutral value returned when minimum trade thresholds are not met.
     static Decimal getMinTradeFailureTestStatistic()
     {
       return DecimalConstants<Decimal>::DecimalZero;
     }
   private:
     private:
-    // Pre-calculate the target log profit factor once to avoid repeated calculations.
-    // C++17 allows inline static member initialization.
+    /// Pre-calculated target log profit factor, ln(2.0) ~ 0.693, corresponding to a linear PF of 2.0.
     static inline const Decimal TargetLogPF = Decimal(std::log(2.0));
   };
 }
 
 #endif
-

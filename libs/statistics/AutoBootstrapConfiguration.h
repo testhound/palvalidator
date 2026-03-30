@@ -1,3 +1,16 @@
+/**
+ * @file AutoBootstrapConfiguration.h
+ * @brief Compile-time constants governing the automatic bootstrap method selector.
+ *
+ * Centralises every tuning knob, hard gate, soft threshold, penalty scale,
+ * normalisation reference, and scoring weight used by the AutoBootstrapSelector
+ * tournament. Keeping them in a single header guarantees that the gating logic
+ * in AutoBootstrapScoring.h and the diagnostic mirror in AutoBootstrapSelector.h
+ * always agree on the same numeric values.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <cstddef>

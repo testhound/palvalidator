@@ -4,6 +4,15 @@
 // Written by Michael K. Collison <collison956@gmail.com>, December 2024
 //
 
+/**
+ * @file PALMastersMonteCarloValidationObserver.h
+ * @brief Concrete PermutationTestObserver for PAL strategy permutation statistics.
+ *
+ * Collects per-strategy test statistics, trade counts, and bar counts during
+ * Masters Monte Carlo validation, backed by UuidStrategyPermutationStatsAggregator
+ * for thread-safe, memory-efficient accumulation.
+ */
+
 #ifndef __PAL_MASTERS_MONTE_CARLO_VALIDATION_OBSERVER_H
 #define __PAL_MASTERS_MONTE_CARLO_VALIDATION_OBSERVER_H 1
 

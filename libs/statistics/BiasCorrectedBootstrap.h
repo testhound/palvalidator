@@ -3,6 +3,14 @@
 // Proprietary and confidential
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
+/**
+ * @file BiasCorrectedBootstrap.h
+ * @brief BCa (Bias-Corrected and Accelerated) bootstrap with pluggable resamplers and executors.
+ *
+ * Implements IIDResampler, StationaryBlockResampler, AccelerationReliability,
+ * BCaBootStrap (lazy-evaluated BCa CI engine), and BCaAnnualizer for
+ * compounded return annualisation.
+ */
 // BCa (Bias-Corrected and Accelerated) Bootstrap Implementation
 // with pluggable resampling policies + policy-specific jackknife
 //

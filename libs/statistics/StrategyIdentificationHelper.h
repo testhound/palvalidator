@@ -4,6 +4,15 @@
 // Written by Michael K. Collison <collison956@gmail.com>, December 2024
 //
 
+/**
+ * @file StrategyIdentificationHelper.h
+ * @brief Static helpers for extracting strategy identity and statistics from BackTester.
+ *
+ * Provides a stable combined-hash identification scheme (pattern hash XOR
+ * strategy-name hash) that remains consistent across strategy clones created
+ * during permutation testing.
+ */
+
 #ifndef __STRATEGY_IDENTIFICATION_HELPER_H
 #define __STRATEGY_IDENTIFICATION_HELPER_H 1
 

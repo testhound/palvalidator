@@ -1,3 +1,13 @@
+/**
+ * @file RegimeLabeler.h
+ * @brief Volatility-tercile regime labeling for time series.
+ *
+ * Provides VolTercileLabeler which assigns each bar to a Low (0), Medium (1),
+ * or High (2) volatility regime based on rolling standard deviation terciles.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>

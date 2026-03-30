@@ -1,3 +1,14 @@
+/**
+ * @file CandidateReject.h
+ * @brief Bitmask enums for bootstrap candidate rejection and flag diagnostics.
+ *
+ * Provides CandidateReject (hard rejection reasons) and CandidateFlag
+ * (soft diagnostic flags) with bitwise operators and a human-readable
+ * string converter.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 #include <cstdint>
 #include <string>

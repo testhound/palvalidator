@@ -4,6 +4,14 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 
+/**
+ * @file LogRobustnessTest.h
+ * @brief Logging utilities for robustness test results.
+ *
+ * Provides functions to write robustness test outcomes to CSV-format log files
+ * for post-analysis of strategy survival and rejection.
+ */
+
 #ifndef __LOG_ROBUSTNESS_TEST_H
 #define __LOG_ROBUSTNESS_TEST_H 1
 
@@ -16,9 +24,20 @@
 namespace mkc_timeseries
 {
   
+  /**
+   * @brief Writes robustness test results to a CSV output stream.
+   *
+   * @tparam Decimal Numeric type for price and statistical calculations.
+   */
   template <class Decimal> class LogRobustnessTest
   {
   public:
+    /**
+     * @brief Logs all robustness test results with summary statistics.
+     *
+     * @param robustnessResults The calculator containing all test outcomes.
+     * @param outputFileStream  Output stream for the CSV log.
+     */
     static void logRobustnessTestResults(const RobustnessCalculator<Decimal> robustnessResults,
 					 std::ofstream& outputFileStream)
     {
@@ -39,6 +58,13 @@ namespace mkc_timeseries
       LogRobustnessTest::logSummaryStats (robustnessStats, profitFactorStats, outputFileStream);
     }
 
+    /**
+     * @brief Logs a single robustness test result as one CSV row.
+     *
+     * @param key              Profit-target / protective-stop pair identifying the test.
+     * @param testResult       The result of a single Monte Carlo robustness test.
+     * @param outputFileStream Output stream for the CSV log.
+     */
     static void logRobustnessTestResult(const ProfitTargetStopPair<Decimal>& key,
 					std::shared_ptr<RobustnessTestResult<Decimal>> testResult,
 					std::ofstream& outputFileStream)

@@ -1,3 +1,13 @@
+/**
+ * @file NormalBootstrap.h
+ * @brief Normal (Wald) bootstrap confidence interval using bootstrap standard error.
+ *
+ * Constructs a CI as θ̂ ± z_{α/2} · se_boot, where se_boot is the standard
+ * deviation of the bootstrap distribution.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>
@@ -76,18 +86,19 @@ namespace palvalidator
     class NormalBootstrap
     {
     public:
+      /// @brief Holds the output of a normal bootstrap run.
       struct Result
       {
-        Decimal     mean;         // θ̂ on original sample
-        Decimal     lower;        // lower CI bound
-        Decimal     upper;        // upper CI bound
-        double      cl;           // confidence level
-        std::size_t B;            // requested bootstrap reps
-        std::size_t effective_B;  // usable (finite) reps
-        std::size_t skipped;      // degenerate reps skipped
-        std::size_t n;            // original sample size
-        std::size_t L;            // resampler L (diagnostic)
-        double      se_boot;      // bootstrap standard error
+        Decimal     mean;         ///< θ̂ on original sample.
+        Decimal     lower;        ///< Lower CI bound.
+        Decimal     upper;        ///< Upper CI bound.
+        double      cl;           ///< Confidence level.
+        std::size_t B;            ///< Requested bootstrap replicates.
+        std::size_t effective_B;  ///< Usable (finite) replicates.
+        std::size_t skipped;      ///< Degenerate replicates skipped.
+        std::size_t n;            ///< Original sample size.
+        std::size_t L;            ///< Resampler block length (diagnostic).
+        double      se_boot;      ///< Bootstrap standard error.
       };
 
     public:

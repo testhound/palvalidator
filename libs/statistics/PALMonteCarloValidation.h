@@ -4,6 +4,15 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 
+/**
+ * @file PALMonteCarloValidation.h
+ * @brief Monte Carlo permutation test framework for PAL strategy validation.
+ *
+ * Provides the base class PALMonteCarloValidationBase and concrete
+ * implementations PALMonteCarloValidation and PALMCPTValidation for
+ * assessing strategy significance via permuted market data.
+ */
+
 #ifndef __PAL_MONTE_CARLO_VALIDATION_H
 #define __PAL_MONTE_CARLO_VALIDATION_H 1
 
@@ -36,6 +45,7 @@ namespace mkc_timeseries
   using std::list;
   using std::shared_ptr;
 
+  /// @brief Exception thrown when PALMonteCarloValidation encounters an error.
   class PALMonteCarloValidationException : public std::runtime_error
   {
   public:

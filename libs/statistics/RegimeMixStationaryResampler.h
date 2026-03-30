@@ -1,3 +1,14 @@
+/**
+ * @file RegimeMixStationaryResampler.h
+ * @brief Regime-aware stationary (geometric-length) block bootstrap resampler.
+ *
+ * Generates bootstrap samples honouring a desired regime mix while using
+ * variable-length blocks drawn from a geometric distribution (Politis–Romano
+ * stationary bootstrap within each regime).
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>

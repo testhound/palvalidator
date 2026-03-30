@@ -1,3 +1,14 @@
+/**
+ * @file MastersRomanoWolfImproved.h
+ * @brief Improved Masters Romano–Wolf stepwise permutation test with sanity auditing.
+ *
+ * Extends MastersRomanoWolf with additional sanity checks (count validation,
+ * final audit) and improved logging. Default implementation for
+ * PALMastersMonteCarloValidation.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 #include <cassert>
 #include <stdexcept>

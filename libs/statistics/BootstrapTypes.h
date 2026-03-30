@@ -1,3 +1,14 @@
+/**
+ * @file BootstrapTypes.h
+ * @brief Common type definitions shared across bootstrap implementations.
+ *
+ * Defines the IntervalType enum used by all bootstrap classes to specify
+ * whether a confidence interval is two-sided, one-sided lower, or
+ * one-sided upper.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 namespace palvalidator

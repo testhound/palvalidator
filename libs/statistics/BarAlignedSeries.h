@@ -1,3 +1,10 @@
+/**
+ * @file BarAlignedSeries.h
+ * @brief Adapter projecting dense-market volatility regime labels onto sparse trade bars.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>

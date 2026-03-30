@@ -1,3 +1,14 @@
+/**
+ * @file AdaptiveRatioPolicies.h
+ * @brief Policy classes for adaptive M-out-of-N subsample ratio computation.
+ *
+ * Defines IAdaptiveRatioPolicy (interface), FixedRatioPolicy, and
+ * TailVolatilityAdaptivePolicy which adjusts the ratio based on tail heaviness
+ * and annualised volatility of the return series.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>

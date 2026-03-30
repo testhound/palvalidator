@@ -1,4 +1,13 @@
-// PALMonteCarloTypes.h
+/**
+ * @file PALMonteCarloTypes.h
+ * @brief Common types shared across PAL Monte Carlo validation modules.
+ *
+ * Defines StrategyContext (strategy pointer + baseline statistic + count)
+ * and the StrategyDataContainer alias used by all permutation-test orchestrators.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #ifndef __PAL_MONTE_CARLO_TYPES_H
 #define __PAL_MONTE_CARLO_TYPES_H 1
 
