@@ -1,3 +1,14 @@
+/**
+ * @file MetaLosingStreakBootstrapBound.h
+ * @brief Bootstrap upper-confidence bound on maximum consecutive losing streaks.
+ *
+ * Provides StationaryTradeBlockSampler for block-resampling trade sequences
+ * and MetaLosingStreakBootstrapBound for computing a BCa-style upper bound
+ * on the longest run of consecutive losing trades.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 #include <vector>
 #include <algorithm>
@@ -24,10 +35,21 @@ namespace mkc_timeseries
   // where `out.size() == m` on return, created by the sampler.
   // Sampling happens at the TRADE level (indices are trade-ordered).
 
-  // ------------------ Default: Stationary Trade-Block Sampler -----------------
+  /**
+   * @brief Default trade-level stationary block sampler for losing-streak bootstrap.
+   *
+   * Draws blocks of geometrically-distributed length (mean L) from a circular
+   * trade-return series, used to construct resampled P&L sequences.
+   *
+   * @tparam Decimal Numeric type for trade returns.
+   */
   template <typename Decimal>
   class StationaryTradeBlockSampler {
   public:
+    /**
+     * @brief Construct with the expected mean block length in trades.
+     * @param expectedBlockLenTrades Mean block length (default 4, minimum 1).
+     */
     explicit StationaryTradeBlockSampler(std::size_t expectedBlockLenTrades = 4)
       : m_blockLen(expectedBlockLenTrades ? expectedBlockLenTrades : 1) {}
 
@@ -68,7 +90,18 @@ namespace mkc_timeseries
     std::size_t m_blockLen;
   };
 
-  // -------------------- Meta Losing Streak Bootstrap (Percentile) -------------
+  /**
+   * @brief Percentile bootstrap upper-confidence bound on the longest losing streak.
+   *
+   * Resamples trade P&L via the pluggable Sampler, computes the longest run of
+   * consecutive losses in each replicate, and returns the (1 − α) percentile
+   * as an upper bound.
+   *
+   * @tparam Decimal  Numeric type for trade returns.
+   * @tparam Sampler  Trade-level block resampler (default: StationaryTradeBlockSampler).
+   * @tparam Executor Parallel executor (default: SingleThreadExecutor).
+   * @tparam Rng      Random-number generator type (default: randutils::mt19937_rng).
+   */
   template <
     typename Decimal,
     typename Sampler  = StationaryTradeBlockSampler<Decimal>,
@@ -77,6 +110,7 @@ namespace mkc_timeseries
     >
   class MetaLosingStreakBootstrapBound {
   public:
+    /// @brief Configuration options for the losing-streak bootstrap.
     struct Options {
       std::size_t B = 5000;          // bootstrap replicates
       double      alpha = 0.05;      // upper (1 - alpha) bound

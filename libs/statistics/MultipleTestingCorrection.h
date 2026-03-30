@@ -5,6 +5,20 @@
 // Revised for separation-of-concerns design by ChatGPT.
 // Further revised based on unit test debugging.
 
+/**
+ * @file MultipleTestingCorrection.h
+ * @brief Multiple-testing correction procedures for strategy permutation tests.
+ *
+ * Implements Benjamini-Hochberg FDR, Adaptive BH (2000), unadjusted p-value
+ * selection, test-statistic-based selection, Romano-Wolf step-down corrections
+ * (two variants), and the Holm-Romano-Wolf hybrid. All procedures operate on
+ * strategy p-values produced by the Monte Carlo permutation framework.
+ *
+ * Reference: Romano, J. P. & Wolf, M. (2005). JASA 100(469), 94-108.
+ * Reference: Benjamini, Y. & Hochberg, Y. (1995). JRSS-B 57(1), 289-300.
+ * Reference: Benjamini, Y. & Hochberg, Y. (2000). J. Educ. Behav. Stat. 25(1), 60-83.
+ */
+
 #ifndef __MULTIPLE_TESTING_CORRECTION_H
 #define __MULTIPLE_TESTING_CORRECTION_H 1
 
@@ -53,13 +67,13 @@ namespace mkc_timeseries
     //   container:
     //     - A container object that encapsulates the hypothesis test results.
     //     - It must provide several member functions:
-    //         • getNumStrategies(): Returns the count of hypothesis tests (strategies). If zero, no processing occurs.
-    //         • getInternalContainer(): Returns a reference to the container holding the tuples of test results.
+    //         * getNumStrategies(): Returns the count of hypothesis tests (strategies). If zero, no processing occurs.
+    //         * getInternalContainer(): Returns a reference to the container holding the tuples of test results.
     //             Each tuple should at least contain:
     //               - Index 0: the raw (original) p-value.
     //               - Index 1: the test statistic (or maximum test statistic) used for the null distribution.
-    //         • hasSyntheticNull(): Indicates whether a synthetic null distribution is available.
-    //         • getSyntheticNullDistribution(): Retrieves the synthetic null distribution vector if available.
+    //         * hasSyntheticNull(): Indicates whether a synthetic null distribution is available.
+    //         * getSyntheticNullDistribution(): Retrieves the synthetic null distribution vector if available.
     //
     //   sortedEmpiricalNullDistribution:
     //     - A reference to a vector that will be populated with the empirical null distribution values.
@@ -68,14 +82,14 @@ namespace mkc_timeseries
     //
     // Return Value:
     //   - Returns true if:
-    //         • The container is non-empty (i.e., it contains at least one hypothesis test),
-    //         • And a non-empty sorted empirical null distribution can be built.
+    //         * The container is non-empty (i.e., it contains at least one hypothesis test),
+    //         * And a non-empty sorted empirical null distribution can be built.
     //   - Returns false if the container is empty or if the constructed null distribution is empty.
     //
     // Detailed Process:
     //   a. Check if the container has any hypothesis tests by calling getNumStrategies(). If no tests exist, return false.
     //   b. Obtain a reference to the internal container via getInternalContainer().
-    //   c. Sort the internal container in ascending order based on the original p-values (tuples’ element at index 0).
+    //   c. Sort the internal container in ascending order based on the original p-values (tuples' element at index 0).
     //      - This sorting ensures that subsequent multiple testing adjustments are performed over an ordered set.
     //   d. Determine how to build the null distribution:
     //         - If a synthetic null distribution is available (hasSyntheticNull() returns true), assign it directly.
@@ -88,16 +102,16 @@ namespace mkc_timeseries
       // Verify that the container holds at least one hypothesis test.
       if (container.getNumStrategies() == 0)
         return false;
-      
+
       // Access the internal container holding the hypothesis test result tuples.
       auto& tsContainer = container.getInternalContainer();
-      
+
       // Sort the container based on the raw p-values (the first element of each tuple) in ascending order.
       std::sort(tsContainer.begin(), tsContainer.end(),
                 [](const auto& a, const auto& b) {
                   return std::get<0>(a) < std::get<0>(b);
                 });
-      
+
       // Build the empirical null distribution:
       // An "empirical null distribution" is a distribution of a test statistic that is generated from
       // data where the null hypothesis is assumed to be true. Rather than relying on
@@ -108,7 +122,7 @@ namespace mkc_timeseries
       // test statistics (e.g.max test statistic) from each hypothesis
       // (or permutation), then sorting them.
       //
-      // This provides a data‐driven reference against which the observed p-values can be
+      // This provides a data-driven reference against which the observed p-values can be
       // compared during the multiple testing correction process. The approach is often used
       // in permutation tests and has been discussed in detail in works like Romano and Wolf (2005).
 
@@ -126,10 +140,10 @@ namespace mkc_timeseries
           for (const auto& entry : tsContainer)
             sortedEmpiricalNullDistribution.push_back(std::get<1>(entry));
       }
-      
+
       // Sort the collected empirical null distribution values in ascending order.
       std::sort(sortedEmpiricalNullDistribution.begin(), sortedEmpiricalNullDistribution.end());
- 
+
       // Return true if the empirical null distribution is non-empty, indicating that we can proceed.
       return !sortedEmpiricalNullDistribution.empty();
     }
@@ -172,11 +186,11 @@ namespace mkc_timeseries
     //   reverseOrder:
     //     A boolean flag indicating the direction of iteration:
     //       - true: iterate in reverse order (step-down procedure). This means starting with the most
-    //               “extreme” (largest) test statistic and moving to the least extreme.
+    //               "extreme" (largest) test statistic and moving to the least extreme.
     //       - false: iterate in forward order (step-up procedure).
     //
     //   initialPreviousAdj:
-    //     The starting value for the “previous adjusted p-value” used in the monotonicity enforcement.
+    //     The starting value for the "previous adjusted p-value" used in the monotonicity enforcement.
     //     Typically, this is set to 1.0 for step-down corrections (to ensure that the first candidate is used
     //     directly) and 0.0 for step-up corrections.
     //
@@ -202,21 +216,21 @@ namespace mkc_timeseries
     //             - Otherwise, use the updateMono lambda to combine the candidate with the previously adjusted p-value.
     //        e. Update the previous adjusted value and store the adjusted p-value back into the container.
     //
-    //   5. After processing all tests, the container’s raw p-values are replaced with adjusted p-values that
+    //   5. After processing all tests, the container's raw p-values are replaced with adjusted p-values that
     //      incorporate the scaling and monotonicity requirements.
     //
     // Usage Examples:
     //   - In RomanoWolfStepdownCorrection:
-    //         • reverseOrder is true (step-down iteration).
-    //         • initialPreviousAdj is set to 1.0.
-    //         • computeCandidate multiplies the empirical p-value by (totalStrategies / (i + 1)).
-    //         • updateMono returns the minimum of the previous adjusted p-value and the candidate.
+    //         * reverseOrder is true (step-down iteration).
+    //         * initialPreviousAdj is set to 1.0.
+    //         * computeCandidate multiplies the empirical p-value by (totalStrategies / (i + 1)).
+    //         * updateMono returns the minimum of the previous adjusted p-value and the candidate.
     //
     //   - In HolmRomanoWolfCorrection:
-    //         • reverseOrder is false (step-up iteration).
-    //         • initialPreviousAdj is set to 0.0.
-    //         • computeCandidate multiplies the empirical p-value by (totalStrategies - i).
-    //         • updateMono returns the maximum of the previous adjusted p-value and the candidate.
+    //         * reverseOrder is false (step-up iteration).
+    //         * initialPreviousAdj is set to 0.0.
+    //         * computeCandidate multiplies the empirical p-value by (totalStrategies - i).
+    //         * updateMono returns the maximum of the previous adjusted p-value and the candidate.
     //
     // This design, using lambda parameters for key computation steps, makes adjustPValues a flexible helper
     // that can serve various multiple testing correction procedures by simply changing the parameters.
@@ -303,6 +317,16 @@ namespace mkc_timeseries
   // Existing common container used by several policies.
   // [BaseStrategyContainer remains unchanged]
   //===========================================================================
+
+  /**
+   * @brief Thread-safe container mapping raw p-values to strategy pointers, with a separate list of survivors.
+   *
+   * Stores hypothesis test results as a multimap keyed by p-value and maintains
+   * a secondary list of strategies that survive a multiple testing correction
+   * step. Access to both collections is guarded by independent mutexes.
+   *
+   * @tparam Decimal The numeric type used for p-values (e.g., dec::decimal<8>).
+   */
   template <class Decimal>
   class BaseStrategyContainer {
   public:
@@ -315,33 +339,50 @@ namespace mkc_timeseries
 
     BaseStrategyContainer() {}
 
+    /**
+     * @brief Inserts a strategy into the sorted container keyed by its p-value.
+     *
+     * @param key      The raw p-value associated with the strategy.
+     * @param strategy Shared pointer to the PalStrategy being recorded.
+     */
     void addStrategy(const Decimal& key, std::shared_ptr<PalStrategy<Decimal>> strategy) {
       boost::mutex::scoped_lock Lock(strategiesMutex_);
       sortedStrategies_.insert(std::make_pair(key, strategy));
     }
 
+    /// @brief Returns the number of strategies currently stored (thread-safe).
     size_t getNumStrategies() const {
       boost::mutex::scoped_lock Lock(strategiesMutex_);
       return sortedStrategies_.size();
     }
 
+    /**
+     * @brief Appends a strategy to the surviving-strategies list.
+     *
+     * @param strategy Shared pointer to the strategy that passed the correction threshold.
+     */
     void addSurvivingStrategy(std::shared_ptr<PalStrategy<Decimal>> strategy) {
       boost::mutex::scoped_lock Lock(survivingMutex_);
       survivingStrategies_.push_back(strategy);
     }
 
+    /// @brief Returns the number of strategies that survived the correction (thread-safe).
     size_t getNumSurvivingStrategies() const {
       boost::mutex::scoped_lock Lock(survivingMutex_);
       return survivingStrategies_.size();
     }
 
+    /// @brief Returns an iterator to the beginning of the surviving-strategies list.
     surviving_const_iterator beginSurvivingStrategies() const { return survivingStrategies_.begin(); }
+
+    /// @brief Returns an iterator past the end of the surviving-strategies list.
     surviving_const_iterator endSurvivingStrategies() const { return survivingStrategies_.end(); }
 
+    /// @brief Returns a const reference to the internal sorted multimap.
     const SortedStrategyContainer& getInternalContainer() const { return sortedStrategies_; }
 
     //---------------------------------------------------------------
-  /// @brief  Clear both the sorted‐p‐value map and the survivors list.
+  /// @brief  Clear both the sorted-p-value map and the survivors list.
   void clearForNewTest()
     {
       // clear sortedStrategies_
@@ -367,35 +408,69 @@ namespace mkc_timeseries
   // Policy: BenjaminiHochbergFdr
   // [Code for BenjaminiHochbergFdr remains unchanged]
   //===========================================================================
+
+  /**
+   * @brief Classic Benjamini-Hochberg (1995) step-up procedure for FDR control.
+   *
+   * Iterates strategies from the largest to the smallest p-value and determines
+   * the critical rank at which p(i) < (i/m) * q, where q is the target false
+   * discovery rate. All strategies at or below that rank are retained as survivors.
+   *
+   * Reference: Benjamini, Y. & Hochberg, Y. (1995). JRSS-B 57(1), 289-300.
+   *
+   * @tparam Decimal The numeric type used for p-values (e.g., dec::decimal<8>).
+   */
   template <class Decimal>
   class BenjaminiHochbergFdr {
   public:
     typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
     using ConstSurvivingStrategiesIterator = typename BaseStrategyContainer<Decimal>::surviving_const_iterator;
 
+    /// @brief Constructs with the default FDR threshold from DecimalConstants.
     BenjaminiHochbergFdr()
       : mFalseDiscoveryRate(DecimalConstants<Decimal>::DefaultFDR)
     {}
 
+    /**
+     * @brief Adds a strategy with its raw p-value to the internal container.
+     *
+     * @param pValue    The raw p-value from the hypothesis test.
+     * @param aStrategy Shared pointer to the strategy under evaluation.
+     */
     void addStrategy(const ReturnType& pValue, std::shared_ptr<PalStrategy<Decimal>> aStrategy) {
       container_.addStrategy(pValue, aStrategy);
     }
 
+    /// @brief Returns the total number of strategies entered for comparison.
     size_t getNumMultiComparisonStrategies() const {
       return container_.getNumStrategies();
     }
 
+    /// @brief Returns an iterator to the beginning of surviving strategies.
     ConstSurvivingStrategiesIterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
 
+    /// @brief Returns an iterator past the end of surviving strategies.
     ConstSurvivingStrategiesIterator endSurvivingStrategies() const {
       return container_.endSurvivingStrategies();
     }
+
+    /// @brief Returns the number of strategies that survived the BH correction.
     size_t getNumSurvivingStrategies() const {
       return container_.getNumSurvivingStrategies();
     }
 
+    /**
+     * @brief Applies the Benjamini-Hochberg step-up procedure and populates the survivors list.
+     *
+     * Starting from the largest p-value, the method scans downward until a p-value
+     * falls below its rank-specific critical value (rank/m) * FDR. All strategies
+     * from that rank downward are declared significant.
+     *
+     * @param pValueSignificanceLevel Unused; the stored FDR rate governs the threshold.
+     * @param partitionByFamily       Unused in this non-partitioned policy.
+     */
     void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
      DecimalConstants<Decimal>::SignificantPValue,
      [[maybe_unused]] bool partitionByFamily = false) {
@@ -423,6 +498,7 @@ namespace mkc_timeseries
       // std::cout << "BenjaminiHochbergFdr::Number of surviving strategies after correction = " << getNumSurvivingStrategies() << std::endl;
     }
 
+    /// @brief Returns a const reference to the internal sorted container for external inspection.
      // Added for monotonicity test helper compatibility
     const typename BaseStrategyContainer<Decimal>::SortedStrategyContainer& getInternalContainer() const {
         return container_.getInternalContainer();
@@ -447,54 +523,106 @@ namespace mkc_timeseries
   // with an added estimator inspired by
   // "A direct approach to false discovery rates" Storey (2002).
   //
+
+  /**
+   * @brief Adaptive Benjamini-Hochberg FDR procedure with data-driven m0 estimation.
+   *
+   * Extends the classic BH procedure by estimating the number of true null
+   * hypotheses (m0) from the data, yielding increased power when many nulls
+   * are true. The m0 estimate is obtained via a bootstrap-based pi0 estimator
+   * with a tail-based fallback for small samples or unstable bootstrap results.
+   * Supports optional family partitioning (Long vs Short strategies).
+   *
+   * Reference: Benjamini, Y. & Hochberg, Y. (2000). J. Educ. Behav. Stat. 25(1), 60-83.
+   * Reference: Storey, J. D. (2002). JRSS-B 64(3), 479-498.
+   *
+   * @tparam Decimal The numeric type used for p-values (e.g., dec::decimal<8>).
+   */
   template <class Decimal>
   class AdaptiveBenjaminiHochbergYr2000 {
   public:
+
+    /**
+     * @brief Result of a single m0 estimator: the estimated count and estimator name.
+     */
     struct EstimatorResult {
-      Decimal m0;
-      std::string method;
+      Decimal m0;             ///< Estimated number of true null hypotheses.
+      std::string method;     ///< Name of the estimator that produced the result.
     };
 
+    /**
+     * @brief Full bootstrap result including m0 median and 95% confidence interval bounds.
+     */
     struct FullBootstrapResult {
-      Decimal m0_median;
-      Decimal ci_lower;
-      Decimal ci_upper;
-      Decimal ci_width;
+      Decimal m0_median;      ///< Median bootstrap estimate of m0.
+      Decimal ci_lower;       ///< Lower bound of the 95% bootstrap confidence interval.
+      Decimal ci_upper;       ///< Upper bound of the 95% bootstrap confidence interval.
+      Decimal ci_width;       ///< Width of the 95% confidence interval (ci_upper - ci_lower).
     };
 
+    /**
+     * @brief Abbreviated bootstrap result carrying the average m0 and pi0 variance.
+     */
     struct BootstrapResult {
-    Decimal m0_avg;
-    Decimal pi0_variance;
+    Decimal m0_avg;           ///< Average bootstrap estimate of m0.
+    Decimal pi0_variance;     ///< Variance of bootstrap pi0 estimates.
     };
 
     typedef typename PValueReturnPolicy<Decimal>::ReturnType ReturnType;
     using ConstSurvivingStrategiesIterator = typename BaseStrategyContainer<Decimal>::surviving_const_iterator;
 
+    /**
+     * @brief Constructs with the specified FDR target.
+     *
+     * @param falseDiscoveryRate Target FDR level (defaults to DecimalConstants::DefaultFDR).
+     */
     // Constructor now accepts an enum to select the estimation method.
     // By default, it uses the robust slope-based method.
     explicit AdaptiveBenjaminiHochbergYr2000(const Decimal& falseDiscoveryRate = DecimalConstants<Decimal>::DefaultFDR)
       : mFalseDiscoveryRate(falseDiscoveryRate)
     {}
 
+    /**
+     * @brief Adds a strategy with its raw p-value to the internal container.
+     *
+     * @param pValue    The raw p-value from the hypothesis test.
+     * @param aStrategy Shared pointer to the strategy under evaluation.
+     */
     void addStrategy(const ReturnType& pValue, std::shared_ptr<PalStrategy<Decimal>> aStrategy) {
       container_.addStrategy(pValue, aStrategy);
     }
 
+    /// @brief Returns the total number of strategies entered for comparison.
     size_t getNumMultiComparisonStrategies() const {
       return container_.getNumStrategies();
     }
 
+    /// @brief Returns an iterator to the beginning of surviving strategies.
     ConstSurvivingStrategiesIterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
 
+    /// @brief Returns an iterator past the end of surviving strategies.
     ConstSurvivingStrategiesIterator endSurvivingStrategies() const {
       return container_.endSurvivingStrategies();
     }
+
+    /// @brief Returns the number of strategies that survived the adaptive BH correction.
     size_t getNumSurvivingStrategies() const {
       return container_.getNumSurvivingStrategies();
     }
 
+    /**
+     * @brief Applies the adaptive BH q-value procedure, optionally partitioned by strategy family.
+     *
+     * When partitionByFamily is true, Long and Short strategies are corrected
+     * independently. Otherwise all strategies are treated as a single family.
+     * Internally estimates m0 via bootstrap (or tail-based fallback) and
+     * computes monotone q-values to determine significance.
+     *
+     * @param pValueSignificanceLevel Unused directly; the stored FDR rate is used.
+     * @param partitionByFamily       If true, partition into Long/Short families before correction.
+     */
     void correctForMultipleTests([[maybe_unused]] const Decimal& pValueSignificanceLevel =
      DecimalConstants<Decimal>::SignificantPValue,
      bool partitionByFamily = false)
@@ -513,13 +641,13 @@ namespace mkc_timeseries
       if (partitionByFamily) {
         // Family partitioning path: partition strategies and apply corrections separately
         const auto& allStrategies = container_.getInternalContainer();
-        
+
         // Partition strategies by family (Long vs Short)
         std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>> longStrategies, shortStrategies;
-        
+
         for (const auto& entry : allStrategies) {
           const auto& strategy = entry.second;
-          
+
           // Determine family based on strategy type using PalStrategy methods
           if (strategy->isLongStrategy()) {
             longStrategies.emplace_back(entry.first, entry.second);
@@ -527,7 +655,7 @@ namespace mkc_timeseries
             shortStrategies.emplace_back(entry.first, entry.second);
           }
         }
-        
+
         // Sort both vectors to match the original container's sorting (by p-value in ascending order)
         std::sort(longStrategies.begin(), longStrategies.end(),
                   [](const auto& a, const auto& b) {
@@ -542,13 +670,13 @@ namespace mkc_timeseries
         std::cout << "Family partitioning: " << longStrategies.size()
                   << " Long strategies, " << shortStrategies.size()
                   << " Short strategies" << std::endl;
-        
+
         // Apply corrections separately to each family
         if (!longStrategies.empty()) {
           std::cout << "Processing Long family..." << std::endl;
           processFamily2(longStrategies, "Long");
         }
-        
+
         if (!shortStrategies.empty()) {
           std::cout << "Processing Short family..." << std::endl;
           processFamily2(shortStrategies, "Short");
@@ -557,21 +685,27 @@ namespace mkc_timeseries
         // Unified correction path: treat all strategies as one family
         const auto& allStrategies = container_.getInternalContainer();
         std::vector<std::pair<Decimal, std::shared_ptr<PalStrategy<Decimal>>>> unifiedFamily;
-        
+
         // Convert container format to family format
         for (const auto& entry : allStrategies) {
           unifiedFamily.emplace_back(entry.first, entry.second);
         }
-        
+
         std::cout << "Unified correction: processing all " << unifiedFamily.size() << " strategies together" << std::endl;
         processFamily2(unifiedFamily, "Unified");
       }
     }
 
+    /// @brief Returns a const reference to the internal sorted container for external inspection.
     const typename BaseStrategyContainer<Decimal>::SortedStrategyContainer& getInternalContainer() const {
       return container_.getInternalContainer();
     }
-    
+
+    /**
+     * @brief Returns all tested strategies paired with their raw p-values.
+     *
+     * @return Vector of (strategy, p-value) pairs in container insertion order.
+     */
     std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>>
     getAllTestedStrategies() const
     {
@@ -581,7 +715,13 @@ namespace mkc_timeseries
       }
       return result;
     }
-    
+
+    /**
+     * @brief Looks up the raw p-value for a specific strategy.
+     *
+     * @param strategy Shared pointer to the strategy to look up.
+     * @return The strategy's raw p-value, or 1.0 if not found.
+     */
     Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const
     {
       for (const auto& entry : container_.getInternalContainer())
@@ -593,6 +733,7 @@ namespace mkc_timeseries
       return Decimal(1.0); // Default high p-value if not found
     }
 
+    /// @brief Reset state in preparation for a fresh run.
     void clearForNewTest()
     {
       container_.clearForNewTest();
@@ -629,10 +770,10 @@ namespace mkc_timeseries
     * 2. Estimate m0 using the best available estimator (spline, bootstrap, Grenander, etc.).
     * 3. Compute the q-value for each test using:
     *
-    *      q(i) = min_{j ≥ i} [ m0 * p(j) / j ]
+    *      q(i) = min_{j >= i} [ m0 * p(j) / j ]
     *
     *    This ensures q-values are monotonic and interpretable as an adjusted p-value.
-    * 4. Any test with q(i) ≤ target FDR (mFalseDiscoveryRate) is declared significant.
+    * 4. Any test with q(i) <= target FDR (mFalseDiscoveryRate) is declared significant.
     * 5. Log the results and update the set of surviving strategies.
     *
     * ## Why Use q-values?
@@ -640,8 +781,8 @@ namespace mkc_timeseries
     * In multiple testing, controlling the family-wise error rate (e.g., using Bonferroni)
     * can be overly conservative. The BH procedure allows more discoveries while still
     * controlling the FDR. q-values provide a way to report results similar to p-values
-    * but with built-in FDR control. They allow the analyst to say, “This discovery is
-    * expected to be a false positive only X% of the time,” which is often more useful
+    * but with built-in FDR control. They allow the analyst to say, "This discovery is
+    * expected to be a false positive only X% of the time," which is often more useful
     * in exploratory settings.
     */
     void processFamily2(const std::vector<std::pair<Decimal,
@@ -676,7 +817,7 @@ namespace mkc_timeseries
       std::cout << "Total Tests (m): " << m << ", Estimated True Nulls (m0): " << m0 << std::endl;
 
     // Compute q-values in reverse order to enforce monotonicity
-      
+
       std::vector<Decimal> qvalues(m);
       Decimal prevQ = DecimalConstants<Decimal>::DecimalOne;
       for (int i = static_cast<int>(m) - 1; i >= 0; --i)
@@ -711,8 +852,18 @@ namespace mkc_timeseries
       }
     }
 
+    /**
+     * @brief Selects the best m0 estimator for a family of p-values using a tiered decision rule.
+     *
+     * For small samples (m < 30) the robust tail-based estimator is used directly.
+     * For larger samples a full bootstrap is run first; if the result is unstable
+     * (wide CI, below floor, or out of bounds) the tail-based fallback is used instead.
+     *
+     * @param familyStrategies Sorted vector of (p-value, strategy) pairs.
+     * @return An EstimatorResult containing the chosen m0 and the method name.
+     */
     AdaptiveBenjaminiHochbergYr2000::EstimatorResult selectBestM0EstimatorForFamily2(const std::vector<std::pair<Decimal,
-										    std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
+											    std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
     {
       const size_t m = familyStrategies.size();
       if (m == 0) {
@@ -731,7 +882,7 @@ namespace mkc_timeseries
       auto bootstrap_result = estimateM0_FullBootstrap(familyStrategies);
       Decimal m0_median = bootstrap_result.m0_median;
       Decimal ci_width = bootstrap_result.ci_width;
-    
+
       std::cout << "[Estimator] Primary estimator: Full Bootstrap result (m0_median=" << m0_median
 		<< ", 95% CI width=" << ci_width << ")" << std::endl;
 
@@ -756,7 +907,7 @@ namespace mkc_timeseries
 	      std::max(absolute_m0_floor, relative_m0_floor) << ")" << std::endl;
 	  if(is_out_of_bounds)
 	    std::cout << "  - Reason: Estimate out of bounds (" << m0_median << " > " << m_decimal << ")" << std::endl;
-        
+
 	  Decimal m0_fallback = estimateM0TailBasedForFamily(familyStrategies);
 	  std::cout << "[Estimator] Fallback estimator: Tail-based result (m0=" << m0_fallback << ")" << std::endl;
 	  return { m0_fallback, "Tail (Fallback)" };
@@ -767,6 +918,15 @@ namespace mkc_timeseries
       return { m0_median, "Full Bootstrap" };
     }
 
+    /**
+     * @brief Estimates m0 via bootstrap resampling of pi0 at a fixed lambda threshold.
+     *
+     * Draws B = 1000 bootstrap resamples, computes pi0 = count(p > lambda) / ((1-lambda)*m)
+     * for each, and returns the median along with a 95% percentile confidence interval.
+     *
+     * @param familyStrategies Sorted vector of (p-value, strategy) pairs.
+     * @return A FullBootstrapResult with median m0 and 95% CI bounds.
+     */
     FullBootstrapResult estimateM0_FullBootstrap(const std::vector<std::pair<Decimal,
                                                std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
     {
@@ -842,19 +1002,29 @@ namespace mkc_timeseries
         };
     }
 
+    /**
+     * @brief Estimates m0 using a simple tail-based (Storey-style) estimator at lambda = 0.5.
+     *
+     * Counts the fraction of p-values exceeding lambda and converts to an m0 count,
+     * clamped to [1, m]. This is the most robust estimator and is used as a fallback
+     * when bootstrap results are unstable.
+     *
+     * @param familyStrategies Sorted vector of (p-value, strategy) pairs.
+     * @return The estimated m0 (number of true null hypotheses).
+     */
     // Helper method to estimate m0 using tail-based method for a specific family
     Decimal estimateM0TailBasedForFamily(const std::vector<std::pair<Decimal,
 					 std::shared_ptr<PalStrategy<Decimal>>>>& familyStrategies) const
     {
       const size_t m = familyStrategies.size();
       if (m == 0) return Decimal(0);
-      
+
       const Decimal lambda = DecimalConstants<Decimal>::createDecimal("0.5");
       size_t count = std::count_if(familyStrategies.begin(), familyStrategies.end(),
                                    [lambda](const auto& pair) {
                                      return pair.first > lambda;
                                    });
-      
+
       Decimal pi0_hat = static_cast<Decimal>(count) / ((DecimalConstants<Decimal>::DecimalOne - lambda) * static_cast<Decimal>(m));
       Decimal m0_hat = std::min(DecimalConstants<Decimal>::DecimalOne, pi0_hat) * static_cast<Decimal>(m);
       return std::max(DecimalConstants<Decimal>::DecimalOne, m0_hat);
@@ -867,7 +1037,7 @@ namespace mkc_timeseries
     void setM0ForTesting(const Decimal& m0) {
         m_test_m0_override = m0;
     }
-    
+
     BaseStrategyContainer<Decimal> container_;
     Decimal mFalseDiscoveryRate;
     std::optional<Decimal> m_test_m0_override;
@@ -877,6 +1047,17 @@ namespace mkc_timeseries
   // Policy: UnadjustedPValueStrategySelection
   // [Code for UnadjustedPValueStrategySelection remains unchanged]
   //===========================================================================
+
+  /**
+   * @brief Selects strategies by raw p-value without any multiple testing correction.
+   *
+   * Every strategy whose p-value falls at or below the significance threshold
+   * is accepted. This policy is the no-correction baseline and is useful for
+   * single-hypothesis settings or as a reference when evaluating the impact of
+   * stricter correction methods.
+   *
+   * @tparam Decimal The numeric type used for p-values (e.g., dec::decimal<8>).
+   */
   template <class Decimal>
   class UnadjustedPValueStrategySelection {
   public:
@@ -885,25 +1066,44 @@ namespace mkc_timeseries
 
     UnadjustedPValueStrategySelection() {}
 
+    /**
+     * @brief Adds a strategy with its raw p-value to the internal container.
+     *
+     * @param pValue    The raw p-value from the hypothesis test.
+     * @param aStrategy Shared pointer to the strategy under evaluation.
+     */
     void addStrategy(const ReturnType& pValue, std::shared_ptr<PalStrategy<Decimal>> aStrategy) {
       container_.addStrategy(pValue, aStrategy);
     }
 
+    /// @brief Returns the total number of strategies entered for comparison.
     size_t getNumMultiComparisonStrategies() const {
       return container_.getNumStrategies();
     }
 
+    /// @brief Returns an iterator to the beginning of surviving strategies.
     ConstSurvivingStrategiesIterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
 
+    /// @brief Returns an iterator past the end of surviving strategies.
     ConstSurvivingStrategiesIterator endSurvivingStrategies() const {
       return container_.endSurvivingStrategies();
     }
+
+    /// @brief Returns the number of strategies that survived the selection.
     size_t getNumSurvivingStrategies() const {
       return container_.getNumSurvivingStrategies();
     }
 
+    /**
+     * @brief Selects strategies whose raw p-value is at or below the significance level.
+     *
+     * No multiplicity adjustment is applied; each strategy is evaluated independently.
+     *
+     * @param pValueSignificanceLevel The significance threshold (default: 0.05).
+     * @param partitionByFamily       Unused in this policy.
+     */
     void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
      DecimalConstants<Decimal>::SignificantPValue,
      [[maybe_unused]] bool partitionByFamily = false)
@@ -922,11 +1122,17 @@ namespace mkc_timeseries
 	}
     }
 
+    /// @brief Returns a const reference to the internal sorted container for external inspection.
     // Added for monotonicity test helper compatibility
     const typename BaseStrategyContainer<Decimal>::SortedStrategyContainer& getInternalContainer() const {
         return container_.getInternalContainer();
     }
 
+    /**
+     * @brief Returns all tested strategies paired with their raw p-values.
+     *
+     * @return Vector of (strategy, p-value) pairs in container insertion order.
+     */
     // New methods for accessing all tested strategies and their p-values
     std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> getAllTestedStrategies() const {
         std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> result;
@@ -936,6 +1142,12 @@ namespace mkc_timeseries
         return result;
     }
 
+    /**
+     * @brief Looks up the raw p-value for a specific strategy.
+     *
+     * @param strategy Shared pointer to the strategy to look up.
+     * @return The strategy's raw p-value, or 1.0 if not found.
+     */
     Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
         for (const auto& entry : container_.getInternalContainer()) {
             if (entry.second == strategy) {
@@ -957,9 +1169,19 @@ namespace mkc_timeseries
 
 
   //===========================================================================
-  // New helper class for test-statistic–based corrections.
+  // New helper class for test-statistic-based corrections.
   // [TestStatisticStrategyImplementation remains unchanged]
   //===========================================================================
+
+  /**
+   * @brief Thread-safe container for hypothesis tests that carry both a p-value and a test statistic.
+   *
+   * Each entry is a tuple of (raw p-value, max test statistic, strategy pointer).
+   * Provides facilities for marking survivors after adjusted p-values are computed,
+   * and for injecting a synthetic null distribution for unit testing.
+   *
+   * @tparam Decimal The numeric type used for p-values and test statistics (e.g., dec::decimal<8>).
+   */
   template <class Decimal>
   class TestStatisticStrategyImplementation {
   public:
@@ -970,11 +1192,23 @@ namespace mkc_timeseries
 
     TestStatisticStrategyImplementation() {}
 
+    /**
+     * @brief Adds a strategy with its raw p-value and maximum test statistic.
+     *
+     * @param pValue      The raw p-value from the hypothesis test.
+     * @param maxTestStat The maximum permutation test statistic for this strategy.
+     * @param strategy    Shared pointer to the strategy under evaluation.
+     */
     void addStrategy(const Decimal& pValue, const Decimal& maxTestStat, std::shared_ptr<PalStrategy<Decimal>> strategy) {
       boost::mutex::scoped_lock Lock(mutex_);
       testStatisticStrategies_.emplace_back(pValue, maxTestStat, strategy);
     }
 
+    /**
+     * @brief Marks strategies whose adjusted p-value is at or below the threshold as survivors.
+     *
+     * @param significanceThreshold The significance level used to accept or reject hypotheses.
+     */
     // New method to mark surviving strategies based on an adjusted p-value threshold.
     void markSurvivingStrategies(Decimal significanceThreshold = DecimalConstants<Decimal>::SignificantPValue)
     {
@@ -986,41 +1220,61 @@ namespace mkc_timeseries
 	    survivingStrategies_.push_back(std::get<2>(tup));
 	}
     }
-    
+
+    /// @brief Returns the number of strategies currently stored (thread-safe).
     size_t getNumStrategies() const {
       boost::mutex::scoped_lock Lock(mutex_);
       return testStatisticStrategies_.size();
     }
 
+    /**
+     * @brief Appends a strategy to the surviving-strategies list.
+     *
+     * @param strategy Shared pointer to the strategy that passed the correction threshold.
+     */
     void addSurvivingStrategy(std::shared_ptr<PalStrategy<Decimal>> strategy) {
       boost::mutex::scoped_lock Lock(mutex_);
       survivingStrategies_.push_back(strategy);
     }
 
+    /// @brief Returns the number of strategies that survived the correction (thread-safe).
     size_t getNumSurvivingStrategies() const {
       boost::mutex::scoped_lock Lock(mutex_);
       return survivingStrategies_.size();
     }
 
+    /// @brief Returns an iterator to the beginning of the surviving-strategies list.
     surviving_const_iterator beginSurvivingStrategies() const { return survivingStrategies_.begin(); }
+
+    /// @brief Returns an iterator past the end of the surviving-strategies list.
     surviving_const_iterator endSurvivingStrategies() const { return survivingStrategies_.end(); }
 
+    /// @brief Returns a mutable reference to the internal test-statistic container.
     // Returns a reference to the internal container.
     TestStatisticContainer& getInternalContainer() { return testStatisticStrategies_; }
+
+    /// @brief Returns a const reference to the internal test-statistic container.
     const TestStatisticContainer& getInternalContainer() const { return testStatisticStrategies_; } // Added const version
 
     // Methods added for unit testing
 
+    /**
+     * @brief Injects a pre-computed null distribution, bypassing the one built from strategy data.
+     *
+     * @param syntheticNull Sorted vector of null-distribution test statistics.
+     */
     void setSyntheticNullDistribution(const std::vector<Decimal>& syntheticNull) {
       boost::mutex::scoped_lock Lock(mutex_);
       syntheticNullDistribution_ = syntheticNull;
       hasSyntheticNull_ = true;
     }
 
+    /// @brief Returns true if a synthetic null distribution has been injected.
     bool hasSyntheticNull() const {
       return hasSyntheticNull_;
     }
 
+    /// @brief Returns a const reference to the synthetic null distribution vector.
     const std::vector<Decimal>& getSyntheticNullDistribution() const {
       // No lock needed if syntheticNullDistribution_ is only written in setSyntheticNullDistribution
       // and read here after potential write. Assume setSyntheticNullDistribution happens before read.
@@ -1032,7 +1286,7 @@ namespace mkc_timeseries
     ///         Clears any added strategies, surviving strategies, and synthetic nulls.
     void clearForNewTest()
     {
-      // clear raw/test‐stat entries
+      // clear raw/test-stat entries
       {
         boost::mutex::scoped_lock lk(mutex_);
         testStatisticStrategies_.clear();
@@ -1058,6 +1312,15 @@ namespace mkc_timeseries
     bool hasSyntheticNull_ = false;
   };
 
+  /**
+   * @brief Container that pairs each strategy with its baseline test statistic for stepdown correction.
+   *
+   * Used by RomanoWolfStepdownCorrection to store baseline (observed) statistics
+   * and to mark surviving strategies after adjusted p-values have been computed.
+   * Each entry is a tuple of (baseline statistic, strategy pointer).
+   *
+   * @tparam Decimal The numeric type used for test statistics (e.g., dec::decimal<8>).
+   */
   template <class Decimal>
   class StrategyBaselineResultContainer
   {
@@ -1068,12 +1331,24 @@ namespace mkc_timeseries
 
     StrategyBaselineResultContainer() {}
 
+    /**
+     * @brief Adds a strategy with its observed baseline test statistic.
+     *
+     * @param baselineStat The observed (non-permuted) test statistic for this strategy.
+     * @param strategy     Shared pointer to the strategy under evaluation.
+     */
     void addStrategy(const Decimal& baselineStat, std::shared_ptr<PalStrategy<Decimal>> strategy)
     {
       boost::mutex::scoped_lock Lock(mutex_);
       internal_container_.emplace_back(baselineStat, strategy);
     }
 
+    /**
+     * @brief Populates the surviving-strategies list from a vector of adjusted p-values.
+     *
+     * @param adjusted_p_values      Vector of (adjusted p-value, strategy) tuples.
+     * @param significanceThreshold   The significance level; strategies at or below this survive.
+     */
     void markSurvivingStrategies(const std::vector<std::tuple<Decimal, std::shared_ptr<PalStrategy<Decimal>>>>& adjusted_p_values,
                                  Decimal significanceThreshold)
     {
@@ -1085,23 +1360,31 @@ namespace mkc_timeseries
         }
       }
     }
-    
+
+    /// @brief Returns a mutable reference to the internal container of (baseline stat, strategy) tuples.
     InternalContainer& getInternalContainer() { return internal_container_; }
+
+    /// @brief Returns the number of strategies currently stored (thread-safe).
     size_t getNumStrategies() const
     {
       boost::mutex::scoped_lock Lock(mutex_);
       return internal_container_.size();
     }
 
+    /// @brief Returns an iterator to the beginning of the surviving-strategies list.
     surviving_const_iterator beginSurvivingStrategies() const { return survivingStrategies_.begin(); }
+
+    /// @brief Returns an iterator past the end of the surviving-strategies list.
     surviving_const_iterator endSurvivingStrategies() const { return survivingStrategies_.end(); }
-    
+
+    /// @brief Returns the number of strategies that survived the correction (thread-safe).
     size_t getNumSurvivingStrategies() const
     {
       boost::mutex::scoped_lock Lock(mutex_);
       return survivingStrategies_.size();
     }
-    
+
+    /// @brief Reset state in preparation for a fresh run.
     void clearForNewTest()
     {
       boost::mutex::scoped_lock lk(mutex_);
@@ -1119,6 +1402,22 @@ namespace mkc_timeseries
   //
 // In MultipleTestingCorrection.h
 
+/**
+ * @brief Romano-Wolf stepdown correction using baseline statistics and an empirical null distribution.
+ *
+ * Sorts strategies by descending baseline test statistic, computes empirical
+ * p-values against a permutation-derived null distribution, and enforces
+ * monotonicity via a step-up pass. Strategies whose adjusted p-values fall
+ * at or below the significance threshold survive.
+ *
+ * This is the first (simpler) Romano-Wolf variant; it operates on
+ * StrategyBaselineResultContainer and accepts a FullResultType tuple
+ * containing (p-value, maxPermutedStat, baselineStat).
+ *
+ * Reference: Romano, J. P. & Wolf, M. (2005). JASA 100(469), 94-108.
+ *
+ * @tparam Decimal The numeric type used for p-values and test statistics (e.g., dec::decimal<8>).
+ */
 template <class Decimal>
 class RomanoWolfStepdownCorrection {
 public:
@@ -1128,20 +1427,34 @@ public:
 
     RomanoWolfStepdownCorrection() : m_isSyntheticNull(false) {}
 
+    /**
+     * @brief Adds a strategy with the full permutation test result.
+     *
+     * Extracts the baseline statistic and the max permuted statistic from the
+     * result tuple and stores them for subsequent stepdown adjustment.
+     *
+     * @param result   Tuple of (p-value, maxPermutedStat, baselineStat).
+     * @param strategy Shared pointer to the strategy under evaluation.
+     */
     // This method accepts the full result from each permutation test.
-    void addStrategy(const FullResultType& result, std::shared_ptr<PalStrategy<Decimal>> strategy) 
+    void addStrategy(const FullResultType& result, std::shared_ptr<PalStrategy<Decimal>> strategy)
     {
       const Decimal& maxPermutedStat = std::get<1>(result); // The statistic for the null distribution
       const Decimal& baselineStat    = std::get<2>(result); // The statistic to be tested
 
       container_.addStrategy(baselineStat, strategy);
-      
+
       // Only add to the empirical null if a synthetic one hasn't been provided.
       if (!m_isSyntheticNull) {
           empiricalNullDistribution_.push_back(maxPermutedStat);
       }
     }
 
+    /**
+     * @brief Injects a pre-computed null distribution, replacing any previously accumulated values.
+     *
+     * @param syntheticNull Sorted vector of null-distribution test statistics.
+     */
     // Method to allow injection of a pre-computed null distribution, e.g., for testing.
     void setSyntheticNullDistribution(const std::vector<Decimal>& syntheticNull)
     {
@@ -1149,16 +1462,28 @@ public:
         m_isSyntheticNull = !syntheticNull.empty();
     }
 
+    /// @brief Returns the total number of strategies being evaluated.
     // Returns the total number of strategies being evaluated.
     size_t getNumMultiComparisonStrategies() const {
       return container_.getNumStrategies();
     }
-    
+
+    /**
+     * @brief Returns all tested strategies paired with their final adjusted p-values.
+     *
+     * @return Vector of (strategy, adjusted p-value) pairs.
+     */
     // Returns a vector of pairs, each containing a strategy and its final adjusted p-value.
     std::vector<StrategyPair> getAllTestedStrategies() const {
         return m_final_p_values;
     }
 
+    /**
+     * @brief Looks up the adjusted p-value for a specific strategy.
+     *
+     * @param strategy Shared pointer to the strategy to look up.
+     * @return The strategy's adjusted p-value, or 1.0 if not found.
+     */
     // Looks up a specific strategy and returns its final adjusted p-value.
     Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
         for (const auto& entry : m_final_p_values) {
@@ -1169,6 +1494,18 @@ public:
         return Decimal(1.0); // Default: not found or did not pass
     }
 
+    /**
+     * @brief Runs the Romano-Wolf stepdown correction and marks surviving strategies.
+     *
+     * Sorts strategies by descending baseline statistic, computes empirical
+     * p-values from the null distribution, enforces monotonicity (step-up),
+     * and marks strategies whose adjusted p-values are at or below the threshold.
+     *
+     * @param pValueSignificanceLevel The significance threshold for declaring a strategy significant.
+     * @param partitionByFamily       Unused in this policy.
+     *
+     * @throws std::runtime_error If no strategies have been added or the null distribution is empty.
+     */
     void correctForMultipleTests(const Decimal& pValueSignificanceLevel = DecimalConstants<Decimal>::SignificantPValue,
                                  [[maybe_unused]] bool partitionByFamily = false)
     {
@@ -1184,7 +1521,7 @@ public:
         // Sort strategies by baseline stat (descending)
         std::sort(strategyResults.begin(), strategyResults.end(),
                   [](const auto& a, const auto& b) {
-                      return std::get<0>(a) > std::get<0>(b); 
+                      return std::get<0>(a) > std::get<0>(b);
                   });
 
         std::sort(empiricalNullDistribution_.begin(), empiricalNullDistribution_.end());
@@ -1199,16 +1536,16 @@ public:
             auto lb = std::lower_bound(empiricalNullDistribution_.begin(), empiricalNullDistribution_.end(), baselineStat);
             Decimal countGreaterEqual = static_cast<Decimal>(std::distance(lb, empiricalNullDistribution_.end()));
             Decimal p_raw = countGreaterEqual / static_cast<Decimal>(empiricalNullDistribution_.size());
-            
+
             Decimal p_adj = std::max(last_p_adj, p_raw);
-            
+
             temp_p_values.emplace_back(strategy, p_adj); // Storing as <strategy, p_value>
             last_p_adj = p_adj;
         }
 
         // Store the final adjusted p-values in the member variable
         m_final_p_values = temp_p_values;
-        
+
         // Create a temporary structure for the container to mark survivors
         std::vector<std::tuple<Decimal, std::shared_ptr<PalStrategy<Decimal>>>> pvals_for_marking;
         for (const auto& p : m_final_p_values) {
@@ -1217,11 +1554,17 @@ public:
 
         container_.markSurvivingStrategies(pvals_for_marking, pValueSignificanceLevel);
     }
-    
+
+    /// @brief Returns an iterator to the beginning of surviving strategies.
     ConstSurvivingStrategiesIterator beginSurvivingStrategies() const { return container_.beginSurvivingStrategies(); }
+
+    /// @brief Returns an iterator past the end of surviving strategies.
     ConstSurvivingStrategiesIterator endSurvivingStrategies() const { return container_.endSurvivingStrategies(); }
+
+    /// @brief Returns the number of strategies that survived the correction.
     size_t getNumSurvivingStrategies() const { return container_.getNumSurvivingStrategies(); }
-    
+
+    /// @brief Reset state in preparation for a fresh run.
     void clearForNewTest()
     {
       container_.clearForNewTest();
@@ -1232,13 +1575,13 @@ public:
 
 private:
     StrategyBaselineResultContainer<Decimal> container_;
-    std::vector<Decimal> empiricalNullDistribution_; 
+    std::vector<Decimal> empiricalNullDistribution_;
     bool m_isSyntheticNull;
     // New member to store the final results for the getter methods
     std::vector<StrategyPair> m_final_p_values;
 };
   //
-  
+
   //===========================================================================
   // Policy: RomanoWolfStepdownCorrection
   // Revised empirical p-value calculation.
@@ -1261,6 +1604,23 @@ private:
   //
   //
 
+  /**
+   * @brief Romano-Wolf stepdown correction (variant 2) using reverse-order p-value adjustment.
+   *
+   * Delegates container management to TestStatisticStrategyImplementation and
+   * applies the stepdown procedure via the generic detail::adjustPValues helper.
+   * P-values are sorted ascending, iterated in reverse, and adjusted with
+   * monotonicity enforced by taking the minimum of successive candidates.
+   *
+   * This variant stores both the raw p-value and the max permutation test
+   * statistic per strategy, and can accept a synthetic null distribution
+   * for deterministic testing.
+   *
+   * Reference: Romano, J. P. & Wolf, M. (2005). JASA 100(469), 94-108.
+   * Reference: Romano, J. P. & Wolf, M. (2016). Statistics and Computing 26(5), 1049-1062.
+   *
+   * @tparam Decimal The numeric type used for p-values and test statistics (e.g., dec::decimal<8>).
+   */
   template <class Decimal>
   class RomanoWolfStepdownCorrection2 {
   public:
@@ -1270,6 +1630,12 @@ private:
 
     RomanoWolfStepdownCorrection2() {}
 
+    /**
+     * @brief Adds a strategy with its raw p-value and maximum permutation test statistic.
+     *
+     * @param result   Tuple of (raw p-value, max permutation test statistic).
+     * @param strategy Shared pointer to the strategy under evaluation.
+     */
     void addStrategy(const RomanoWolfReturnType& result, std::shared_ptr<PalStrategy<Decimal>> strategy) {
       Decimal pValue = std::get<0>(result);
       Decimal maxTestStat = std::get<1>(result);
@@ -1278,32 +1644,47 @@ private:
       container_.addStrategy(pValue, maxTestStat, strategy);
     }
 
+    /**
+     * @brief Injects a pre-computed null distribution for deterministic testing.
+     *
+     * @param syntheticNull Sorted vector of null-distribution test statistics.
+     */
     void setSyntheticNullDistribution(const std::vector<Decimal>& syntheticNull)
     {
       container_.setSyntheticNullDistribution(syntheticNull);
     }
 
+    /// @brief Returns the total number of strategies entered for comparison.
     size_t getNumMultiComparisonStrategies() const {
       return container_.getNumStrategies();
     }
 
+    /// @brief Returns an iterator to the beginning of surviving strategies.
     ConstSurvivingStrategiesIterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
 
+    /// @brief Returns an iterator past the end of surviving strategies.
     ConstSurvivingStrategiesIterator endSurvivingStrategies() const {
       return container_.endSurvivingStrategies();
     }
 
+    /// @brief Returns the number of strategies that survived the Romano-Wolf correction.
     size_t getNumSurvivingStrategies() const {
       return container_.getNumSurvivingStrategies();
     }
 
+    /// @brief Returns a const reference to the internal test-statistic container for external inspection.
     // Added for monotonicity test helper compatibility
     const TestStatisticContainer& getInternalContainer() const {
         return container_.getInternalContainer();
     }
 
+    /**
+     * @brief Returns all tested strategies paired with their adjusted p-values.
+     *
+     * @return Vector of (strategy, adjusted p-value) pairs.
+     */
     // New methods for accessing all tested strategies and their p-values
     std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> getAllTestedStrategies() const {
         std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> result;
@@ -1313,6 +1694,12 @@ private:
         return result;
     }
 
+    /**
+     * @brief Looks up the adjusted p-value for a specific strategy.
+     *
+     * @param strategy Shared pointer to the strategy to look up.
+     * @return The strategy's adjusted p-value, or 1.0 if not found.
+     */
     Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
         for (const auto& entry : container_.getInternalContainer()) {
             if (std::get<2>(entry) == strategy) {
@@ -1322,12 +1709,25 @@ private:
         return Decimal(1.0); // Default high p-value if not found
     }
 
+    /**
+     * @brief Applies the Romano-Wolf reverse-order stepdown correction and marks survivors.
+     *
+     * Prepares the empirical null distribution (from strategy data or synthetic
+     * injection), applies the generic adjustPValues helper in reverse order with
+     * monotonicity enforced via min(), then marks strategies whose adjusted
+     * p-values are at or below the significance threshold.
+     *
+     * @param pValueSignificanceLevel The significance threshold for declaring a strategy significant.
+     * @param partitionByFamily       Unused in this policy.
+     *
+     * @throws std::runtime_error If no strategies have been added.
+     */
     void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
      DecimalConstants<Decimal>::SignificantPValue,
      [[maybe_unused]] bool partitionByFamily = false) {
       if (container_.getNumStrategies() == 0)
  throw std::runtime_error("RomanoWolfStepdownCorrection: No strategies added for multiple testing correction.");
-      
+
       std::vector<Decimal> sortedEmpiricalNullDistribution;
 
       if (!detail::prepareContainerAndNull(container_, sortedEmpiricalNullDistribution)) {
@@ -1375,7 +1775,7 @@ private:
   //===========================================================================
   // Implements the Holm-Romano-Wolf stepdown procedure.
   // This procedure first computes the Romano-Wolf empirical p-values,
-  // then applies Holm’s sequential adjustment.
+  // then applies Holm's sequential adjustment.
   // This policy now uses composition via TestStatisticStrategyImplementation.
   //
   // References:
@@ -1383,6 +1783,20 @@ private:
   //   Scandinavian Journal of Statistics, 6(2), 65-70.
   // - Romano, J. P. & Wolf, M. (2005). Exact and approximate stepdown methods for multiple hypothesis testing.
   //   Journal of the American Statistical Association, 100(469), 94-108.
+
+  /**
+   * @brief Holm-Romano-Wolf step-up correction combining Holm's sequential adjustment with empirical p-values.
+   *
+   * Computes empirical p-values from a permutation-derived null distribution
+   * and applies Holm's forward-order (step-up) adjustment with monotonicity
+   * enforced by taking the maximum of successive candidates. This provides
+   * strong FWER control while leveraging the resampling-based null.
+   *
+   * Reference: Holm, S. (1979). Scand. J. Stat. 6(2), 65-70.
+   * Reference: Romano, J. P. & Wolf, M. (2005). JASA 100(469), 94-108.
+   *
+   * @tparam Decimal The numeric type used for p-values and test statistics (e.g., dec::decimal<8>).
+   */
   template <class Decimal>
   class HolmRomanoWolfCorrection {
   public:
@@ -1392,37 +1806,67 @@ private:
 
     HolmRomanoWolfCorrection() {}
 
+    /**
+     * @brief Adds a strategy with its raw p-value and maximum permutation test statistic.
+     *
+     * @param result   Tuple of (raw p-value, max permutation test statistic).
+     * @param strategy Shared pointer to the strategy under evaluation.
+     */
     void addStrategy(const HolmRomanoWolfReturnType& result, std::shared_ptr<PalStrategy<Decimal>> strategy) {
       Decimal pValue = std::get<0>(result);
       Decimal maxTestStat = std::get<1>(result);
       container_.addStrategy(pValue, maxTestStat, strategy);
     }
 
+    /**
+     * @brief Injects a pre-computed null distribution for deterministic testing.
+     *
+     * @param syntheticNull Sorted vector of null-distribution test statistics.
+     */
     void setSyntheticNullDistribution(const std::vector<Decimal>& syntheticNull)
     {
       container_.setSyntheticNullDistribution(syntheticNull);
     }
 
+    /// @brief Returns the total number of strategies entered for comparison.
     size_t getNumMultiComparisonStrategies() const {
       return container_.getNumStrategies();
     }
 
+    /// @brief Returns an iterator to the beginning of surviving strategies.
     ConstSurvivingStrategiesIterator beginSurvivingStrategies() const {
       return container_.beginSurvivingStrategies();
     }
 
+    /// @brief Returns an iterator past the end of surviving strategies.
     ConstSurvivingStrategiesIterator endSurvivingStrategies() const {
       return container_.endSurvivingStrategies();
     }
+
+    /// @brief Returns the number of strategies that survived the Holm-Romano-Wolf correction.
     size_t getNumSurvivingStrategies() const {
       return container_.getNumSurvivingStrategies();
     }
 
+    /// @brief Returns a const reference to the internal test-statistic container for external inspection.
     // Added for monotonicity test helper compatibility
     const TestStatisticContainer& getInternalContainer() const {
         return container_.getInternalContainer();
     }
 
+    /**
+     * @brief Applies the Holm-Romano-Wolf forward-order step-up correction and marks survivors.
+     *
+     * Prepares the empirical null distribution, applies the generic adjustPValues
+     * helper in forward order with Holm scaling (totalStrategies - rank) and
+     * monotonicity enforced via max(), then marks strategies whose adjusted
+     * p-values are at or below the significance threshold.
+     *
+     * @param pValueSignificanceLevel The significance threshold for declaring a strategy significant.
+     * @param partitionByFamily       Unused in this policy.
+     *
+     * @throws std::runtime_error If no strategies have been added.
+     */
     void correctForMultipleTests(const Decimal& pValueSignificanceLevel =
      DecimalConstants<Decimal>::SignificantPValue,
      [[maybe_unused]] bool partitionByFamily = false) {

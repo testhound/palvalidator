@@ -1,3 +1,14 @@
+/**
+ * @file RegimeMixStress.h
+ * @brief Regime-mix stress testing for bootstrap confidence intervals.
+ *
+ * Runs BCa bootstrap under user-specified regime-weight scenarios (e.g.,
+ * heavier bear-market weight) to produce stress-tested CI bounds and a
+ * formatted comparison table.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>

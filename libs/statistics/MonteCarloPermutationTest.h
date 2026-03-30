@@ -3,6 +3,16 @@
 // Proprietary and confidential
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
+
+/**
+ * @file MonteCarloPermutationTest.h
+ * @brief Monte Carlo permutation test framework for evaluating trading strategy significance.
+ *
+ * Provides MonteCarloPermuteMarketChanges (permutes market returns then re-runs
+ * the strategy), OriginalMCPT (Fisher–Yates shuffle on trade returns), and
+ * MonteCarloPayoffRatio (synthetic backtests for payoff ratio assessment).
+ */
+
 #ifndef __MONTE_CARLO_PERMUTATION_TEST_H
 #define __MONTE_CARLO_PERMUTATION_TEST_H 1
 
@@ -37,6 +47,7 @@ namespace mkc_timeseries
   typedef boost::accumulators::tag::median median_tag;
   typedef boost::accumulators::tag::count count_tag;
 
+  /// @brief Exception thrown when a Monte Carlo permutation test encounters an error.
   class MonteCarloPermutationException : public std::runtime_error
   {
   public:
@@ -48,6 +59,12 @@ namespace mkc_timeseries
     {}
   };
 
+  /**
+   * @brief Abstract base class for Monte Carlo permutation tests.
+   *
+   * @tparam Decimal    Numeric type for price and return calculations.
+   * @tparam ReturnType The result type of the permutation test (defaults to Decimal).
+   */
   template <class Decimal, typename ReturnType = Decimal> class MonteCarloPermutationTest
   {
   public:
@@ -95,11 +112,28 @@ namespace mkc_timeseries
 
   };
 
-  //
-  // class MonteCarloPermuteMarketChanges
-  //
-  // This class implements the MCPT by creating synthetic time series and permutting them
-  //
+  /**
+   * @brief Monte Carlo permutation test that creates synthetic time series and re-runs the strategy.
+   *
+   * For each permutation, the original OHLC time series is shuffled to produce a
+   * synthetic series. The strategy is then backtested on each synthetic series and
+   * the resulting test statistic is compared against the baseline (unpermuted) result
+   * to compute a p-value.
+   *
+   * The back-test result metric (e.g., cumulative return) and the permutation
+   * computation logic are controlled by policy template parameters, allowing the
+   * caller to swap in alternative statistics or parallelization strategies.
+   *
+   * This class also inherits from PermutationTestSubject so that observers can be
+   * attached to monitor progress during the permutation loop.
+   *
+   * @tparam Decimal              Numeric type for price and return calculations.
+   * @tparam _BackTestResultPolicy Policy that extracts the test statistic from a completed backtest.
+   * @tparam _ComputationPolicy   Policy that orchestrates the permutation loop and p-value computation.
+   *
+   * @see MonteCarloPermutationTest
+   * @see PermutationTestSubject
+   */
    template <class Decimal,
            template <class Decimal2> class _BackTestResultPolicy = CumulativeReturnPolicy,
            typename _ComputationPolicy = DefaultPermuteMarketChangesPolicy<Decimal,_BackTestResultPolicy<Decimal>>>
@@ -111,6 +145,16 @@ namespace mkc_timeseries
     // pull the policy’s ReturnType in
     using ReturnType = typename _ComputationPolicy::ReturnType;
     
+    /**
+     * @brief Constructs the permutation test with a backtester, iteration count, and significance level.
+     *
+     * @param backtester            Backtester preloaded with exactly one strategy and one security.
+     * @param numPermutations       Number of synthetic permutations to run. Must be >= 10.
+     * @param pValueSignificalLevel Significance threshold for the p-value (default: SignificantPValue).
+     *
+     * @throws MonteCarloPermutationException If numPermutations is 0 or < 10, or if
+     *         the backtester does not contain exactly one strategy.
+     */
     MonteCarloPermuteMarketChanges (std::shared_ptr<BackTester<Decimal>> backtester,
                                     uint32_t numPermutations,
 				    const Decimal& pValueSignificalLevel = DecimalConstants<Decimal>::SignificantPValue)
@@ -136,7 +180,20 @@ namespace mkc_timeseries
     ~MonteCarloPermuteMarketChanges()
     {}
 
-    // Runs the monte carlo permutation test and return the P-Value
+    /**
+     * @brief Runs the Monte Carlo permutation test and returns the p-value.
+     *
+     * Backtests the original (unpermuted) time series to establish a baseline
+     * statistic, then delegates to the computation policy for the permutation
+     * loop. Attached observers are forwarded to the policy so they receive
+     * progress notifications.
+     *
+     * @return The p-value (or policy-defined result) indicating the fraction
+     *         of permuted outcomes that meet or exceed the baseline statistic.
+     *
+     * @throws MonteCarloPermutationException If the strategy has no securities
+     *         or more than one security.
+     */
     ReturnType runPermutationTest()
     {
       std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy =
@@ -181,16 +238,33 @@ namespace mkc_timeseries
   };
 
 
-  //
-  // class OriginalMonteCarloPermutationTest
-  //
-  // This class implements the MCPT from the paper Monte-Carlo Evaluation of Trading Systems
-  //
-
+  /**
+   * @brief Original Monte Carlo permutation test using Fisher-Yates shuffle on trade returns.
+   *
+   * Implements the MCPT algorithm described in "Monte-Carlo Evaluation of Trading
+   * Systems." Rather than generating synthetic time series, this variant shuffles the
+   * position direction vector (long/short/flat) via the Fisher-Yates algorithm and
+   * recomputes the cumulative return for each shuffled permutation. The p-value is
+   * the fraction of permuted returns that equal or exceed the original strategy return.
+   *
+   * @tparam Decimal Numeric type for price and return calculations.
+   *
+   * @see MonteCarloPermutationTest
+   * @see MonteCarloPermuteMarketChanges
+   */
   template <class Decimal> class OriginalMCPT :
       public MonteCarloPermutationTest<Decimal>
   {
   public:
+    /**
+     * @brief Constructs the original MCPT with a backtester and iteration count.
+     *
+     * @param backtester      Backtester preloaded with exactly one strategy and one security.
+     * @param numPermutations Number of random permutations to evaluate. Must be >= 100.
+     *
+     * @throws MonteCarloPermutationException If numPermutations is 0 or < 100, or if
+     *         the backtester does not contain exactly one strategy.
+     */
     OriginalMCPT (std::shared_ptr<BackTester<Decimal>> backtester,
                   uint32_t numPermutations)
       : MonteCarloPermutationTest<Decimal>(),
@@ -214,7 +288,21 @@ namespace mkc_timeseries
     ~OriginalMCPT()
     {}
 
-    // Runs the monte carlo permutation test and return the P-Value
+    /**
+     * @brief Runs the permutation test and returns the p-value.
+     *
+     * Backtests the original strategy to obtain the baseline cumulative return,
+     * then delegates to permuteAndGetPValue() for the Fisher-Yates shuffle loop.
+     * If the strategy produces fewer than 4 closed trades the result is not
+     * trustworthy, so a p-value of 1.0 is returned immediately.
+     *
+     * @return P-value in [0, 1] representing the fraction of shuffled outcomes
+     *         that equal or exceed the baseline return. A value of 1.0 indicates
+     *         too few trades for a meaningful test.
+     *
+     * @throws MonteCarloPermutationException If the strategy has no securities
+     *         or more than one security.
+     */
     Decimal runPermutationTest()
     {
       std::shared_ptr<BacktesterStrategy<Decimal>> aStrategy =
@@ -243,6 +331,21 @@ namespace mkc_timeseries
                                   mNumPermutations);
     }
 
+    /**
+     * @brief Performs the Fisher-Yates shuffle loop and computes the p-value.
+     *
+     * For each of @p nreps repetitions the position direction vector is shuffled
+     * uniformly at random using the Fisher-Yates algorithm, and the dot product
+     * of shuffled positions with raw returns is computed. The p-value is
+     * (count + 1) / (nreps + 1), where count is the number of shuffled returns
+     * that equal or exceed the candidate (original) return.
+     *
+     * @param numTradingOpportunities Length of the position and returns arrays.
+     * @param rawReturnsVector        Per-bar returns for every trading opportunity.
+     * @param positionVector          Position direction (+1, -1, or 0) per bar.
+     * @param nreps                   Number of shuffle repetitions.
+     * @return P-value in (0, 1] indicating statistical significance.
+     */
     Decimal permuteAndGetPValue(int numTradingOpportunities,
                                 Decimal *rawReturnsVector,
                                 int *positionVector,
@@ -316,18 +419,35 @@ namespace mkc_timeseries
 
   ////////////////
 
-  //
-  // class MonteCarloPayoffRatio
-  //
-  // This class implements the MCPT by calculating the payoff ratio using a large number of trades.
-  // It does this be creating multiple ynthetic time series, backtesting the pattern and does
-  // does this a large number of times to converge on the payoff ratio
-  //
-
+  /**
+   * @brief Monte Carlo permutation test that estimates the payoff ratio via synthetic backtests.
+   *
+   * Creates multiple synthetic time series, backtests the strategy on each, and
+   * accumulates winning and losing trade returns across all permutations. The
+   * payoff ratio is computed as median(winners) / median(losers), converging to
+   * a stable estimate as the number of permutations increases.
+   *
+   * Permutations are dispatched in parallel using the Boost thread-pool runner.
+   * Accumulator access is serialized with a mutex to ensure thread safety.
+   *
+   * @tparam Decimal Numeric type for price and return calculations.
+   *
+   * @see MonteCarloPermutationTest
+   * @see SyntheticTimeSeries
+   */
   template <class Decimal> class MonteCarloPayoffRatio :
       public MonteCarloPermutationTest<Decimal>
   {
   public:
+    /**
+     * @brief Constructs the payoff-ratio permutation test.
+     *
+     * @param backtester      Backtester preloaded with exactly one strategy and one security.
+     * @param numPermutations Number of synthetic backtests to run. Must be >= 10.
+     *
+     * @throws MonteCarloPermutationException If numPermutations is 0 or < 10, or if
+     *         the backtester does not contain exactly one strategy.
+     */
     MonteCarloPayoffRatio (std::shared_ptr<BackTester<Decimal>> backtester,
                            uint32_t numPermutations)
       : MonteCarloPermutationTest<Decimal>(),
@@ -352,7 +472,20 @@ namespace mkc_timeseries
     ~MonteCarloPayoffRatio()
     {}
 
-    // Runs the monte carlo permutation test and return the simulated payoff ratio
+    /**
+     * @brief Runs the Monte Carlo permutation test and returns the simulated payoff ratio.
+     *
+     * Dispatches @c mNumPermutations synthetic backtests in parallel. Each
+     * permutation clones the strategy with a synthetic time series, runs the
+     * backtest, and accumulates winner and loser trade returns into Boost
+     * accumulators. The payoff ratio is median(winners) / median(losers).
+     *
+     * @return The estimated payoff ratio, or zero if there are no winning or
+     *         losing trades across all permutations.
+     *
+     * @throws MonteCarloPermutationException If the strategy has no securities
+     *         or more than one security.
+     */
     /* //original code, safe to delete after parallelization
     Decimal runPermutationTest()
     {

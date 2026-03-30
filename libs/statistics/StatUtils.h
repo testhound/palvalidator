@@ -1,15 +1,27 @@
+/**
+ * @file StatUtils.h
+ * @brief Core statistical utilities for bootstrap confidence intervals and permutation tests.
+ *
+ * Provides StatisticSupport (lower-bound constraints), GeoMeanStat /
+ * GeoMeanFromLogBarsStat (geometric-mean functors), StatUtils (arithmetic
+ * mean, median, profit factor, skewness, kurtosis, quantile estimation),
+ * and an extensible policy framework for robust log-profit-factor computation.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 #include <vector>
 #include <cmath>
 #include <tuple>
 #include <optional>
 #include <random>
-#include <functional> 
+#include <functional>
 #include <numeric> // Required for std::accumulate
 #include <algorithm>
 #include <cstddef>
 #include <type_traits>
-#include <array> 
+#include <array>
 #include <cstdint>
 #include <boost/container/small_vector.hpp>
 #include "DecimalConstants.h"
@@ -24,6 +36,12 @@ namespace mkc_timeseries
   // Forward declare StatUtils so ComputeFast can reference it
   template <class Decimal> struct StatUtils;
 
+  /**
+   * @brief Value type encoding a lower-bound support constraint for a bootstrap statistic.
+   *
+   * Used by the automatic selector to penalise or reject intervals whose lower bound
+   * violates the statistic's natural domain (e.g., profit factor must be > 0).
+   */
   class StatisticSupport final
   {
   public:

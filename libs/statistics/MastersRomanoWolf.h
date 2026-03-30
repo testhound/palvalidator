@@ -1,3 +1,14 @@
+/**
+ * @file MastersRomanoWolf.h
+ * @brief Original Masters Romano–Wolf stepwise permutation test implementation.
+ *
+ * Implements IMastersSelectionBiasAlgorithm using the three-stage stepwise
+ * approach: (1) compute unadjusted p-values, (2) apply Romano–Wolf step-down
+ * correction, (3) identify surviving strategies.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 #include <stdexcept> // Required for std::invalid_argument
 #include <unordered_set>

@@ -1,4 +1,14 @@
-// StationaryMaskResamplers.h
+/**
+ * @file StationaryMaskResamplers.h
+ * @brief Politis–Romano stationary bootstrap resamplers using a Bernoulli restart mask.
+ *
+ * Provides make_restart_mask(), value-mode and index-mode mask resamplers,
+ * the legacy StationaryBlockValueResampler, and the BCa-compatible
+ * StationaryMaskValueResamplerAdapter with Künsch (1989) delete-block jackknife.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 #include <vector>
 #include <random>
@@ -89,10 +99,23 @@ namespace palvalidator
       return mask;
     }
 
+    /**
+     * @brief Geometric-block stationary bootstrap resampler (legacy, value mode).
+     *
+     * Generates bootstrap samples by drawing contiguous blocks of geometrically
+     * distributed length from a doubled (wrapped) copy of the input series.
+     *
+     * @tparam Decimal Numeric value type.
+     */
     template <class Decimal>
     class StationaryBlockValueResampler
     {
     public:
+      /**
+       * @brief Constructs the resampler with mean block length L.
+       * @param L Mean block length (must be >= 1).
+       * @throws std::invalid_argument If L < 1.
+       */
       explicit StationaryBlockValueResampler(std::size_t L)
 	: m_L(L)
       {

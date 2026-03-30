@@ -1,4 +1,16 @@
-// TradingBootstrapFactory.h
+/**
+ * @file TradingBootstrapFactory.h
+ * @brief Factory for constructing bootstrap engines with hierarchical CRN streams.
+ *
+ * Provides TradingBootstrapFactory, which creates BCa, Basic, Normal,
+ * Percentile, M-out-of-N, and Percentile-T bootstrap engines pre-configured
+ * with Common Random Number (CRN) keys derived from a master seed and a
+ * hierarchy of domain-specific tags (strategy, metric, method, block length,
+ * fold).
+ *
+ * Copyright (C) MKC Associates, LLC - All Rights Reserved.
+ * Written by Michael K. Collison
+ */
 #pragma once
 #include <cstdint>
 #include <vector>
@@ -51,7 +63,7 @@ namespace BootstrapMethods {
  * @brief Factory for creating bootstrap engines with hierarchical Common Random Numbers (CRN).
  *
  * @section overview Overview
- * 
+ *
  * TradingBootstrapFactory constructs various bootstrap analysis engines (BCa, Basic, Normal,
  * Percentile, M-out-of-N, Percentile-T) with properly configured CRN streams. This ensures
  * reproducibility, independence between different analyses, and variance reduction when
@@ -114,7 +126,7 @@ namespace BootstrapMethods {
  * @code
  * // Create factory with master seed
  * TradingBootstrapFactory<> factory(0x123456789ABCDEF0);
- * 
+ *
  * // Create BCa bootstrap for geometric mean
  * auto bcaEngine = factory.makeBCa(
  *     returns,
@@ -132,19 +144,19 @@ namespace BootstrapMethods {
  * @subsection ex_multi Multiple Metrics for Same Strategy
  * @code
  * TradingBootstrapFactory<> factory(masterSeed);
- * 
+ *
  * // Geometric mean bootstrap
  * auto [geoEngine, geoCRN] = factory.makePercentile<double, GeoMeanStat, ...>(
  *     1000, 0.95, resampler, myStrategy,
  *     BootstrapStages::GEO_MEAN, 5, BootstrapStages::NO_FOLD
  * );
- * 
+ *
  * // Profit factor bootstrap (independent stream - no correlation with geo)
  * auto [pfEngine, pfCRN] = factory.makePercentile<double, ProfitFactorStat, ...>(
  *     1000, 0.95, resampler, myStrategy,
  *     BootstrapStages::PROFIT_FACTOR, 5, BootstrapStages::NO_FOLD
  * );
- * 
+ *
  * // Run both with their independent CRN streams
  * auto geoResult = geoEngine.run(returns, geoMeanStat, geoCRN);
  * auto pfResult = pfEngine.run(returns, pfStat, pfCRN);
@@ -154,7 +166,7 @@ namespace BootstrapMethods {
  * @code
  * TradingBootstrapFactory<> factory(masterSeed);
  * const int numFolds = 5;
- * 
+ *
  * for (int fold = 0; fold < numFolds; ++fold) {
  *     auto [engine, crn] = factory.makeBasic<double, MeanStat, ...>(
  *         1000, 0.95, resampler, myStrategy,
@@ -162,7 +174,7 @@ namespace BootstrapMethods {
  *         5,
  *         BootstrapStages::FOLD_1 + fold  // Each fold gets independent stream
  *     );
- *     
+ *
  *     auto result = engine.run(foldData[fold], meanStat, crn);
  *     // Store result for fold
  * }
@@ -172,17 +184,17 @@ namespace BootstrapMethods {
  * @code
  * // Compare block lengths using synchronized randomness
  * TradingBootstrapFactory<> factory(masterSeed);
- * 
+ *
  * auto [engine_L5, crn_L5] = factory.makePercentile<...>(
  *     1000, 0.95, resampler_L5, myStrategy,
  *     BootstrapStages::GEO_MEAN, 5, BootstrapStages::NO_FOLD
  * );
- * 
+ *
  * auto [engine_L10, crn_L10] = factory.makePercentile<...>(
  *     1000, 0.95, resampler_L10, myStrategy,
  *     BootstrapStages::GEO_MEAN, 10, BootstrapStages::NO_FOLD
  * );
- * 
+ *
  * // These share masterSeed, strategyId, stageTag, methodId, and fold
  * // Only blockLength differs → variance reduction when comparing
  * @endcode
@@ -194,18 +206,18 @@ namespace BootstrapMethods {
  * // 1. Each method is independently validated
  * // 2. Methods don't all fail on the same pathological resamples
  * // 3. True robustness testing for method selection
- * 
+ *
  * TradingBootstrapFactory<> factory(masterSeed);
- * 
+ *
  * // BCa gets BootstrapMethods::BCA → unique resamples
  * auto bcaEngine = factory.makeBCa(...);
- * 
+ *
  * // Percentile gets BootstrapMethods::PERCENTILE → different resamples
  * auto [pEngine, pCRN] = factory.makePercentile(...);
- * 
+ *
  * // Basic gets BootstrapMethods::BASIC → different resamples
  * auto [bEngine, bCRN] = factory.makeBasic(...);
- * 
+ *
  * // Even though all methods analyze the same strategy with same parameters,
  * // they each validate on independent bootstrap draws
  * @endcode
@@ -272,11 +284,41 @@ template<class Engine = randutils::mt19937_rng>
 class TradingBootstrapFactory
 {
 public:
+  /**
+   * @brief Constructs a factory seeded with the given master seed for CRN reproducibility.
+   *
+   * All bootstrap engines created by this factory derive their CRN keys from
+   * this seed, ensuring reproducible and independent random streams across
+   * strategies, metrics, methods, and folds.
+   *
+   * @param masterSeed  Root seed for the CRN hierarchy.
+   */
   explicit TradingBootstrapFactory(uint64_t masterSeed) : m_masterSeed(masterSeed) {}
 
   // ========== Overloads accepting BacktesterStrategy (calls deterministicHashCode()) ==========
 
-  // Full control: custom statFn + BacktesterStrategy object
+  /**
+   * @brief Creates a BCa bootstrap engine with a custom statistic and BacktesterStrategy identity.
+   *
+   * Constructs a bias-corrected and accelerated (BCa) bootstrap engine for
+   * bar-level return data. The strategy's deterministic hash code is used as
+   * the CRN strategy tag.
+   *
+   * @tparam Decimal   Numeric type for returns (e.g., double, dec::decimal<8>).
+   * @tparam Resampler Resampling policy (e.g., IIDResampler, StationaryBlockResampler).
+   * @tparam Executor  Parallel execution policy (default: SingleThreadExecutor).
+   * @param  returns       The observed return series.
+   * @param  B             Number of bootstrap resamples.
+   * @param  CL            Confidence level in (0, 1), e.g. 0.95 for 95%.
+   * @param  statFn        User-supplied statistic function applied to each resample.
+   * @param  sampler       Resampling policy instance.
+   * @param  strategy      BacktesterStrategy whose hash seeds the CRN stream.
+   * @param  stageTag      Metric identifier from BootstrapStages.
+   * @param  L             Block length parameter for the CRN hierarchy.
+   * @param  fold          Cross-validation fold identifier.
+   * @param  interval_type Confidence interval sidedness (default: TWO_SIDED).
+   * @return A fully configured BCaBootStrap engine with CRNEngineProvider.
+   */
   template<class Decimal, class Resampler,
            class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<Decimal>& returns,
@@ -295,7 +337,25 @@ public:
         strategy.deterministicHashCode(), stageTag, L, fold, interval_type);
   }
 
-  // Convenience: default statistic (mean) + BacktesterStrategy object
+  /**
+   * @brief Creates a BCa bootstrap engine using the arithmetic mean and BacktesterStrategy identity.
+   *
+   * Convenience overload that defaults the statistic to StatUtils::computeMean.
+   *
+   * @tparam Decimal   Numeric type for returns.
+   * @tparam Resampler Resampling policy.
+   * @tparam Executor  Parallel execution policy (default: SingleThreadExecutor).
+   * @param  returns       The observed return series.
+   * @param  B             Number of bootstrap resamples.
+   * @param  CL            Confidence level in (0, 1).
+   * @param  sampler       Resampling policy instance.
+   * @param  strategy      BacktesterStrategy whose hash seeds the CRN stream.
+   * @param  stageTag      Metric identifier from BootstrapStages.
+   * @param  L             Block length parameter for the CRN hierarchy.
+   * @param  fold          Cross-validation fold identifier.
+   * @param  interval_type Confidence interval sidedness (default: TWO_SIDED).
+   * @return A fully configured BCaBootStrap engine with CRNEngineProvider.
+   */
   template<class Decimal, class Resampler,
            class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<Decimal>& returns,
@@ -318,7 +378,27 @@ public:
 
   // ========== Overloads accepting raw uint64_t strategy ID ==========
 
-  // Full control: custom statFn + raw strategy ID
+  /**
+   * @brief Creates a BCa bootstrap engine with a custom statistic and raw strategy ID.
+   *
+   * Identical to the BacktesterStrategy overload but accepts a pre-computed
+   * strategy identifier directly, avoiding the need for a strategy object.
+   *
+   * @tparam Decimal   Numeric type for returns.
+   * @tparam Resampler Resampling policy.
+   * @tparam Executor  Parallel execution policy (default: SingleThreadExecutor).
+   * @param  returns       The observed return series.
+   * @param  B             Number of bootstrap resamples.
+   * @param  CL            Confidence level in (0, 1).
+   * @param  statFn        User-supplied statistic function.
+   * @param  sampler       Resampling policy instance.
+   * @param  strategyId    Raw strategy identifier for the CRN hierarchy.
+   * @param  stageTag      Metric identifier from BootstrapStages.
+   * @param  L             Block length parameter for the CRN hierarchy.
+   * @param  fold          Cross-validation fold identifier.
+   * @param  interval_type Confidence interval sidedness (default: TWO_SIDED).
+   * @return A fully configured BCaBootStrap engine with CRNEngineProvider.
+   */
   template<class Decimal, class Resampler,
            class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<Decimal>& returns,
@@ -337,7 +417,26 @@ public:
         strategyId, stageTag, L, fold, interval_type);
   }
 
-  // Convenience: default statistic (mean) + raw strategy ID
+  /**
+   * @brief Creates a BCa bootstrap engine using the arithmetic mean and raw strategy ID.
+   *
+   * Convenience overload that defaults the statistic to StatUtils::computeMean
+   * and accepts a raw strategy identifier.
+   *
+   * @tparam Decimal   Numeric type for returns.
+   * @tparam Resampler Resampling policy.
+   * @tparam Executor  Parallel execution policy (default: SingleThreadExecutor).
+   * @param  returns       The observed return series.
+   * @param  B             Number of bootstrap resamples.
+   * @param  CL            Confidence level in (0, 1).
+   * @param  sampler       Resampling policy instance.
+   * @param  strategyId    Raw strategy identifier for the CRN hierarchy.
+   * @param  stageTag      Metric identifier from BootstrapStages.
+   * @param  L             Block length parameter for the CRN hierarchy.
+   * @param  fold          Cross-validation fold identifier.
+   * @param  interval_type Confidence interval sidedness (default: TWO_SIDED).
+   * @return A fully configured BCaBootStrap engine with CRNEngineProvider.
+   */
   template<class Decimal, class Resampler,
            class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<Decimal>& returns,
@@ -376,7 +475,28 @@ public:
   //        strategy, BootstrapStages::GEO_MEAN, 1, BootstrapStages::NO_FOLD);
   // ===========================================================================
 
-  // Full control: explicit statFn + BacktesterStrategy
+  /**
+   * @brief Creates a trade-level BCa bootstrap engine with a BacktesterStrategy identity.
+   *
+   * Operates on a vector of Trade objects rather than raw returns. The caller
+   * must supply an explicit statistic function because there is no default
+   * statistic for trade vectors.
+   *
+   * @tparam Decimal   Numeric type used within Trade objects.
+   * @tparam Resampler Resampling policy (must accept Trade<Decimal> vectors).
+   * @tparam Executor  Parallel execution policy (default: SingleThreadExecutor).
+   * @param  trades        The observed trade vector.
+   * @param  B             Number of bootstrap resamples.
+   * @param  CL            Confidence level in (0, 1).
+   * @param  statFn        Statistic function mapping a trade vector to a scalar.
+   * @param  sampler       Resampling policy instance for Trade<Decimal>.
+   * @param  strategy      BacktesterStrategy whose hash seeds the CRN stream.
+   * @param  stageTag      Metric identifier from BootstrapStages.
+   * @param  L             Block length parameter for the CRN hierarchy.
+   * @param  fold          Cross-validation fold identifier.
+   * @param  interval_type Confidence interval sidedness (default: TWO_SIDED).
+   * @return A BCaBootStrap engine parameterised on Trade<Decimal> as SampleType.
+   */
   template<class Decimal, class Resampler,
            class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<mkc_timeseries::Trade<Decimal>>& trades,
@@ -396,7 +516,27 @@ public:
         stageTag, L, fold, interval_type);
   }
 
-  // Full control: explicit statFn + raw strategy ID
+  /**
+   * @brief Creates a trade-level BCa bootstrap engine with a raw strategy ID.
+   *
+   * Same as the BacktesterStrategy trade-level overload but accepts a
+   * pre-computed strategy identifier directly.
+   *
+   * @tparam Decimal   Numeric type used within Trade objects.
+   * @tparam Resampler Resampling policy (must accept Trade<Decimal> vectors).
+   * @tparam Executor  Parallel execution policy (default: SingleThreadExecutor).
+   * @param  trades        The observed trade vector.
+   * @param  B             Number of bootstrap resamples.
+   * @param  CL            Confidence level in (0, 1).
+   * @param  statFn        Statistic function mapping a trade vector to a scalar.
+   * @param  sampler       Resampling policy instance for Trade<Decimal>.
+   * @param  strategyId    Raw strategy identifier for the CRN hierarchy.
+   * @param  stageTag      Metric identifier from BootstrapStages.
+   * @param  L             Block length parameter for the CRN hierarchy.
+   * @param  fold          Cross-validation fold identifier.
+   * @param  interval_type Confidence interval sidedness (default: TWO_SIDED).
+   * @return A BCaBootStrap engine parameterised on Trade<Decimal> as SampleType.
+   */
   template<class Decimal, class Resampler,
            class Executor = concurrency::SingleThreadExecutor>
   auto makeBCa(const std::vector<mkc_timeseries::Trade<Decimal>>& trades,
@@ -436,7 +576,30 @@ public:
   //  would imply support for a path that always detonates at compile time.
   // ===========================================================================
 
-  // BacktesterStrategy overload
+  /**
+   * @brief Creates an M-out-of-N percentile bootstrap engine with a BacktesterStrategy identity.
+   *
+   * Constructs an MOutOfNPercentileBootstrap that draws sub-samples of size
+   * m = m_ratio * n from the original data. Useful when the full-sample
+   * bootstrap is unreliable (e.g., heavy tails or dependent data).
+   *
+   * @tparam Decimal    Numeric type for returns.
+   * @tparam Sampler    Statistic functor type.
+   * @tparam Resampler  Resampling policy.
+   * @tparam Executor   Parallel execution policy (default: SingleThreadExecutor).
+   * @tparam SampleType Element type of the data vector (default: Decimal; use Trade<Decimal> for trade-level).
+   * @param  B              Number of bootstrap resamples.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  m_ratio        Sub-sample ratio m/n, in (0, 1].
+   * @param  resampler      Resampling policy instance.
+   * @param  strategy       BacktesterStrategy whose hash seeds the CRN stream.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  rescale_to_n   If true, rescale the sub-sample quantiles to full-sample scale.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @return A pair of (MOutOfNPercentileBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor   = concurrency::SingleThreadExecutor,
            class SampleType = Decimal>
@@ -464,7 +627,29 @@ public:
     return std::make_pair(std::move(mn), std::move(crn));
   }
 
-  // Raw strategyId overload
+  /**
+   * @brief Creates an M-out-of-N percentile bootstrap engine with a raw strategy ID.
+   *
+   * Same as the BacktesterStrategy overload but accepts a pre-computed
+   * strategy identifier directly.
+   *
+   * @tparam Decimal    Numeric type for returns.
+   * @tparam Sampler    Statistic functor type.
+   * @tparam Resampler  Resampling policy.
+   * @tparam Executor   Parallel execution policy (default: SingleThreadExecutor).
+   * @tparam SampleType Element type of the data vector (default: Decimal).
+   * @param  B              Number of bootstrap resamples.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  m_ratio        Sub-sample ratio m/n, in (0, 1].
+   * @param  resampler      Resampling policy instance.
+   * @param  strategyId     Raw strategy identifier for the CRN hierarchy.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  rescale_to_n   If true, rescale the sub-sample quantiles to full-sample scale.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @return A pair of (MOutOfNPercentileBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor   = concurrency::SingleThreadExecutor,
            class SampleType = Decimal>
@@ -492,6 +677,29 @@ public:
     return std::make_pair(std::move(mn), std::move(crn));
   }
 
+  /**
+   * @brief Creates an adaptive M-out-of-N bootstrap with TailVolatilityAdaptivePolicy and BacktesterStrategy identity.
+   *
+   * Delegates to MOutOfNPercentileBootstrap::createAdaptive, which selects the
+   * sub-sample size m automatically based on the tail volatility of the data.
+   * Does not expose SampleType because adaptive mode is blocked at the trade
+   * level by a static_assert inside MOutOfNPercentileBootstrap.
+   *
+   * @tparam Decimal   Numeric type for returns.
+   * @tparam Sampler   Statistic functor type.
+   * @tparam Resampler Resampling policy.
+   * @tparam Executor  Parallel execution policy (default: SingleThreadExecutor).
+   * @param  B              Number of bootstrap resamples.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  resampler      Resampling policy instance.
+   * @param  strategy       BacktesterStrategy whose hash seeds the CRN stream.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  rescale_to_n   If true, rescale the sub-sample quantiles to full-sample scale.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @return A pair of (MOutOfNPercentileBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor = concurrency::SingleThreadExecutor>
   auto makeAdaptiveMOutOfN(std::size_t B, double CL,
@@ -521,7 +729,27 @@ public:
     return std::make_pair(std::move(mn), std::move(crn));
   }
 
-  // Raw strategyId overload: adaptive m/n (TailVolatilityAdaptivePolicy by default)
+  /**
+   * @brief Creates an adaptive M-out-of-N bootstrap with TailVolatilityAdaptivePolicy and raw strategy ID.
+   *
+   * Same as the BacktesterStrategy overload but accepts a pre-computed
+   * strategy identifier directly.
+   *
+   * @tparam Decimal   Numeric type for returns.
+   * @tparam Sampler   Statistic functor type.
+   * @tparam Resampler Resampling policy.
+   * @tparam Executor  Parallel execution policy (default: SingleThreadExecutor).
+   * @param  B              Number of bootstrap resamples.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  resampler      Resampling policy instance.
+   * @param  strategyId     Raw strategy identifier for the CRN hierarchy.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  rescale_to_n   If true, rescale the sub-sample quantiles to full-sample scale.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @return A pair of (MOutOfNPercentileBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor = concurrency::SingleThreadExecutor>
   auto makeAdaptiveMOutOfN(std::size_t B, double CL,
@@ -553,7 +781,31 @@ public:
   //                     PercentileTBootstrap
   // ===========================================================================
 
-  // Returns (bootstrap, CRNRng); Executor defaults to SingleThreadExecutor
+  /**
+   * @brief Creates a Percentile-T (double bootstrap) engine with a BacktesterStrategy identity.
+   *
+   * Constructs a PercentileTBootstrap that performs a nested (outer + inner)
+   * bootstrap to studentize the pivot statistic. Returns the engine paired
+   * with its CRNRng for caller-managed streaming.
+   *
+   * @tparam Decimal    Numeric type for returns.
+   * @tparam Sampler    Statistic functor type.
+   * @tparam Resampler  Resampling policy.
+   * @tparam Executor   Parallel execution policy (default: SingleThreadExecutor).
+   * @tparam SampleType Element type of the data vector (default: Decimal).
+   * @param  B_outer        Number of outer-loop bootstrap resamples.
+   * @param  B_inner        Number of inner-loop bootstrap resamples per outer replicate.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  resampler      Resampling policy instance.
+   * @param  strategy       BacktesterStrategy whose hash seeds the CRN stream.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @param  m_ratio_outer  Sub-sample ratio for the outer loop (default: 1.0).
+   * @param  m_ratio_inner  Sub-sample ratio for the inner loop (default: 1.0).
+   * @return A pair of (PercentileTBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor   = concurrency::SingleThreadExecutor,
            class SampleType = Decimal>
@@ -582,7 +834,30 @@ public:
     return std::make_pair(std::move(pt), std::move(crn));
   }
 
-  // Raw strategyId
+  /**
+   * @brief Creates a Percentile-T (double bootstrap) engine with a raw strategy ID.
+   *
+   * Same as the BacktesterStrategy overload but accepts a pre-computed
+   * strategy identifier directly.
+   *
+   * @tparam Decimal    Numeric type for returns.
+   * @tparam Sampler    Statistic functor type.
+   * @tparam Resampler  Resampling policy.
+   * @tparam Executor   Parallel execution policy (default: SingleThreadExecutor).
+   * @tparam SampleType Element type of the data vector (default: Decimal).
+   * @param  B_outer        Number of outer-loop bootstrap resamples.
+   * @param  B_inner        Number of inner-loop bootstrap resamples per outer replicate.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  resampler      Resampling policy instance.
+   * @param  strategyId     Raw strategy identifier for the CRN hierarchy.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @param  m_ratio_outer  Sub-sample ratio for the outer loop (default: 1.0).
+   * @param  m_ratio_inner  Sub-sample ratio for the inner loop (default: 1.0).
+   * @return A pair of (PercentileTBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor   = concurrency::SingleThreadExecutor,
            class SampleType = Decimal>
@@ -608,6 +883,26 @@ public:
     return std::make_pair(std::move(pt), std::move(crn));
   }
 
+  /**
+   * @brief Creates a studentized-T bootstrap engine compatible with BCa diagnostics.
+   *
+   * Constructs a BCaCompatibleTBootstrap that combines the Percentile-T
+   * studentization approach with BCa-style bias correction. Accepts a raw
+   * strategy ID only; no BacktesterStrategy overload is provided.
+   *
+   * @tparam Decimal   Numeric type for returns.
+   * @tparam Resampler Resampling policy.
+   * @param  returns       The observed return series.
+   * @param  B             Number of bootstrap resamples.
+   * @param  CL            Confidence level in (0, 1).
+   * @param  statFn        User-supplied statistic function.
+   * @param  sampler       Resampling policy instance.
+   * @param  strategyId    Raw strategy identifier for the CRN hierarchy.
+   * @param  stageTag      Metric identifier from BootstrapStages.
+   * @param  L             Block length parameter for the CRN hierarchy.
+   * @param  fold          Cross-validation fold identifier.
+   * @return A fully configured BCaCompatibleTBootstrap engine.
+   */
   template<class Decimal, class Resampler>
   auto makeStudentizedT(const std::vector<Decimal>& returns,
 			unsigned B, double CL,
@@ -616,9 +911,9 @@ public:
 			uint64_t strategyId,
 			uint64_t stageTag, uint64_t L, uint64_t fold)
     -> palvalidator::analysis::BCaCompatibleTBootstrap<
-    Decimal, 
-    Resampler, 
-    Engine, 
+    Decimal,
+    Resampler,
+    Engine,
     mkc_timeseries::rng_utils::CRNEngineProvider<Engine>>
   {
     using PTB = palvalidator::analysis::BCaCompatibleTBootstrap<
@@ -636,7 +931,28 @@ public:
     return PTB(returns, B, CL, std::move(statFn), std::move(sampler), prov);
   }
 
-  // BacktesterStrategy overload
+  /**
+   * @brief Creates a basic bootstrap engine with a BacktesterStrategy identity.
+   *
+   * Constructs a BasicBootstrap that computes confidence intervals using the
+   * simple pivot method (2*theta_hat - theta_star). Returns the engine paired
+   * with its CRNRng for caller-managed streaming.
+   *
+   * @tparam Decimal    Numeric type for returns.
+   * @tparam Sampler    Statistic functor type.
+   * @tparam Resampler  Resampling policy.
+   * @tparam Executor   Parallel execution policy (default: SingleThreadExecutor).
+   * @tparam SampleType Element type of the data vector (default: Decimal).
+   * @param  B              Number of bootstrap resamples.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  resampler      Resampling policy instance.
+   * @param  strategy       BacktesterStrategy whose hash seeds the CRN stream.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @return A pair of (BasicBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor   = concurrency::SingleThreadExecutor,
            class SampleType = Decimal>
@@ -663,7 +979,27 @@ public:
     return std::make_pair(std::move(bb), std::move(crn));
   }
 
-  // Raw strategyId overload
+  /**
+   * @brief Creates a basic bootstrap engine with a raw strategy ID.
+   *
+   * Same as the BacktesterStrategy overload but accepts a pre-computed
+   * strategy identifier directly.
+   *
+   * @tparam Decimal    Numeric type for returns.
+   * @tparam Sampler    Statistic functor type.
+   * @tparam Resampler  Resampling policy.
+   * @tparam Executor   Parallel execution policy (default: SingleThreadExecutor).
+   * @tparam SampleType Element type of the data vector (default: Decimal).
+   * @param  B              Number of bootstrap resamples.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  resampler      Resampling policy instance.
+   * @param  strategyId     Raw strategy identifier for the CRN hierarchy.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @return A pair of (BasicBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor   = concurrency::SingleThreadExecutor,
            class SampleType = Decimal>
@@ -689,7 +1025,28 @@ public:
     return std::make_pair(std::move(bb), std::move(crn));
   }
 
-  // BacktesterStrategy overload for NormalBootstrap
+  /**
+   * @brief Creates a normal-approximation bootstrap engine with a BacktesterStrategy identity.
+   *
+   * Constructs a NormalBootstrap that computes confidence intervals assuming
+   * the bootstrap distribution of the statistic is approximately Gaussian.
+   * Returns the engine paired with its CRNRng.
+   *
+   * @tparam Decimal    Numeric type for returns.
+   * @tparam Sampler    Statistic functor type.
+   * @tparam Resampler  Resampling policy.
+   * @tparam Executor   Parallel execution policy (default: SingleThreadExecutor).
+   * @tparam SampleType Element type of the data vector (default: Decimal).
+   * @param  B              Number of bootstrap resamples.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  resampler      Resampling policy instance.
+   * @param  strategy       BacktesterStrategy whose hash seeds the CRN stream.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @return A pair of (NormalBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor   = concurrency::SingleThreadExecutor,
            class SampleType = Decimal>
@@ -716,7 +1073,27 @@ public:
     return std::make_pair(std::move(nb), std::move(crn));
   }
 
-  // Raw strategyId overload for NormalBootstrap
+  /**
+   * @brief Creates a normal-approximation bootstrap engine with a raw strategy ID.
+   *
+   * Same as the BacktesterStrategy overload but accepts a pre-computed
+   * strategy identifier directly.
+   *
+   * @tparam Decimal    Numeric type for returns.
+   * @tparam Sampler    Statistic functor type.
+   * @tparam Resampler  Resampling policy.
+   * @tparam Executor   Parallel execution policy (default: SingleThreadExecutor).
+   * @tparam SampleType Element type of the data vector (default: Decimal).
+   * @param  B              Number of bootstrap resamples.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  resampler      Resampling policy instance.
+   * @param  strategyId     Raw strategy identifier for the CRN hierarchy.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @return A pair of (NormalBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor   = concurrency::SingleThreadExecutor,
            class SampleType = Decimal>
@@ -742,7 +1119,28 @@ public:
     return std::make_pair(std::move(nb), std::move(crn));
   }
 
-  // BacktesterStrategy overload for PercentileBootstrap
+  /**
+   * @brief Creates a percentile bootstrap engine with a BacktesterStrategy identity.
+   *
+   * Constructs a PercentileBootstrap that computes confidence intervals
+   * directly from the quantiles of the bootstrap distribution. Returns the
+   * engine paired with its CRNRng.
+   *
+   * @tparam Decimal    Numeric type for returns.
+   * @tparam Sampler    Statistic functor type.
+   * @tparam Resampler  Resampling policy.
+   * @tparam Executor   Parallel execution policy (default: SingleThreadExecutor).
+   * @tparam SampleType Element type of the data vector (default: Decimal).
+   * @param  B              Number of bootstrap resamples.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  resampler      Resampling policy instance.
+   * @param  strategy       BacktesterStrategy whose hash seeds the CRN stream.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @return A pair of (PercentileBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor   = concurrency::SingleThreadExecutor,
            class SampleType = Decimal>
@@ -769,7 +1167,27 @@ public:
     return std::make_pair(std::move(pb), std::move(crn));
   }
 
-  // Raw strategyId overload for PercentileBootstrap
+  /**
+   * @brief Creates a percentile bootstrap engine with a raw strategy ID.
+   *
+   * Same as the BacktesterStrategy overload but accepts a pre-computed
+   * strategy identifier directly.
+   *
+   * @tparam Decimal    Numeric type for returns.
+   * @tparam Sampler    Statistic functor type.
+   * @tparam Resampler  Resampling policy.
+   * @tparam Executor   Parallel execution policy (default: SingleThreadExecutor).
+   * @tparam SampleType Element type of the data vector (default: Decimal).
+   * @param  B              Number of bootstrap resamples.
+   * @param  CL             Confidence level in (0, 1).
+   * @param  resampler      Resampling policy instance.
+   * @param  strategyId     Raw strategy identifier for the CRN hierarchy.
+   * @param  stageTag       Metric identifier from BootstrapStages.
+   * @param  L              Block length parameter for the CRN hierarchy.
+   * @param  fold           Cross-validation fold identifier.
+   * @param  interval_type  Confidence interval sidedness (default: TWO_SIDED).
+   * @return A pair of (PercentileBootstrap engine, CRNRng stream).
+   */
   template<class Decimal, class Sampler, class Resampler,
            class Executor   = concurrency::SingleThreadExecutor,
            class SampleType = Decimal>
@@ -794,11 +1212,32 @@ public:
     Bootstrap pb(B, CL, resampler, interval_type);
     return std::make_pair(std::move(pb), std::move(crn));
   }
-  
+
 private:
+  /// Master seed from which all CRN keys in this factory are derived.
   uint64_t m_masterSeed;
 
-  // Common implementation used by all bar-level overloads
+  /**
+   * @brief Shared implementation for all bar-level BCa overloads.
+   *
+   * Constructs a CRNEngineProvider from the hierarchical key and forwards
+   * all arguments to the BCaBootStrap constructor.
+   *
+   * @tparam Decimal   Numeric type for returns.
+   * @tparam Resampler Resampling policy.
+   * @tparam Executor  Parallel execution policy.
+   * @param  returns       The observed return series.
+   * @param  B             Number of bootstrap resamples.
+   * @param  CL            Confidence level in (0, 1).
+   * @param  statFn        User-supplied statistic function.
+   * @param  sampler       Resampling policy instance.
+   * @param  strategyHash  Strategy identifier for the CRN hierarchy.
+   * @param  stageTag      Metric identifier from BootstrapStages.
+   * @param  L             Block length parameter.
+   * @param  fold          Cross-validation fold identifier.
+   * @param  interval_type Confidence interval sidedness.
+   * @return A fully configured BCaBootStrap engine.
+   */
   template<class Decimal, class Resampler,
            class Executor = concurrency::SingleThreadExecutor>
   auto makeBCaImpl(const std::vector<Decimal>& returns,
@@ -841,6 +1280,28 @@ private:
   // strategy/metric each draw from independent streams without changing
   // the key structure.
   // ---------------------------------------------------------------------------
+
+  /**
+   * @brief Shared implementation for all trade-level BCa overloads.
+   *
+   * Mirrors makeBCaImpl but operates on Trade<Decimal> vectors. The CRN
+   * key hierarchy is identical to bar-level BCa.
+   *
+   * @tparam Decimal   Numeric type used within Trade objects.
+   * @tparam Resampler Resampling policy.
+   * @tparam Executor  Parallel execution policy.
+   * @param  trades        The observed trade vector.
+   * @param  B             Number of bootstrap resamples.
+   * @param  CL            Confidence level in (0, 1).
+   * @param  statFn        Statistic function mapping a trade vector to a scalar.
+   * @param  sampler       Resampling policy instance.
+   * @param  strategyHash  Strategy identifier for the CRN hierarchy.
+   * @param  stageTag      Metric identifier from BootstrapStages.
+   * @param  L             Block length parameter.
+   * @param  fold          Cross-validation fold identifier.
+   * @param  interval_type Confidence interval sidedness.
+   * @return A BCaBootStrap engine parameterised on Trade<Decimal>.
+   */
   template<class Decimal, class Resampler,
            class Executor = concurrency::SingleThreadExecutor>
   auto makeBCaTradeImpl(
@@ -870,9 +1331,22 @@ private:
         trades, B, CL, std::move(statFn), std::move(sampler), prov, interval_type);
   }
 
-  // Build a CRNKey from domain tags (handy if you compose CRN outside)
+  /**
+   * @brief Builds a CRNKey from domain-level tags.
+   *
+   * Utility for constructing the full hierarchical CRN key used by all
+   * non-BCa factory methods (which manage CRNRng externally rather than
+   * embedding a CRNEngineProvider).
+   *
+   * @param strategyId Strategy identifier (hash or raw ID).
+   * @param stageTag   Metric identifier from BootstrapStages.
+   * @param methodId   Bootstrap algorithm identifier from BootstrapMethods.
+   * @param L          Block length parameter.
+   * @param fold       Cross-validation fold identifier.
+   * @return A fully constructed CRNKey.
+   */
   inline mkc_timeseries::rng_utils::CRNKey
-  makeCRNKey(uint64_t strategyId, uint64_t stageTag, uint64_t methodId, 
+  makeCRNKey(uint64_t strategyId, uint64_t stageTag, uint64_t methodId,
              uint64_t L, uint64_t fold) const
   {
     using mkc_timeseries::rng_utils::CRNKey;

@@ -4,6 +4,14 @@
 // Written by Michael K. Collison <collison956@gmail.com>, December 2024
 //
 
+/**
+ * @file ThreadSafeAccumulator.h
+ * @brief Mutex-protected Boost.Accumulators wrapper for concurrent statistics collection.
+ *
+ * Provides O(1) insertion and retrieval for min, max, variance, and count,
+ * plus O(n) median, with full thread safety for use in parallel permutation tests.
+ */
+
 #ifndef __THREAD_SAFE_ACCUMULATOR_H
 #define __THREAD_SAFE_ACCUMULATOR_H 1
 

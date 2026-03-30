@@ -1,3 +1,14 @@
+/**
+ * @file AutoCIResult.h
+ * @brief Result container for the automatic bootstrap CI selection tournament.
+ *
+ * Defines Candidate (per-method metrics and penalties), SelectionDiagnostics
+ * (detailed tournament trace), and AutoCIResult (winning method + full
+ * candidate list + diagnostics).
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>

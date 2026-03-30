@@ -1,3 +1,13 @@
+/**
+ * @file MastersPermutationTestComputationPolicy.h
+ * @brief Computation policies for Timothy Masters' stepwise permutation test.
+ *
+ * Implements MastersPermutationPolicy (standard) and FastMastersPermutationPolicy
+ * (optimised with early stopping) for computing per-family permutation p-values.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #ifndef __MASTER_PERMUTATION_TEST_COMPUTATION_POLICY_H
 #define __MASTER_PERMUTATION_TEST_COMPUTATION_POLICY_H 1
 

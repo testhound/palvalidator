@@ -1,48 +1,57 @@
-// PercentileTBootstrap.h
-// Studentized percentile-t bootstrap with composable resampler and two run paths:
-//  (1) caller-supplied RNG reference
-//  (2) CRN/engine-provider supplying a deterministic engine per outer replicate
-//
-// Thread-safety hardening:
-// - The caller RNG is never touched inside the parallel region (seeds precomputed).
-// - The sampler is copied into each parallel task (safe even if sampler has state).
-// - The resampler is also copied into each parallel task (safe even if resampler has state).
-// - "Last run diagnostics" are stored behind a mutex, and getters return COPIES
-//   (so a concurrent run() can't invalidate references).
-//
-// IMPORTANT behavioral note if the same PercentileTBootstrap instance is used concurrently:
-// - It is safe (no data races).
-// - "Last run diagnostics" are inherently racy in meaning: whichever run finishes last
-//   becomes "the last run". This is expected; the goal here is memory safety.
-//
-// GENERALIZATION NOTE (trade-level bootstrap):
-//   Both PercentileTBootstrap and BCaCompatibleTBootstrap now accept a SampleType
-//   template parameter (default: Decimal) that controls the element type of the
-//   input data vector and the internal resample buffers.
-//
-//   When SampleType = Decimal (the default):
-//     Behaviour is 100% identical to the original. All existing instantiations
-//     with fewer explicit template parameters compile unchanged.
-//
-//   When SampleType = Trade<Decimal>:
-//     run() accepts std::vector<Trade<Decimal>> as x.
-//     The resampler (e.g. IIDResampler<Trade<Decimal>>) produces
-//     std::vector<Trade<Decimal>> for y_outer and y_inner.
-//     The sampler (statistic) maps std::vector<Trade<Decimal>> -> Decimal.
-//     All pivot arithmetic (theta_star_d, se_star, t_b) continues to operate
-//     on double/Decimal throughout, completely unaffected by SampleType.
-//
-//   Trade<Decimal> has a default constructor (required for y_outer/y_inner
-//   value-initialization via std::vector<SampleType>(m)) and copy semantics
-//   (required by the resampler), so the generalization requires no changes to
-//   the algorithmic core -- only to the types of x, y_outer, and y_inner.
-//
-//   NOTE on MIN_INNER with small trade populations:
-//     With n ~ 9 trades (27 bars / 3-bar median holding period), m_outer ~ 9
-//     and m_inner ~ 9. The MIN_INNER = 100 gate is still met because IID
-//     resampling of 9 trades 100+ times is trivially fast. However, SE*
-//     estimated from 100 inner resamples of 9 trades has higher uncertainty
-//     than the bar-level equivalent. Document this at the call site.
+/**
+ * @file PercentileTBootstrap.h
+ * @brief Studentised percentile-t (double) bootstrap with composable resampler.
+ *
+ * Two run paths: (1) caller-supplied RNG, (2) CRN engine-provider for
+ * order/thread-independent reproducibility. Includes reliability flags
+ * (effective replicates, inner skip rate, pivot skewness) used by the
+ * automatic selector to gate or penalise Percentile-T candidates.
+ *
+ * Thread-safety: caller RNG is never touched inside the parallel region
+ * (seeds precomputed); sampler is copied into each parallel task.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+/**
+ * @details
+ * - The resampler is also copied into each parallel task (safe even if resampler has state).
+ * - "Last run diagnostics" are stored behind a mutex, and getters return COPIES
+ *   (so a concurrent run() can't invalidate references).
+ *
+ * IMPORTANT behavioral note if the same PercentileTBootstrap instance is used concurrently:
+ * - It is safe (no data races).
+ * - "Last run diagnostics" are inherently racy in meaning: whichever run finishes last
+ *   becomes "the last run". This is expected; the goal here is memory safety.
+ *
+ * GENERALIZATION NOTE (trade-level bootstrap):
+ *   Both PercentileTBootstrap and BCaCompatibleTBootstrap now accept a SampleType
+ *   template parameter (default: Decimal) that controls the element type of the
+ *   input data vector and the internal resample buffers.
+ *
+ *   When SampleType = Decimal (the default):
+ *     Behaviour is 100% identical to the original. All existing instantiations
+ *     with fewer explicit template parameters compile unchanged.
+ *
+ *   When SampleType = Trade<Decimal>:
+ *     run() accepts std::vector<Trade<Decimal>> as x.
+ *     The resampler (e.g. IIDResampler<Trade<Decimal>>) produces
+ *     std::vector<Trade<Decimal>> for y_outer and y_inner.
+ *     The sampler (statistic) maps std::vector<Trade<Decimal>> -> Decimal.
+ *     All pivot arithmetic (theta_star_d, se_star, t_b) continues to operate
+ *     on double/Decimal throughout, completely unaffected by SampleType.
+ *
+ *   Trade<Decimal> has a default constructor (required for y_outer/y_inner
+ *   value-initialization via std::vector<SampleType>(m)) and copy semantics
+ *   (required by the resampler), so the generalization requires no changes to
+ *   the algorithmic core -- only to the types of x, y_outer, and y_inner.
+ *
+ *   NOTE on MIN_INNER with small trade populations:
+ *     With n ~ 9 trades (27 bars / 3-bar median holding period), m_outer ~ 9
+ *     and m_inner ~ 9. The MIN_INNER = 100 gate is still met because IID
+ *     resampling of 9 trades 100+ times is trivially fast. However, SE*
+ *     estimated from 100 inner resamples of 9 trades has higher uncertainty
+ *     than the bar-level equivalent. Document this at the call site.
+ */
 
 #pragma once
 
@@ -76,8 +85,12 @@ namespace palvalidator
   {
     using palvalidator::analysis::IntervalType;
 
-    // PercentileT Bootstrap Constants
-    // These constants are available to client code without requiring template instantiation
+    /**
+     * @brief Percentile-t bootstrap constants available without template instantiation.
+     *
+     * These constants govern adaptive stopping, inner-loop sizing, and the
+     * reliability flags reported in PercentileTBootstrap::Result.
+     */
     namespace percentile_t_constants
     {
       /// Minimum inner bootstrap replications required for stable standard error estimation
@@ -136,88 +149,104 @@ namespace palvalidator
     class PercentileTBootstrap
     {
     public:
+      /**
+       * @brief Aggregated output of a single percentile-t bootstrap run.
+       *
+       * Contains the point estimate, confidence bounds, run configuration,
+       * diagnostic counters, and reliability flags. Callers must inspect
+       * isReliable() before treating the interval as trustworthy.
+       */
       struct Result
       {
-        Decimal     mean;                  // theta-hat on original sample
-        Decimal     lower;                 // lower CI (per-period)
-        Decimal     upper;                 // upper CI (per-period)
-        double      cl;                    // confidence level
-        std::size_t B_outer;               // requested outer reps
-        std::size_t B_inner;               // requested inner reps
-        std::size_t effective_B;           // usable outer reps (finite pivots)
-        std::size_t skipped_outer;         // outer reps skipped (degenerate theta* / SE*)
-        std::size_t skipped_inner_total;   // total degenerate inner reps
-        std::size_t inner_attempted_total; // total inner attempts across all outer reps (diagnostic)
-        std::size_t n;                     // original sample size (in SampleType units)
-        std::size_t m_outer;               // outer subsample size
-        std::size_t m_inner;               // inner subsample size
-        std::size_t L;                     // resampler L (diagnostic)
-        double      se_hat;                // sd(theta*) over effective outer reps
-        double      skew_pivot;            // skewness of the t* (pivot) distribution
+        Decimal     mean;                  ///< θ-hat (point estimate) on the original sample.
+        Decimal     lower;                 ///< Lower confidence bound (per-period).
+        Decimal     upper;                 ///< Upper confidence bound (per-period).
+        double      cl;                    ///< Nominal confidence level in (0.5, 1.0).
+        std::size_t B_outer;               ///< Requested number of outer replicates.
+        std::size_t B_inner;               ///< Requested number of inner replicates per outer.
+        std::size_t effective_B;           ///< Usable outer replicates (those producing finite pivots).
+        std::size_t skipped_outer;         ///< Outer replicates skipped (degenerate θ* or SE*).
+        std::size_t skipped_inner_total;   ///< Total degenerate inner replicates across all outer reps.
+        std::size_t inner_attempted_total; ///< Total inner attempts across all outer reps (diagnostic).
+        std::size_t n;                     ///< Original sample size (in SampleType units).
+        std::size_t m_outer;               ///< Outer subsample size.
+        std::size_t m_inner;               ///< Inner subsample size.
+        std::size_t L;                     ///< Resampler block length L (diagnostic).
+        double      se_hat;                ///< Standard deviation of θ* over effective outer reps.
+        double      skew_pivot;            ///< Skewness of the t* (pivot) distribution.
 
-        // ----------------------------------------------------------------
-        // Reliability flags — analogous to BCa's AccelerationReliability
-        // and M-out-of-N's four-flag decomposition. The three flags capture
-        // distinct failure modes of the double-bootstrap machinery:
-        //
-        // low_effective_replicates:
-        //   effective_B / B_outer < MIN_EFFECTIVE_FRACTION (0.70).
-        //   The empirical t-distribution is too thinly populated for
-        //   reliable quantile inversion. Hard gate in the tournament.
-        //
-        // high_inner_skip_rate:
-        //   skipped_inner / inner_attempted > INNER_FAIL_THRESHOLD (0.05).
-        //   Too many inner resamples produced non-finite statistics, so
-        //   the SE* denominators feeding the pivots are corrupted. Hard
-        //   gate in the tournament (mirrors the existing rejection mask).
-        //
-        // extreme_pivot_skewness:
-        //   |skew(t*)| > PIVOT_SKEW_THRESHOLD (3.0).
-        //   The pivot distribution is too skewed for the CI inversion
-        //   to be reliable. Soft penalty in the tournament (calibrated
-        //   haircut on stability score, not an outright hard gate).
-        //
-        // isReliable():
-        //   Convenience AND-gate over all three flags. Downstream
-        //   selectors (AutoBootstrapSelector) use this as algorithmIsReliable.
-        //
-        // API CONTRACT — proceed threshold vs. reliability threshold:
-        //   run() throws only when effective_B falls below the hard-abort
-        //   floor (max(16, B_outer/25), i.e. ~4%). A Result is therefore
-        //   returned — and isReliable() may return false — for any run
-        //   that clears the 4% floor but does not clear the 70%
-        //   MIN_EFFECTIVE_FRACTION threshold. This is intentional: the
-        //   algorithm returns the best available estimate rather than
-        //   discarding it, and labels it unreliable so callers can
-        //   decide. Callers must not assume a returned Result is reliable
-        //   without checking isReliable().
-        // ----------------------------------------------------------------
-        bool        low_effective_replicates;  // effective_B fraction too low
-        bool        high_inner_skip_rate;      // inner SE* failures too frequent
-        bool        extreme_pivot_skewness;    // t* distribution too skewed
+        /**
+         * @name Reliability flags
+         * Analogous to BCa's AccelerationReliability and M-out-of-N's
+         * four-flag decomposition. The three flags capture distinct failure
+         * modes of the double-bootstrap machinery:
+         *
+         * - **low_effective_replicates**: effective_B / B_outer < MIN_EFFECTIVE_FRACTION (0.70).
+         *   The empirical t-distribution is too thinly populated for
+         *   reliable quantile inversion. Hard gate in the tournament.
+         *
+         * - **high_inner_skip_rate**: skipped_inner / inner_attempted > INNER_FAIL_THRESHOLD (0.05).
+         *   Too many inner resamples produced non-finite statistics, so
+         *   the SE* denominators feeding the pivots are corrupted. Hard
+         *   gate in the tournament (mirrors the existing rejection mask).
+         *
+         * - **extreme_pivot_skewness**: |skew(t*)| > PIVOT_SKEW_THRESHOLD (3.0).
+         *   The pivot distribution is too skewed for the CI inversion
+         *   to be reliable. Soft penalty in the tournament (calibrated
+         *   haircut on stability score, not an outright hard gate).
+         *
+         * isReliable() is a convenience AND-gate over all three flags.
+         * Downstream selectors (AutoBootstrapSelector) use this as
+         * algorithmIsReliable.
+         *
+         * API CONTRACT -- proceed threshold vs. reliability threshold:
+         *   run() throws only when effective_B falls below the hard-abort
+         *   floor (max(16, B_outer/25), i.e. ~4%). A Result is therefore
+         *   returned -- and isReliable() may return false -- for any run
+         *   that clears the 4% floor but does not clear the 70%
+         *   MIN_EFFECTIVE_FRACTION threshold. This is intentional: the
+         *   algorithm returns the best available estimate rather than
+         *   discarding it, and labels it unreliable so callers can
+         *   decide. Callers must not assume a returned Result is reliable
+         *   without checking isReliable().
+         * @{
+         */
+        bool        low_effective_replicates;  ///< True when effective_B fraction is too low.
+        bool        high_inner_skip_rate;      ///< True when inner SE* failures are too frequent.
+        bool        extreme_pivot_skewness;    ///< True when t* distribution is too skewed.
+        /** @} */
 
-        // The interval type used to produce lower/upper.
-        //
-        // TWO_SIDED:       Both bounds are computed finite values.
-        //
-        // ONE_SIDED_LOWER [L, +sentinel]:
-        //   lower is the finite, meaningful CI bound.
-        //   upper is a finite surrogate for +infinity: the value at quantile
-        //   (1 - 1e-10) of the empirical pivot distribution, i.e. the most
-        //   extreme observed upper tail. It is always a valid Decimal value.
-        //
-        // ONE_SIDED_UPPER [-sentinel, U]:
-        //   lower is a finite surrogate for -infinity: the value at quantile
-        //   1e-10 of the empirical pivot distribution.
-        //   upper is the finite, meaningful CI bound.
-        //
-        // Floating-point infinity is NOT used because Decimal may be a
-        // fixed-point type (e.g. dec::decimal<8>) that cannot represent it
-        // and for which std::numeric_limits<Decimal>::max() may be 0.
-        // Callers MUST inspect interval_type to identify which bound is the
-        // true constraint and which is the surrogate sentinel.
+        /**
+         * @brief The interval type used to produce lower/upper.
+         *
+         * - **TWO_SIDED**: Both bounds are computed finite values.
+         *
+         * - **ONE_SIDED_LOWER** [L, +sentinel]:
+         *   lower is the finite, meaningful CI bound.
+         *   upper is a finite surrogate for +infinity: the value at quantile
+         *   (1 - 1e-10) of the empirical pivot distribution, i.e. the most
+         *   extreme observed upper tail. It is always a valid Decimal value.
+         *
+         * - **ONE_SIDED_UPPER** [-sentinel, U]:
+         *   lower is a finite surrogate for -infinity: the value at quantile
+         *   1e-10 of the empirical pivot distribution.
+         *   upper is the finite, meaningful CI bound.
+         *
+         * Floating-point infinity is NOT used because Decimal may be a
+         * fixed-point type (e.g. dec::decimal<8>) that cannot represent it
+         * and for which std::numeric_limits<Decimal>::max() may be 0.
+         * Callers MUST inspect interval_type to identify which bound is the
+         * true constraint and which is the surrogate sentinel.
+         */
         IntervalType interval_type;
 
+        /**
+         * @brief Returns true only if all three reliability flags are clear.
+         *
+         * Convenience AND-gate over low_effective_replicates,
+         * high_inner_skip_rate, and extreme_pivot_skewness. Used by
+         * AutoBootstrapSelector as the algorithmIsReliable predicate.
+         */
         bool isReliable() const noexcept
         {
           return !low_effective_replicates
@@ -226,7 +255,9 @@ namespace palvalidator
         }
       };
 
-      // For backward compatibility, expose constants as class static members
+      /// @name Backward-compatible class-level constants
+      /// Mirrors of percentile_t_constants for use without namespace qualification.
+      /// @{
       static constexpr std::size_t MIN_INNER              = percentile_t_constants::MIN_INNER;
       static constexpr std::size_t CHECK_EVERY            = percentile_t_constants::CHECK_EVERY;
       static constexpr double      REL_EPS                = percentile_t_constants::REL_EPS;
@@ -234,9 +265,12 @@ namespace palvalidator
       static constexpr double      INNER_FAIL_THRESHOLD   = percentile_t_constants::INNER_FAIL_THRESHOLD;
       static constexpr double      PIVOT_SKEW_THRESHOLD   = percentile_t_constants::PIVOT_SKEW_THRESHOLD;
       static constexpr double      PIVOT_SKEW_SOFT_THRESHOLD = percentile_t_constants::PIVOT_SKEW_SOFT_THRESHOLD;
+      /// @}
 
     public:
       /**
+       * @brief Constructs a percentile-t bootstrap engine with the given configuration.
+       *
        * @param B_outer        Number of outer bootstrap replicates (>= 400).
        * @param B_inner        Number of inner bootstrap replicates per outer
        *                       replicate (>= 100). Used to estimate SE*.
@@ -300,7 +334,7 @@ namespace palvalidator
           throw std::invalid_argument("m_ratio_inner must be in (0,1]");
       }
 
-      // Copy constructor
+      /// @brief Copy constructor (diagnostic state is reset, not copied).
       PercentileTBootstrap(const PercentileTBootstrap& other)
         : m_B_outer(other.m_B_outer)
         , m_B_inner(other.m_B_inner)
@@ -317,7 +351,7 @@ namespace palvalidator
         , m_interval_type(other.m_interval_type)
       {}
 
-      // Copy assignment operator
+      /// @brief Copy assignment operator (diagnostic state is reset, not copied).
       PercentileTBootstrap& operator=(const PercentileTBootstrap& other)
       {
         if (this != &other) {
@@ -339,7 +373,7 @@ namespace palvalidator
         return *this;
       }
 
-      // Move constructor
+      /// @brief Move constructor (transfers diagnostic state from the source).
       PercentileTBootstrap(PercentileTBootstrap&& other) noexcept
         : m_B_outer(other.m_B_outer)
         , m_B_inner(other.m_B_inner)
@@ -358,7 +392,7 @@ namespace palvalidator
         // The moved-from object should not be used after move.
       }
 
-      // Move assignment operator
+      /// @brief Move assignment operator (acquires both mutexes to prevent deadlock).
       PercentileTBootstrap& operator=(PercentileTBootstrap&& other) noexcept
       {
         if (this != &other)
@@ -385,13 +419,24 @@ namespace palvalidator
         return *this;
       }
 
-      // -----------------------------------------------------------------------
-      // (A) Run with caller-provided RNG (non-CRN path).
-      //
-      // @param x  Input sample of SampleType elements.
-      //           When SampleType = Decimal:        std::vector<Decimal>
-      //           When SampleType = Trade<Decimal>: std::vector<Trade<Decimal>>
-      // -----------------------------------------------------------------------
+      /**
+       * @brief Run with caller-provided RNG (non-CRN path).
+       *
+       * Per-outer-replicate seeds are precomputed deterministically in the
+       * calling thread so the caller-provided RNG is never touched inside
+       * the parallel region.
+       *
+       * @param x               Input sample of SampleType elements.
+       *                        When SampleType = Decimal: std::vector<Decimal>.
+       *                        When SampleType = Trade<Decimal>: std::vector<Trade<Decimal>>.
+       * @param sampler          Statistic callable mapping std::vector<SampleType> -> Decimal.
+       * @param rng              Random engine; used only in the calling thread for seed generation.
+       * @param m_outer_override Override for outer subsample size (0 = use m_ratio_outer * n).
+       * @param m_inner_override Override for inner subsample size (0 = use m_ratio_inner * m_outer).
+       * @return                 Result containing confidence bounds, diagnostics, and reliability flags.
+       * @throws std::invalid_argument If x.size() < 3.
+       * @throws std::runtime_error    If fewer than max(16, B_outer/25) outer replicates produce finite pivots.
+       */
       Result run(const std::vector<SampleType>& x,
                  Sampler                         sampler,
                  Rng&                            rng,
@@ -423,14 +468,24 @@ namespace palvalidator
                         std::move(engine_maker));
       }
 
-      // -----------------------------------------------------------------------
-      // (B) Run with a CRN/engine-provider (order/thread independent).
-      //     Provider concept: Rng make_engine(std::size_t b) const;
-      //
-      //     Provider thread-safety is the provider's responsibility. We only
-      //     call a const method; if Provider has internal mutable state, it
-      //     must synchronize internally.
-      // -----------------------------------------------------------------------
+      /**
+       * @brief Run with a CRN/engine-provider (order/thread independent).
+       *
+       * Provider concept: must expose `Rng make_engine(std::size_t b) const`.
+       * Provider thread-safety is the provider's responsibility. Only the
+       * const `make_engine` method is called; if Provider has internal
+       * mutable state it must synchronize internally.
+       *
+       * @tparam Provider        Engine-provider type satisfying the CRN concept.
+       * @param  x               Input sample of SampleType elements.
+       * @param  sampler          Statistic callable mapping std::vector<SampleType> -> Decimal.
+       * @param  provider         CRN engine-provider supplying per-replicate RNGs.
+       * @param  m_outer_override Override for outer subsample size (0 = use m_ratio_outer * n).
+       * @param  m_inner_override Override for inner subsample size (0 = use m_ratio_inner * m_outer).
+       * @return                  Result containing confidence bounds, diagnostics, and reliability flags.
+       * @throws std::invalid_argument If x.size() < 3.
+       * @throws std::runtime_error    If fewer than max(16, B_outer/25) outer replicates produce finite pivots.
+       */
       template<class Provider>
       Result run(const std::vector<SampleType>& x,
                  Sampler                         sampler,
@@ -450,18 +505,27 @@ namespace palvalidator
       // Diagnostics for AutoBootstrapSelector (thread-safe)
       // ------------------------------------------------------------------
 
+      /**
+       * @brief Returns true if a successful run() has stored diagnostics.
+       *
+       * Thread-safe: acquires the internal diagnostic mutex.
+       */
       bool hasDiagnostics() const noexcept
       {
         std::lock_guard<std::mutex> lock(m_diagMutex);
         return m_diagValid;
       }
 
-      // Return COPIES to avoid returning references that could be invalidated
-      // by a concurrent run().
-      // Each getter holds the lock for the entire duration of the validity check
-      // and the copy, eliminating the TOCTOU gap that existed when
-      // ensureDiagnosticsAvailable() released the lock before the caller
-      // re-acquired it.
+      /**
+       * @brief Returns a copy of the effective pivot (t*) values from the most recent run.
+       *
+       * Returns COPIES to avoid returning references that could be invalidated
+       * by a concurrent run(). Holds the lock for the entire duration of the
+       * validity check and the copy, eliminating TOCTOU gaps.
+       *
+       * @return Vector of finite t* values (length = effective_B).
+       * @throws std::logic_error If no successful run() has been performed.
+       */
       std::vector<double> getTStatistics() const
       {
         std::lock_guard<std::mutex> lock(m_diagMutex);
@@ -472,6 +536,12 @@ namespace palvalidator
         return m_diagTValues;
       }
 
+      /**
+       * @brief Returns a copy of the effective θ* (outer statistic) values from the most recent run.
+       *
+       * @return Vector of finite θ* values (length = effective_B).
+       * @throws std::logic_error If no successful run() has been performed.
+       */
       std::vector<double> getThetaStarStatistics() const
       {
         std::lock_guard<std::mutex> lock(m_diagMutex);
@@ -482,6 +552,12 @@ namespace palvalidator
         return m_diagThetaStars;
       }
 
+      /**
+       * @brief Returns SE-hat (sd of θ*) from the most recent run.
+       *
+       * @return Standard deviation of the effective outer-replicate statistics.
+       * @throws std::logic_error If no successful run() has been performed.
+       */
       double getSeHat() const
       {
         std::lock_guard<std::mutex> lock(m_diagMutex);
@@ -507,9 +583,9 @@ namespace palvalidator
       }
 
     private:
+      /// @brief Resets all diagnostic fields to their default state (caller must hold m_diagMutex).
       void clearDiagnostics_unsafe() const noexcept
       {
-        // Caller must hold m_diagMutex.
         m_diagTValues.clear();
         m_diagThetaStars.clear();
         m_diagSeHat     = 0.0;
@@ -517,20 +593,29 @@ namespace palvalidator
         m_diagValid     = false;
       }
 
-      // -----------------------------------------------------------------------
-      // run_impl: core bootstrap algorithm.
-      //
-      // The only lines that changed from the original are the declarations of
-      // x (const std::vector<SampleType>&), y_outer, and y_inner
-      // (std::vector<SampleType>). All pivot arithmetic operates on
-      // double/Decimal and is completely unaffected by SampleType.
-      //
-      // Trade<Decimal> satisfies both requirements imposed on SampleType here:
-      //   (1) Default-constructible: std::vector<SampleType>(m) value-initializes
-      //       m Trade objects using Trade::Trade() = default.
-      //   (2) Copyable: the resampler copies Trade objects by index, which uses
-      //       Trade's implicitly-generated copy constructor.
-      // -----------------------------------------------------------------------
+      /**
+       * @brief Core double-bootstrap algorithm shared by both run() overloads.
+       *
+       * @details
+       * The only lines that changed from the original are the declarations of
+       * x (const std::vector<SampleType>&), y_outer, and y_inner
+       * (std::vector<SampleType>). All pivot arithmetic operates on
+       * double/Decimal and is completely unaffected by SampleType.
+       *
+       * Trade<Decimal> satisfies both requirements imposed on SampleType here:
+       *   1. Default-constructible: std::vector<SampleType>(m) value-initializes
+       *      m Trade objects using Trade::Trade() = default.
+       *   2. Copyable: the resampler copies Trade objects by index, which uses
+       *      Trade's implicitly-generated copy constructor.
+       *
+       * @tparam EngineMaker  Callable (std::size_t b) -> Rng producing a per-replicate engine.
+       * @param  x               Input sample.
+       * @param  sampler          Statistic callable.
+       * @param  m_outer_override Override for outer subsample size (0 = auto).
+       * @param  m_inner_override Override for inner subsample size (0 = auto).
+       * @param  make_engine      Factory producing one Rng per outer replicate index.
+       * @return                  Fully populated Result.
+       */
       template<class EngineMaker>
       Result run_impl(const std::vector<SampleType>& x,
                       Sampler                         sampler,
@@ -865,44 +950,53 @@ namespace palvalidator
       }
 
     private:
-      // Configuration set at construction. Not declared const so that copy/move
-      // assignment operators can assign them directly without undefined-behaviour
-      // const_cast tricks (writing through a const_cast to a genuinely const
-      // object is UB in C++).
-      std::size_t  m_B_outer;
-      std::size_t  m_B_inner;
-      double       m_CL;
-      Resampler    m_resampler;
-      double       m_ratio_outer;
-      double       m_ratio_inner;
+      /// @name Configuration (set at construction)
+      /// Not declared const so that copy/move assignment operators can assign
+      /// them directly without undefined-behaviour const_cast tricks.
+      /// @{
+      std::size_t  m_B_outer;       ///< Requested outer replicates.
+      std::size_t  m_B_inner;       ///< Requested inner replicates per outer.
+      double       m_CL;            ///< Nominal confidence level.
+      Resampler    m_resampler;     ///< Resampling policy (copied per parallel task).
+      double       m_ratio_outer;   ///< Fraction of n for each outer resample.
+      double       m_ratio_inner;   ///< Fraction of m_outer for each inner resample.
+      /// @}
 
-      // Diagnostics for most recent successful run (protected by m_diagMutex).
-      // Getters return copies to avoid reference invalidation by concurrent run().
-      mutable std::mutex          m_diagMutex;
-      mutable std::vector<double> m_diagTValues;
-      mutable std::vector<double> m_diagThetaStars;
-      mutable double              m_diagSeHat;
-      mutable double              m_diagSkewPivot;   // skewness of t* (pivot) distribution
-      mutable bool                m_diagValid;
-      IntervalType                m_interval_type;
+      /// @name Diagnostics for the most recent successful run (protected by m_diagMutex)
+      /// Getters return copies to avoid reference invalidation by concurrent run().
+      /// @{
+      mutable std::mutex          m_diagMutex;       ///< Guards all m_diag* fields.
+      mutable std::vector<double> m_diagTValues;     ///< Effective pivot (t*) values.
+      mutable std::vector<double> m_diagThetaStars;  ///< Effective θ* values.
+      mutable double              m_diagSeHat;       ///< SD of θ* over effective outer reps.
+      mutable double              m_diagSkewPivot;   ///< Skewness of the t* (pivot) distribution.
+      mutable bool                m_diagValid;       ///< True after a successful run().
+      /// @}
+      IntervalType                m_interval_type;   ///< Interval sidedness for CI inversion.
     };
 
 
-    // --------------------------------------------------------------------------
-    // BCaCompatibleTBootstrap
-    //
-    // A BCaBootStrap-compatible wrapper around PercentileTBootstrap.
-    // Presents the same constructor signatures and accessor API as BCaBootStrap
-    // so the two can be used interchangeably in AutoBootstrapSelector and at
-    // any other call site that is templated on the bootstrap type.
-    //
-    // GENERALIZATION: SampleType (default: Decimal) propagates through to
-    // PercentileTBootstrap, m_returns, StatFn, and m_cached_result in exactly
-    // the same way as in BCaBootStrap. All existing code with 2-4 explicit
-    // template parameters is 100% backward-compatible.
-    //
-    // Thread-safety: cached_result access is protected by m_cacheMutex.
-    // --------------------------------------------------------------------------
+    /**
+     * @class BCaCompatibleTBootstrap
+     * @brief BCaBootStrap-compatible wrapper around PercentileTBootstrap.
+     *
+     * Presents the same constructor signatures and accessor API as BCaBootStrap
+     * so the two can be used interchangeably in AutoBootstrapSelector and at
+     * any other call site that is templated on the bootstrap type.
+     *
+     * GENERALIZATION: SampleType (default: Decimal) propagates through to
+     * PercentileTBootstrap, m_returns, StatFn, and m_cached_result in exactly
+     * the same way as in BCaBootStrap. All existing code with 2-4 explicit
+     * template parameters is 100% backward-compatible.
+     *
+     * Thread-safety: cached_result access is protected by m_cacheMutex.
+     *
+     * @tparam Decimal     Numeric type for statistics and bounds.
+     * @tparam Sampler     Resampling policy (named "Sampler" to match BCaBootStrap convention).
+     * @tparam Rng         Random engine type (default: std::mt19937_64).
+     * @tparam Provider    CRN engine-provider type (default: void = no CRN).
+     * @tparam SampleType  Element type of input data (default: Decimal).
+     */
     template <class Decimal,
               class Sampler,          // Resampler policy (called "Sampler" to
                                       // match BCaBootStrap naming convention)
@@ -926,18 +1020,19 @@ namespace palvalidator
        */
       using StatFn = std::function<Decimal(const std::vector<SampleType>&)>;
 
-      // -----------------------------------------------------------------------
-      // Constructor for Provider = void (default, no CRN provider).
-      //
-      // This is the primary constructor for bar-level and trade-level use
-      // when deterministic per-replicate seeds are not required.
-      //
-      // num_resamples must be >= 400 to match PercentileTBootstrap's own
-      // B_outer >= 400 requirement. Passing a value in [100, 400) would pass
-      // this guard and then immediately throw inside the wrapped object; the
-      // threshold is kept consistent here to give a clear error at the point
-      // of construction.
-      // -----------------------------------------------------------------------
+      /**
+       * @brief Construct without a CRN provider (Provider = void path).
+       *
+       * Primary constructor for bar-level and trade-level use when
+       * deterministic per-replicate seeds are not required.
+       *
+       * @param returns          Reference to the input sample (must outlive this object).
+       * @param num_resamples    Number of outer bootstrap replicates (>= 400).
+       * @param confidence_level Nominal coverage in (0, 1).
+       * @param statistic        Statistic function mapping std::vector<SampleType> -> Decimal.
+       * @param sampler          Resampling policy.
+       * @throws std::invalid_argument If returns is empty, num_resamples < 400, or confidence_level out of range.
+       */
       template <class P = Provider, std::enable_if_t<std::is_void_v<P>, int> = 0>
       BCaCompatibleTBootstrap(const std::vector<SampleType>& returns,
                               unsigned int                    num_resamples,
@@ -956,15 +1051,21 @@ namespace palvalidator
             "BCaCompatibleTBootstrap: Invalid construction arguments.");
       }
 
-      // -----------------------------------------------------------------------
-      // Constructor for Provider != void (CRN path).
-      //
-      // Enabled only when Provider != void. Uses provider.make_engine(b) to
-      // supply a deterministic RNG per outer replicate.
-      //
-      // num_resamples must be >= 400 for the same reason as the Provider=void
-      // constructor above; see that constructor's comment.
-      // -----------------------------------------------------------------------
+      /**
+       * @brief Construct with a CRN engine-provider (Provider != void path).
+       *
+       * Enabled only when Provider != void. Uses provider.make_engine(b) to
+       * supply a deterministic RNG per outer replicate.
+       *
+       * @tparam P               Deduced as Provider; enabled only when Provider != void.
+       * @param  returns          Reference to the input sample (must outlive this object).
+       * @param  num_resamples    Number of outer bootstrap replicates (>= 400).
+       * @param  confidence_level Nominal coverage in (0, 1).
+       * @param  statistic        Statistic function mapping std::vector<SampleType> -> Decimal.
+       * @param  sampler          Resampling policy.
+       * @param  provider         CRN engine-provider supplying per-replicate RNGs.
+       * @throws std::invalid_argument If returns is empty, num_resamples < 400, or confidence_level out of range.
+       */
       template <class P = Provider, std::enable_if_t<!std::is_void_v<P>, int> = 0>
       BCaCompatibleTBootstrap(const std::vector<SampleType>& returns,
                               unsigned int                    num_resamples,
@@ -985,7 +1086,11 @@ namespace palvalidator
             "BCaCompatibleTBootstrap: Invalid construction arguments.");
       }
 
-      // BCaBootStrap-compatible accessors
+      /// @name BCaBootStrap-compatible accessors
+      /// Lazy-evaluated: first call triggers run() if not already computed.
+      /// @{
+
+      /// @brief Returns the lower confidence bound (triggers calculation on first call).
       Decimal getLowerBound()
       {
         ensureCalculated();
@@ -993,6 +1098,7 @@ namespace palvalidator
         return m_cached_result.value().lower;
       }
 
+      /// @brief Returns the upper confidence bound (triggers calculation on first call).
       Decimal getUpperBound()
       {
         ensureCalculated();
@@ -1000,6 +1106,7 @@ namespace palvalidator
         return m_cached_result.value().upper;
       }
 
+      /// @brief Returns the point estimate θ-hat (triggers calculation on first call).
       Decimal getStatistic()
       {
         ensureCalculated();
@@ -1007,7 +1114,9 @@ namespace palvalidator
         return m_cached_result.value().mean;
       }
 
+      /// @brief Alias for getStatistic().
       Decimal getMean() { return getStatistic(); }
+      /// @}
 
       /**
        * @brief Returns the sample size in SampleType units.
@@ -1018,30 +1127,31 @@ namespace palvalidator
       std::size_t getSampleSize() const { return m_returns.size(); }
 
     private:
+      /// Default number of inner replicates per outer replicate.
       static constexpr std::size_t m_B_inner_default = 200;
 
-      // Internal PercentileTBootstrap carries SampleType all the way through.
+      /// Internal PercentileTBootstrap carrying SampleType all the way through.
       PercentileTBootstrap<Decimal, StatFn, Sampler, Rng,
                            concurrency::SingleThreadExecutor,
                            SampleType>       m_internal_pt;
 
-      const std::vector<SampleType>&         m_returns;
-      StatFn                                 m_statistic;
+      const std::vector<SampleType>&         m_returns;   ///< Reference to caller-owned input data.
+      StatFn                                 m_statistic; ///< Statistic function (kept for future use).
 
-      // Provider storage: materialized only when Provider != void.
+      /// Provider storage: materialized only when Provider != void.
       [[no_unique_address]]
       std::conditional_t<std::is_void_v<Provider>, char, Provider> m_provider{};
 
-      mutable std::mutex m_cacheMutex;
+      mutable std::mutex m_cacheMutex; ///< Guards m_cached_result.
 
-      // m_cached_result stores the PercentileTBootstrap::Result, which always
-      // contains Decimal bounds regardless of SampleType.
+      /// Cached PercentileTBootstrap::Result (Decimal bounds regardless of SampleType).
       std::optional<
         typename PercentileTBootstrap<Decimal, StatFn, Sampler, Rng,
                                       concurrency::SingleThreadExecutor,
                                       SampleType>::Result>
         m_cached_result;
 
+      /// @brief Lazily computes and caches the bootstrap result on first access.
       void ensureCalculated()
       {
         {

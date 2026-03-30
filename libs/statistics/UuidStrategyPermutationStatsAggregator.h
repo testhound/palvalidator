@@ -4,6 +4,14 @@
 // Written by Michael K. Collison <collison956@gmail.com>, December 2024
 //
 
+/**
+ * @file UuidStrategyPermutationStatsAggregator.h
+ * @brief Per-strategy, per-metric statistics aggregator for permutation testing.
+ *
+ * Uses a combined hash (pattern + name) as a stable key across strategy clones,
+ * backed by ThreadSafeAccumulator for thread-safe concurrent collection.
+ */
+
 #ifndef __UUID_STRATEGY_PERMUTATION_STATS_AGGREGATOR_H
 #define __UUID_STRATEGY_PERMUTATION_STATS_AGGREGATOR_H 1
 

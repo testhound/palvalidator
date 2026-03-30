@@ -4,6 +4,28 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 
+/**
+ * @file RobustnessTest.h
+ * @brief Robustness testing framework for PriceActionLab trading patterns.
+ *
+ * Provides classes to evaluate whether a discovered trading pattern is
+ * statistically robust by permuting profit-target and stop-loss parameters
+ * around the reference values and verifying that profitability metrics remain
+ * within tolerance. Tolerance functions use precomputed ln(n) and sqrt(n)
+ * lookup tables so that permutations farther from the reference are allowed
+ * progressively wider bands.
+ *
+ * Key classes:
+ * - PatternRobustnessCriteria  -- threshold parameters for the robustness test.
+ * - RobustnessPermutationAttributes -- abstract specification of permutation counts.
+ * - RobustnessCalculator       -- aggregates permutation results and decides robustness.
+ * - RobustnessTest             -- orchestrates backtesting across permutations.
+ * - RobustnessTestMonteCarlo   -- variant that augments each permutation with a
+ *                                 Monte Carlo payoff-ratio estimate.
+ *
+ * @author Michael K. Collison
+ */
+
 #ifndef __ROBUSTNESS_TEST_H
 #define __ROBUSTNESS_TEST_H 1
 
@@ -25,13 +47,32 @@ namespace mkc_timeseries
   using boost::gregorian::date;
   using std::make_shared;
 
-  //
-  // class PatternRobustnessCriteria
-  //
-
+  /**
+   * @brief Encapsulates the criteria used to evaluate pattern robustness.
+   *
+   * Holds minimum robustness index, desired profit factor, tolerance settings,
+   * and a profitability safety factor that adjusts the PAL profitability formula
+   * to account for commissions and slippage in short-term trading.
+   *
+   * Tolerance lookup methods use precomputed ln(n) and sqrt(n) tables indexed
+   * by distance (in iterations or percent) from the reference permutation,
+   * clamped to the range [1%, 10%].
+   *
+   * @tparam Decimal  The numeric type used for fixed-point arithmetic
+   *                  (e.g., dec::decimal<7>).
+   */
   template <class Decimal> class PatternRobustnessCriteria
     {
     public:
+      /**
+       * @brief Constructs robustness criteria from the given thresholds.
+       *
+       * @param minRobustnessIndex       Minimum acceptable robustness index (0-100).
+       * @param desiredProfitFactor       Target profit factor for the pattern.
+       * @param tolerance                 Base tolerance expressed as a percentage.
+       * @param profitabilitySafetyFactor Safety factor (typically 0.7-0.9) applied to
+       *                                  the payoff ratio when computing profitability.
+       */
       PatternRobustnessCriteria (const Decimal& minRobustnessIndex,
 				 const Decimal& desiredProfitFactor,
 				 const PercentNumber<Decimal>& tolerance,
@@ -42,6 +83,9 @@ namespace mkc_timeseries
 	  mProfitabilitySafetyFactor(profitabilitySafetyFactor)
 	{}
 
+      /**
+       * @brief Copy constructor.
+       */
       PatternRobustnessCriteria (const PatternRobustnessCriteria<Decimal>& rhs)
 	: mMinRobustnessIndex (rhs.mMinRobustnessIndex),
 	  mDesiredProfitFactor(rhs.mDesiredProfitFactor),
@@ -49,7 +93,10 @@ namespace mkc_timeseries
 	  mProfitabilitySafetyFactor(rhs.mProfitabilitySafetyFactor)
       {}
 
-      PatternRobustnessCriteria<Decimal>& 
+      /**
+       * @brief Copy assignment operator.
+       */
+      PatternRobustnessCriteria<Decimal>&
       operator=(const PatternRobustnessCriteria<Decimal> &rhs)
       {
 	if (this == &rhs)
@@ -63,29 +110,44 @@ namespace mkc_timeseries
 	return *this;
       }
 
+      /// Destructor.
       ~PatternRobustnessCriteria()
       {}
 
+      /// Returns the minimum robustness index threshold (0-100).
       const Decimal& getMinimumRobustnessIndex() const
       {
 	return mMinRobustnessIndex;
       }
 
+      /// Returns the desired (target) profit factor.
       const Decimal& getDesiredProfitFactor() const
       {
 	return mDesiredProfitFactor;
       }
 
+      /// Returns the base robustness tolerance as a percentage.
       const PercentNumber<Decimal>& getRobustnessTolerance() const
       {
 	return mRobustnessTolerance;
       }
 
+      /**
+       * @brief Returns a ln-scaled tolerance as a raw Decimal for a given percent distance.
+       *
+       * Uses a precomputed table of ln(n) values for n in [0, 100]. Entries 0
+       * and 1 are manually clamped to 1.0 so the tolerance never falls below 1%.
+       * Values above index 100 are clamped to ln(100).
+       *
+       * @param percentDiffAsInteger  The integer percent difference from the reference
+       *                              stop-loss value (0-100).
+       * @return The ln-scaled tolerance as a Decimal.
+       */
       const Decimal getDecimalToleranceForPercentDifference (unsigned long percentDiffAsInteger) const
       {
 	// Note entries 0 and  was manually modified because we do not want a tolerance
 	// less than 1%
-	    
+
 
 	static Decimal lnConstants[] =
 	  {
@@ -199,11 +261,21 @@ namespace mkc_timeseries
 
       }
 
+      /**
+       * @brief Returns a ln-scaled tolerance as a PercentNumber for a given percent distance.
+       *
+       * Identical mapping to getDecimalToleranceForPercentDifference but returns a
+       * PercentNumber wrapper. Entries 0 and 1 are clamped to 1%.
+       *
+       * @param percentDiffAsInteger  The integer percent difference from the reference
+       *                              stop-loss value (0-100).
+       * @return The ln-scaled tolerance as a PercentNumber.
+       */
       const PercentNumber<Decimal> getToleranceForPercentDifference (unsigned long percentDiffAsInteger) const
       {
 	// Note entries 0 and  was manually modified because we do not want a tolerance
 	// less than 1%
-	    
+
 
 	static PercentNumber<Decimal> lnConstants[] =
 	  {
@@ -317,16 +389,24 @@ namespace mkc_timeseries
 
       }
 
-      // Return the tolerance in percent for the number of iterations away we
-      // are for from the original robustness target
-
+      /**
+       * @brief Returns a sqrt-scaled tolerance as a raw Decimal for iteration distance.
+       *
+       * Uses a precomputed table of sqrt(n) values for n in [0, 100]. Entry 0
+       * is clamped to 1% and entries 1-3 are clamped to 2% to prevent overly
+       * tight tolerances near the reference. Values above index 100 are clamped
+       * to sqrt(100) = 10%.
+       *
+       * @param numIterations  Number of permutation steps away from the reference (0-100).
+       * @return The sqrt-scaled tolerance as a Decimal.
+       */
       const Decimal getDecimalToleranceForIterations (unsigned long numIterations) const
       {
 	static Decimal sqrtConstants[] =
 	  {
 	    // Note entry 0 was manually modified because we would like a 1%
 	    // tolerance on the reference value
-	    
+
 	    DecimalConstants<Decimal>::createDecimal (std::string("1.000000")),
 	    // Note entries 1 to 3 were manually modified because we don't want
 	    // tolerances less than 2% for these entries
@@ -440,16 +520,22 @@ namespace mkc_timeseries
 	return sqrtConstants[100];
       }
 
-      // Return the tolerance in percent for the number of iterations away we
-      // are for from the original robustness target
-
+      /**
+       * @brief Returns a sqrt-scaled tolerance as a PercentNumber for iteration distance.
+       *
+       * Identical mapping to getDecimalToleranceForIterations but returns a
+       * PercentNumber wrapper. Entry 0 is clamped to 1% and entries 1-3 to 2%.
+       *
+       * @param numIterations  Number of permutation steps away from the reference (0-100).
+       * @return The sqrt-scaled tolerance as a PercentNumber.
+       */
       const PercentNumber<Decimal> getToleranceForIterations (unsigned long numIterations) const
       {
 	static PercentNumber<Decimal> sqrtConstants[] =
 	  {
 	    // Note entry 0 was manually modified because we would like a 1%
 	    // tolerance on the reference value
-	    
+
 	    PercentNumber<Decimal>::createPercentNumber (std::string("1.000000")),
 	    // Note entries 1 to 3 were manually modified because we don't want
 	    // tolerances less than 2% for these entries
@@ -562,11 +648,22 @@ namespace mkc_timeseries
 	// We don't want tolerance greater than 10%
 	return sqrtConstants[100];
       }
-      
+
+      /**
+       * @brief Returns a half-sqrt-scaled tolerance as a PercentNumber for trade count.
+       *
+       * Uses a precomputed table of sqrt(n)/2 values for n in [0, 100].
+       * Provides a gentler tolerance growth than getToleranceForIterations,
+       * appropriate for adjusting expectations based on sample size (number of
+       * trades). Values above index 100 are clamped to 5%.
+       *
+       * @param numTrades  The number of closed trades in the permutation result (0-100).
+       * @return The half-sqrt-scaled tolerance as a PercentNumber.
+       */
       const PercentNumber<Decimal> getToleranceForNumTrades (unsigned long numTrades) const
       {
 	static PercentNumber<Decimal> halfSqrtConstants[] =
-	  {	
+	  {
 	    PercentNumber<Decimal>::createPercentNumber (std::string("0.000000")),
 	    PercentNumber<Decimal>::createPercentNumber (std::string("0.500000")),
 	    PercentNumber<Decimal>::createPercentNumber (std::string("0.707107")),
@@ -677,17 +774,18 @@ namespace mkc_timeseries
 	return halfSqrtConstants[100];
       }
 
-      //
-      // PAL Profitability is defined as:
-      //
-      // Profitability = ProfitFactory / (ProfitFactor + PayoffRatio)
-      //
-      // We modify Profitability to take commissions and slippage into
-      // account by adding a safety factor in the range of 0.7 - 0.9 for
-      // short term trading.
-      //
-      // Profitability = ProfitFactory / (ProfitFactor + SafetyFactor * PayoffRatio)
-
+      /**
+       * @brief Returns the profitability safety factor.
+       *
+       * PAL Profitability is defined as:
+       * Profitability = ProfitFactor / (ProfitFactor + PayoffRatio).
+       *
+       * This is modified to account for commissions and slippage by introducing
+       * a safety factor (typically 0.7-0.9 for short-term trading):
+       * Profitability = ProfitFactor / (ProfitFactor + SafetyFactor * PayoffRatio).
+       *
+       * @return Reference to the safety factor Decimal.
+       */
       const Decimal& getProfitabilitySafetyFactor() const
       {
 	return mProfitabilitySafetyFactor;
@@ -700,13 +798,20 @@ namespace mkc_timeseries
       Decimal mProfitabilitySafetyFactor;
     };
 
-  //
-  // class RobustnessPermutationAttributes
-  //
-
+  /**
+   * @brief Abstract base class specifying permutation layout for robustness testing.
+   *
+   * Defines how many total permutations to generate, how many fall below and
+   * above the reference stop-loss, and provides a divisor used to compute the
+   * permutation increment. Derived classes supply the number of boundary
+   * entries to inspect for early failure detection.
+   */
   class RobustnessPermutationAttributes
   {
   public:
+    /**
+     * @brief Copy constructor.
+     */
     RobustnessPermutationAttributes (const RobustnessPermutationAttributes& rhs)
       : mNumberOfPermutations(rhs.mNumberOfPermutations),
 	mBelowRefPermutations(rhs.mBelowRefPermutations),
@@ -714,7 +819,10 @@ namespace mkc_timeseries
 	mPermutationsDivisor(rhs.mPermutationsDivisor)
     {}
 
-    RobustnessPermutationAttributes& 
+    /**
+     * @brief Copy assignment operator.
+     */
+    RobustnessPermutationAttributes&
     operator=(const RobustnessPermutationAttributes &rhs)
     {
       if (this == &rhs)
@@ -728,35 +836,52 @@ namespace mkc_timeseries
       return *this;
     }
 
+    /// Virtual destructor (pure).
     virtual ~RobustnessPermutationAttributes() = 0;
 
-    // First N permutations to test for robustness failure
+    /**
+     * @brief Returns the number of leading permutations to check for failure.
+     */
     virtual uint32_t numEntriesToTestAtBeginning() const = 0;
 
-    // Last N permutations to test for robustness failure
+    /**
+     * @brief Returns the number of trailing permutations to check for failure.
+     */
     virtual uint32_t numEntriesToTestAtEnd() const = 0;
 
+    /// Returns the total number of permutations in the test.
     uint32_t getNumberOfPermutations() const
     {
       return mNumberOfPermutations;
     }
 
+    /// Returns the number of permutations below the reference stop.
     uint32_t getNumPermutationsBelowRef() const
     {
       return mBelowRefPermutations;
     }
 
+    /// Returns the number of permutations above the reference stop.
     uint32_t getNumPermutationsAboveRef() const
     {
       return mAboveRefPermutations;
     }
 
+    /// Returns the divisor used to compute the permutation increment from the original stop.
     uint32_t getPermutationsDivisor() const
     {
       return mPermutationsDivisor;
     }
 
   protected:
+    /**
+     * @brief Protected constructor for derived classes.
+     *
+     * @param numberOfPermutations  Total number of stop/target permutations.
+     * @param belowRefPermutations  Count of permutations below the reference.
+     * @param aboveRefPermutations  Count of permutations above the reference.
+     * @param permutationsDivisor   Divisor to compute the permutation step size.
+     */
     RobustnessPermutationAttributes (uint32_t numberOfPermutations,
 				     uint32_t belowRefPermutations,
 				     uint32_t aboveRefPermutations,
@@ -778,15 +903,17 @@ namespace mkc_timeseries
   inline RobustnessPermutationAttributes::~RobustnessPermutationAttributes()
   {}
 
-  //
-  // class PALRobustnessPermutationAttributes
-  //
-  // mimics the settings that PriceActionLab uses for robustness testing
-
-  class PALRobustnessPermutationAttributes 
+  /**
+   * @brief Permutation attributes mimicking PriceActionLab's robustness settings.
+   *
+   * Uses 19 total permutations (14 below, 4 above the reference) with a
+   * divisor of 16 and tests 2 entries at each boundary for early failure.
+   */
+  class PALRobustnessPermutationAttributes
     : public RobustnessPermutationAttributes
   {
   public:
+    /// Constructs with PriceActionLab default permutation settings.
     PALRobustnessPermutationAttributes()
       : RobustnessPermutationAttributes(19, 14, 4, 16)
     {}
@@ -794,8 +921,8 @@ namespace mkc_timeseries
     PALRobustnessPermutationAttributes (const RobustnessPermutationAttributes& rhs)
       : RobustnessPermutationAttributes(rhs)
     {}
-					     
-    PALRobustnessPermutationAttributes& 
+
+    PALRobustnessPermutationAttributes&
     operator=(const PALRobustnessPermutationAttributes& rhs)
     {
       if (this == &rhs)
@@ -808,13 +935,17 @@ namespace mkc_timeseries
     ~PALRobustnessPermutationAttributes()
     {}
 
-    // First N permutations to test for robustness failure
+    /**
+     * @brief Returns 2, the number of leading permutations checked for failure.
+     */
     uint32_t numEntriesToTestAtBeginning() const
     {
       return 2;
     }
 
-    // Last N permutations to test for robustness failure
+    /**
+     * @brief Returns 2, the number of trailing permutations checked for failure.
+     */
     uint32_t numEntriesToTestAtEnd() const
     {
       return 2;
@@ -823,15 +954,17 @@ namespace mkc_timeseries
 
   /////////////////////////
 
-  //
-  // class StatSignificantAttributes
-  //
-  // mimics the settings that PriceActionLab uses for robustness testing
-
-  class StatSignificantAttributes 
+  /**
+   * @brief Permutation attributes for statistically significant robustness testing.
+   *
+   * Uses 30 total permutations (15 below, 14 above the reference) with a
+   * divisor of 30 and tests 3 entries at each boundary for early failure.
+   */
+  class StatSignificantAttributes
     : public RobustnessPermutationAttributes
   {
   public:
+    /// Constructs with statistically significant permutation settings.
     StatSignificantAttributes()
       : RobustnessPermutationAttributes(30, 15, 14, 30)
     {}
@@ -839,8 +972,8 @@ namespace mkc_timeseries
     StatSignificantAttributes (const RobustnessPermutationAttributes& rhs)
       : RobustnessPermutationAttributes(rhs)
     {}
-					     
-    StatSignificantAttributes& 
+
+    StatSignificantAttributes&
     operator=(const StatSignificantAttributes &rhs)
     {
       if (this == &rhs)
@@ -853,22 +986,37 @@ namespace mkc_timeseries
     ~StatSignificantAttributes()
     {}
 
-   // First N permutations to test for robustness failure
-    uint32_t numEntriesToTestAtBeginning() const
+    /**
+     * @brief Returns 3, the number of leading permutations checked for failure.
+     */
+   uint32_t numEntriesToTestAtBeginning() const
     {
       return 3;
     }
 
-    // Last N permutations to test for robustness failure
+    /**
+     * @brief Returns 3, the number of trailing permutations checked for failure.
+     */
     uint32_t numEntriesToTestAtEnd() const
     {
       return 3;
     }
   };
 
+  /**
+   * @brief Holds a profit-target and protective-stop pair for a pattern permutation.
+   *
+   * @tparam Decimal  The numeric type (e.g., dec::decimal<7>).
+   */
   template <class Decimal> class ProfitTargetStopPair
   {
   public:
+    /**
+     * @brief Constructs a pair from the given profit target and stop values.
+     *
+     * @param profitTarget  The profit target as a percentage.
+     * @param stop          The protective stop loss as a percentage.
+     */
     ProfitTargetStopPair (const Decimal& profitTarget,
 			  const Decimal& stop)
       :  mProfitTarget(profitTarget),
@@ -880,7 +1028,7 @@ namespace mkc_timeseries
 	mStop(rhs.mStop)
     {}
 
-    ProfitTargetStopPair<Decimal>& 
+    ProfitTargetStopPair<Decimal>&
     operator=(const ProfitTargetStopPair<Decimal> &rhs)
     {
       if (this == &rhs)
@@ -895,24 +1043,45 @@ namespace mkc_timeseries
     ~ProfitTargetStopPair()
     {}
 
+    /// Returns the profit target value.
     const Decimal& getProfitTarget() const
     {
       return mProfitTarget;
     }
 
+    /// Returns the protective stop loss value.
     const Decimal& getProtectiveStop() const
     {
       return mStop;
     }
-    
+
   private:
     Decimal mProfitTarget;
     Decimal mStop;
   };
 
+  /**
+   * @brief Stores the backtest metrics for a single robustness permutation.
+   *
+   * Captures win rate (PAL profitability), profit factor, number of trades,
+   * payoff ratio, median payoff ratio, R-multiple expectancy, and optionally
+   * a Monte Carlo estimated payoff ratio.
+   *
+   * @tparam Decimal  The numeric type (e.g., dec::decimal<7>).
+   */
   template <class Decimal> class RobustnessTestResult
   {
   public:
+    /**
+     * @brief Constructs a result without a Monte Carlo payoff estimate.
+     *
+     * @param winRate           PAL profitability (win rate as a percentage).
+     * @param profitFactor      Ratio of gross profit to gross loss.
+     * @param numTrades         Number of closed trades in the backtest.
+     * @param payOffRatio       Mean payoff ratio (average win / average loss).
+     * @param medianPayOffRatio Median payoff ratio.
+     * @param expectation       R-multiple expectancy.
+     */
     RobustnessTestResult (const Decimal& winRate,
 			  const Decimal& profitFactor,
 			  unsigned long numTrades,
@@ -928,6 +1097,17 @@ namespace mkc_timeseries
 	mMonteCarloPayoffRatio(DecimalConstants<Decimal>::DecimalZero)
     {}
 
+    /**
+     * @brief Constructs a result with a Monte Carlo payoff estimate.
+     *
+     * @param winRate           PAL profitability (win rate as a percentage).
+     * @param profitFactor      Ratio of gross profit to gross loss.
+     * @param numTrades         Number of closed trades in the backtest.
+     * @param payOffRatio       Mean payoff ratio (average win / average loss).
+     * @param medianPayOffRatio Median payoff ratio.
+     * @param expectation       R-multiple expectancy.
+     * @param monteCarloPayoff  Monte Carlo estimated payoff ratio.
+     */
     RobustnessTestResult (const Decimal& winRate,
 			  const Decimal& profitFactor,
 			  unsigned long numTrades,
@@ -957,7 +1137,7 @@ namespace mkc_timeseries
     ~RobustnessTestResult()
     {}
 
-    RobustnessTestResult<Decimal>& 
+    RobustnessTestResult<Decimal>&
     operator=(const RobustnessTestResult<Decimal> &rhs)
     {
       if (this == &rhs)
@@ -973,11 +1153,22 @@ namespace mkc_timeseries
       return *this;
     }
 
+    /// Returns the PAL profitability (win rate percentage).
     const Decimal& getPALProfitability() const
     {
       return mWinRate;
     }
 
+    /**
+     * @brief Computes Monte Carlo adjusted profitability.
+     *
+     * Uses the Monte Carlo payoff ratio in place of the standard payoff ratio
+     * in the PAL profitability formula:
+     * Profitability = (PF / (PF + MC_PayoffRatio)) * 100.
+     *
+     * @return The Monte Carlo profitability as a percentage, or zero if the
+     *         denominator is non-positive.
+     */
     const Decimal getMonteCarloProfitability() const
     {
       Decimal pf(getProfitFactor());
@@ -988,32 +1179,38 @@ namespace mkc_timeseries
       else
 	return (DecimalConstants<Decimal>::DecimalZero);
     }
-    
+
+    /// Returns the profit factor (gross profit / gross loss).
     const Decimal& getProfitFactor() const
     {
       return mProfitFactor;
     }
 
+    /// Returns the number of closed trades.
     unsigned long getNumTrades() const
     {
       return mNumTrades;
     }
 
+    /// Returns the mean payoff ratio.
     const Decimal& getPayOffRatio() const
     {
       return mPayOffRatio;
     }
 
+    /// Returns the median payoff ratio.
     const Decimal& getMedianPayOffRatio() const
     {
       return mMedianPayOffRatio;
     }
 
+    /// Returns the Monte Carlo estimated payoff ratio.
     const Decimal& getMonteCarloPayOffRatio() const
     {
       return mMonteCarloPayoffRatio;;
     }
 
+    /// Returns the R-multiple expectancy.
     const Decimal& getRMultipleExpectancy() const
     {
       return mExpectation;
@@ -1029,10 +1226,11 @@ namespace mkc_timeseries
     Decimal mMonteCarloPayoffRatio;
   };
 
-  //
-  // class ProfitStopComparator
-  //
-
+  /**
+   * @brief Comparator that orders ProfitTargetStopPair by protective stop value.
+   *
+   * @tparam Decimal  The numeric type (e.g., dec::decimal<7>).
+   */
   template <class Decimal> struct ProfitTargetStopComparator
   {
     bool operator() (const ProfitTargetStopPair<Decimal>& lhs,
@@ -1043,32 +1241,49 @@ namespace mkc_timeseries
 
   };
 
+  /**
+   * @brief Exception thrown by RobustnessCalculator on invalid state.
+   */
   class RobustnessCalculatorException : public std::runtime_error
   {
   public:
-    RobustnessCalculatorException(const std::string msg) 
+    RobustnessCalculatorException(const std::string msg)
       : std::runtime_error(msg)
     {}
-    
+
     ~RobustnessCalculatorException()
     {}
-    
+
   };
 
-  //
-  // class RobustnessCalculator
-  //
-  // Purpose: to determine whether a PriceActionLab pattern is robust or not
-  //
-
+  /**
+   * @brief Aggregates robustness permutation results and determines pattern robustness.
+   *
+   * Collects backtest results keyed by profit-target/stop-loss pairs, then
+   * evaluates whether the pattern meets minimum robustness, profitability,
+   * and statistical dispersion criteria. Uses median profit factor, robust Qn
+   * estimator, and tolerance-adjusted comparisons against neighbouring
+   * permutations.
+   *
+   * @tparam Decimal  The numeric type (e.g., dec::decimal<7>).
+   */
   template <class Decimal> class RobustnessCalculator
   {
   public:
-    typedef typename std::map<ProfitTargetStopPair<Decimal>, 
+    /// Const iterator over robustness test results ordered by stop value.
+    typedef typename std::map<ProfitTargetStopPair<Decimal>,
 			      std::shared_ptr<RobustnessTestResult<Decimal>>,
 			      ProfitTargetStopComparator<Decimal>>::const_iterator RobustnessTestResultIterator;
 
   public:
+    /**
+     * @brief Constructs the calculator for a specific pattern and robustness criteria.
+     *
+     * @param thePattern              The PriceActionLab pattern under test.
+     * @param permutationAttributes   Specification of permutation layout.
+     * @param robustnessCriteria      Thresholds and tolerance settings.
+     * @param debug                   If true, emits diagnostic output to stdout.
+     */
     RobustnessCalculator(shared_ptr<PriceActionLabPattern> thePattern,
 			 shared_ptr<RobustnessPermutationAttributes> permutationAttributes,
 			 const PatternRobustnessCriteria<Decimal>& robustnessCriteria,
@@ -1101,7 +1316,7 @@ namespace mkc_timeseries
     ~RobustnessCalculator()
       {}
 
-    RobustnessCalculator<Decimal>& 
+    RobustnessCalculator<Decimal>&
     operator=(const RobustnessCalculator<Decimal> &rhs)
     {
       if (this == &rhs)
@@ -1119,6 +1334,16 @@ namespace mkc_timeseries
       return *this;
     }
 
+    /**
+     * @brief Adds a permutation backtest result to the calculator.
+     *
+     * Updates internal profit-factor statistics, profitable-result counters,
+     * and the results map keyed by the pattern's profit-target/stop pair.
+     *
+     * @param testResult  Shared pointer to the permutation's backtest metrics.
+     * @param pattern     The PriceActionLab pattern corresponding to the result.
+     * @throws RobustnessCalculatorException If a result for the same stop already exists.
+     */
     void addTestResult (std::shared_ptr<RobustnessTestResult<Decimal>> testResult,
 			std::shared_ptr<PriceActionLabPattern> pattern)
     {
@@ -1139,16 +1364,25 @@ namespace mkc_timeseries
 	throw RobustnessCalculatorException ("RobustnessCalculator::addTestResult - stop already exists");
     }
 
+    /// Returns a const iterator to the first robustness test result.
     RobustnessCalculator<Decimal>::RobustnessTestResultIterator beginRobustnessTestResults() const
     {
       return  mRobustnessResults.begin();
     }
 
+    /// Returns a const iterator past the last robustness test result.
     RobustnessCalculator<Decimal>::RobustnessTestResultIterator endRobustnessTestResults() const
     {
       return  mRobustnessResults.end();
     }
 
+    /**
+     * @brief Computes the robustness index as a percentage.
+     *
+     * Defined as (number of profitable permutations / total permutations) * 100.
+     *
+     * @return The robustness index in [0, 100], or zero if no entries exist.
+     */
     Decimal getRobustnessIndex() const
     {
       unsigned long numEntries = getNumEntries();
@@ -1160,6 +1394,15 @@ namespace mkc_timeseries
 	return DecimalConstants<Decimal>::DecimalZero;
     }
 
+    /**
+     * @brief Computes the PAL profitability index as a percentage.
+     *
+     * Defined as (number of PAL-profitable permutations / total permutations) * 100,
+     * where PAL-profitable means the Monte Carlo profitability meets the required
+     * threshold within tolerance.
+     *
+     * @return The profitability index in [0, 100], or zero if no entries exist.
+     */
     Decimal getProfitabilityIndex() const
     {
       unsigned long numEntries = getNumEntries();
@@ -1171,6 +1414,19 @@ namespace mkc_timeseries
 	return DecimalConstants<Decimal>::DecimalZero;
     }
 
+    /**
+     * @brief Determines whether the pattern is robust across all permutations.
+     *
+     * Checks, in order: that enough permutation entries exist, that the
+     * robustness index meets the minimum, that the median profit factor
+     * exceeds 1.5, that the median minus one Qn is above 1.0, and that
+     * the six neighbouring permutations on each side of the reference pass
+     * tolerance-adjusted profitability, payoff, and profit-factor tests.
+     *
+     * @return True if all robustness criteria are satisfied.
+     * @throws RobustnessCalculatorException If the number of entries does not
+     *         match the expected number of permutations.
+     */
     //bool isRobust() const
     bool isRobust()
     {
@@ -1190,7 +1446,7 @@ namespace mkc_timeseries
 
       // If the lower 2 standard deviation of the profit factor is < 1.0 and the smallest profit factor < 1.0
       // then reject as non-robust
-      
+
       if ((medianProfitFactor - (robustQn * DecimalConstants<Decimal>::DecimalTwo)) < DecimalConstants<Decimal>::DecimalOne)
 	{
 	  if (mRobustnessStats.getSmallestValue() < DecimalConstants<Decimal>::DecimalOne)
@@ -1302,6 +1558,12 @@ namespace mkc_timeseries
 
     }
 
+    /**
+     * @brief Counts robustness failures among the leading permutation entries.
+     *
+     * @param theRequiredProfitability  The profitability threshold to test against.
+     * @return Number of failed entries at the beginning of the permutation range.
+     */
     uint32_t getNumRobustnessFailuresAtBeginning(Decimal theRequiredProfitability) const
     {
       typename RobustnessCalculator<Decimal>::RobustnessTestResultIterator it =
@@ -1326,6 +1588,12 @@ namespace mkc_timeseries
       return numFailedEntries;
     }
 
+    /**
+     * @brief Counts robustness failures among the trailing permutation entries.
+     *
+     * @param theRequiredProfitability  The profitability threshold to test against.
+     * @return Number of failed entries at the end of the permutation range.
+     */
     uint32_t getNumRobustnessFailuresAtEnd(Decimal theRequiredProfitability) const
     {
       typename RobustnessCalculator<Decimal>::RobustnessTestResultIterator it =
@@ -1351,11 +1619,22 @@ namespace mkc_timeseries
       return numFailedEntries;
     }
 
+    /// Returns the number of permutation results stored in the calculator.
     unsigned long getNumEntries() const
     {
       return mRobustnessResults.size();
     }
 
+    /**
+     * @brief Computes the required PAL profitability for a given profit factor and payoff ratio.
+     *
+     * Formula: (profitFactor / (profitFactor + safetyFactor * payoffRatio)) * 100.
+     *
+     * @param profitFactor  The target profit factor.
+     * @param payoffRatio   The pattern's payoff ratio.
+     * @param safetyFactor  Safety factor for commission/slippage adjustment.
+     * @return The required profitability as a percentage.
+     */
     static Decimal requiredPALProfitability(const Decimal& profitFactor,
 						const Decimal& payoffRatio,
 						const Decimal& safetyFactor)
@@ -1384,7 +1663,7 @@ namespace mkc_timeseries
       return PercentNumber<Decimal>::createPercentNumber (toleranceForPercentage * toleranceForDistance);
 
     }
-    
+
     bool isPermutationResultRobust (std::shared_ptr<RobustnessTestResult<Decimal>> result,
 				    const Decimal& requiredProfitability,
 				    unsigned long iterationsAwayFromRef,
@@ -1406,7 +1685,7 @@ namespace mkc_timeseries
       Decimal resultPayoff (result->getMonteCarloPayOffRatio());
       if (resultPayoff == DecimalConstants<Decimal>::DecimalZero)
 	resultPayoff = result->getMedianPayOffRatio();
-      
+
       if (!equalWithTolerance (mPatternToTest->getPayoffRatio(), resultPayoff,
 			       mRobustnessCriteria.getToleranceForNumTrades (result->getNumTrades())))
 	{
@@ -1415,7 +1694,7 @@ namespace mkc_timeseries
 	  return false;
 	}
 
-      if (!equalWithTolerance (mRobustnessCriteria.getDesiredProfitFactor(), 
+      if (!equalWithTolerance (mRobustnessCriteria.getDesiredProfitFactor(),
 			       result->getProfitFactor(),
 			       tolerance))
 	return false;
@@ -1423,9 +1702,9 @@ namespace mkc_timeseries
       return true;
 
     }
-    
 
-    // Note this method is meant to be called on the results that 'neighbor' the original 
+
+    // Note this method is meant to be called on the results that 'neighbor' the original
     // profit target, stop pair
 
     bool isPermutationResultRobust (std::shared_ptr<RobustnessTestResult<Decimal>> result,
@@ -1445,7 +1724,7 @@ namespace mkc_timeseries
       Decimal resultPayoff (result->getMonteCarloPayOffRatio());
       if (resultPayoff == DecimalConstants<Decimal>::DecimalZero)
 	resultPayoff = result->getMedianPayOffRatio();
-      
+
       if (!equalWithTolerance (mPatternToTest->getPayoffRatio(), resultPayoff,
 			       mRobustnessCriteria.getToleranceForNumTrades (result->getNumTrades())))
 	{
@@ -1454,7 +1733,7 @@ namespace mkc_timeseries
 	  return false;
 	}
 
-      if (!equalWithTolerance (mRobustnessCriteria.getDesiredProfitFactor(), 
+      if (!equalWithTolerance (mRobustnessCriteria.getDesiredProfitFactor(),
 			       result->getProfitFactor(),
 			       mRobustnessCriteria.getToleranceForIterations(iterationsAwayFromRef)))
 	return false;
@@ -1475,34 +1754,34 @@ namespace mkc_timeseries
     unsigned long getNumNeighboringSignificantResults() const
     {
       return 6;
-      
+
       //Decimal originalPatternStop (mPatternToTest->getStopLossAsDecimal());
       //Decimal permutationIncrement(originalPatternStop / Decimal((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
 
       //permutationIncrement = permutationIncrement * mPatternToTest->getPayoffRatio();
       //std::cout << "getNumNeighboringSignificantResults(): permutation increment = " << permutationIncrement << std::endl;
-      
+
       // The rationale for number of signifant stop/target pairs to check is that at most
       // parameters 20% away from the original are significant. As we get farther away we
       // should not expect the same level of profitability
-      
+
       //Decimal numSignificant (DecimalConstants<Decimal>::TwentyPercent/permutationIncrement);
 
       //std::cout << "getNumNeighboringSignificantResults(): numSignificant = " << numSignificant << std::endl;
       //return (unsigned long) num::to_double(numSignificant);
     }
-    
+
     /*
     unsigned long getNumNeighboringSignificantResults() const
     {
-      Decimal numPermutations = 
+      Decimal numPermutations =
 	Decimal(mPermutationAttributes->getNumberOfPermutations());
       Decimal numSignificant7 = Decimal(7);
 
       Decimal numSignificant (numPermutations * RobustnessCalculator<Decimal>::TwentyFivePercent);
       if (mDebug)
 	std::cout << "getNumNeighboringSignificantResults: numPermutations = " << numPermutations << std::endl;
- 
+
       if (mPermutationAttributes->getNumberOfPermutations() == 30)
 	numSignificant = numSignificant7;
 
@@ -1510,8 +1789,8 @@ namespace mkc_timeseries
       return (unsigned long) num::to_double(numSignificant);
     }
     */
-    
-    bool equalWithTolerance (const Decimal& referenceValue, 
+
+    bool equalWithTolerance (const Decimal& referenceValue,
 			     const Decimal& comparisonValue,
 			     const PercentNumber<Decimal>& tolerance) const
     {
@@ -1525,7 +1804,7 @@ namespace mkc_timeseries
     PatternRobustnessCriteria<Decimal> mRobustnessCriteria;
     Decimal mNumberProfitableResults;
     bool mDebug;
-    std::map<ProfitTargetStopPair<Decimal>, 
+    std::map<ProfitTargetStopPair<Decimal>,
 	     std::shared_ptr<RobustnessTestResult<Decimal>>,
 	     ProfitTargetStopComparator<Decimal>> mRobustnessResults;
     Decimal mRequiredProfitability;
@@ -1535,20 +1814,33 @@ namespace mkc_timeseries
     SummaryStats<Decimal> mRobustnessStats;
   };
 
-  template <class Decimal> Decimal 
+  template <class Decimal> Decimal
   RobustnessCalculator<Decimal>::TwentyPercent(DecimalConstants<Decimal>::createDecimal("0.20"));
 
-  template <class Decimal> Decimal 
+  template <class Decimal> Decimal
   RobustnessCalculator<Decimal>::TwentyFivePercent(DecimalConstants<Decimal>::createDecimal("0.25"));
 
-  //
-  // class RobustnessTest
-  //
-  // Performs a robustness test of a PriceActionLab pattern
-  //
+  /**
+   * @brief Orchestrates a robustness test across stop/target permutations.
+   *
+   * Clones the backtester for each permutation of profit-target and stop-loss,
+   * runs the backtest, and feeds results into a RobustnessCalculator to
+   * determine whether the original pattern is robust.
+   *
+   * @tparam Decimal  The numeric type (e.g., dec::decimal<7>).
+   */
   template <class Decimal> class RobustnessTest
   {
   public:
+    /**
+     * @brief Constructs the robustness test.
+     *
+     * @param backtester              Backtester instance to clone for each permutation.
+     * @param aPalStrategy            The strategy wrapping the pattern under test.
+     * @param permutationAttributes   Specification of permutation layout.
+     * @param robustnessCriteria      Thresholds and tolerance settings.
+     * @param factory                 AST factory for constructing permuted pattern nodes.
+     */
     RobustnessTest (std::shared_ptr<BackTester<Decimal>> backtester,
 		    std::shared_ptr<PalStrategy<Decimal>> aPalStrategy,
 		    shared_ptr<RobustnessPermutationAttributes> permutationAttributes,
@@ -1592,7 +1884,11 @@ namespace mkc_timeseries
       return *this;
     }
 
-    // Returns boolean value indicating whether or not the PalStrategy is robust
+    /**
+     * @brief Executes the robustness test across all permutations.
+     *
+     * @return True if the pattern passes all robustness criteria.
+     */
     bool runRobustnessTest()
     {
       // std::cout << "RobustnessTest::runRobustnessTest" << std::endl;
@@ -1602,7 +1898,7 @@ namespace mkc_timeseries
       Decimal permutationIncrement(originalPatternStop / Decimal((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
       Decimal numProfitablePermutations(DecimalConstants<Decimal>::DecimalZero);
       Decimal requiredPayoffRatio (originalPattern->getPayoffRatio());
-      Decimal requiredProfitability (RobustnessCalculator<Decimal>::requiredPALProfitability (mRobustnessCriteria.getDesiredProfitFactor(), requiredPayoffRatio, mRobustnessCriteria.getProfitabilitySafetyFactor())); 
+      Decimal requiredProfitability (RobustnessCalculator<Decimal>::requiredPALProfitability (mRobustnessCriteria.getDesiredProfitFactor(), requiredPayoffRatio, mRobustnessCriteria.getProfitabilitySafetyFactor()));
       bool originalPatternProfitabilityFailed = false;
 
       //std::cout << "RobustnessTest::runRobustnessTest - finished initializing variables" << std::endl;
@@ -1611,14 +1907,14 @@ namespace mkc_timeseries
       std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
       clonedBackTester->addStrategy(mTheStrategy);
       clonedBackTester->backtest();
-      
+
       addTestResult (createRobustnessTestResult (clonedBackTester),
 		     originalPattern);
 
       //std::cout << "RobustnessTest::runRobustnessTest - finished adding reference (target, stop) pair test result" << std::endl;
 
-      Decimal lowestStopToTest(calculateLowestStopPermutationValue (originalPatternStop, 
-									   permutationIncrement));
+      Decimal lowestStopToTest(calculateLowestStopPermutationValue (originalPatternStop,
+								   permutationIncrement));
       Decimal stopToTest(lowestStopToTest);
       Decimal profitTargetToTest(stopToTest * requiredPayoffRatio);
 
@@ -1654,21 +1950,22 @@ namespace mkc_timeseries
       return (mRobustnessQuality.isRobust ());
     }
 
+    /// Returns a const reference to the underlying RobustnessCalculator.
     const RobustnessCalculator<Decimal>& getRobustnessCalculator() const
     {
       return mRobustnessQuality;
     }
 
-  private: 
+  private:
     void backTestNewPermutation (std::shared_ptr<PriceActionLabPattern> aPattern,
-				 const Decimal& newStopLoss, 
+				 const Decimal& newStopLoss,
 				 const Decimal& newProfitTarget)
     {
       decimal7 *newStopLossPtr = mAstFactory->getDecimalNumber ((char *) num::toString(newStopLoss).c_str());
       decimal7 *newProfitTargetPtr = mAstFactory->getDecimalNumber ((char *)num::toString(newProfitTarget).c_str());
-      
+
       std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
-	 
+
 
       ProfitTargetInPercentExpression *profitTarget;
       StopLossInPercentExpression *stopLoss;
@@ -1702,25 +1999,25 @@ namespace mkc_timeseries
       addTestResult (createRobustnessTestResult (clonedBackTester),
 		     clonedPattern);
 
-      
+
     }
 
     Decimal calculateLowestStopPermutationValue (const Decimal& originalStop,
 						       const Decimal& permutationIncrement) const
     {
-      return (originalStop - 
+      return (originalStop -
 	      (permutationIncrement *  Decimal (mPermutationAttributes->getNumPermutationsBelowRef())));
     }
 
-    std::shared_ptr<RobustnessTestResult<Decimal>> 
+    std::shared_ptr<RobustnessTestResult<Decimal>>
     createRobustnessTestResult(std::shared_ptr<BackTester<Decimal>> backtester)
     {
-      //      ClosedPositionHistory<Decimal> closedPositions = 
+      //      ClosedPositionHistory<Decimal> closedPositions =
       //getClosedPositionHistory (backtester);
 
       ClosedPositionHistory<Decimal> closedPositions = backtester->getClosedPositionHistory();
 
-      return 
+      return
 	make_shared<RobustnessTestResult<Decimal>> (closedPositions.getMedianPALProfitability(),
 						 closedPositions.getProfitFactor(),
 						 closedPositions.getNumPositions(),
@@ -1747,14 +2044,27 @@ namespace mkc_timeseries
 
   /////////////////////////
 
-  //
-  // class RobustnessTestMonteCarlo
-  //
-  // Performs a robustness test of a PriceActionLab pattern
-  //
+  /**
+   * @brief Monte Carlo variant of the robustness test.
+   *
+   * Same permutation logic as RobustnessTest, but each permutation result is
+   * augmented with a 200-iteration Monte Carlo estimate of the payoff ratio,
+   * providing a more stable payoff metric for the robustness evaluation.
+   *
+   * @tparam Decimal  The numeric type (e.g., dec::decimal<7>).
+   */
   template <class Decimal> class RobustnessTestMonteCarlo
   {
   public:
+    /**
+     * @brief Constructs the Monte Carlo robustness test.
+     *
+     * @param backtester              Backtester instance to clone for each permutation.
+     * @param aPalStrategy            The strategy wrapping the pattern under test.
+     * @param permutationAttributes   Specification of permutation layout.
+     * @param robustnessCriteria      Thresholds and tolerance settings.
+     * @param factory                 AST factory for constructing permuted pattern nodes.
+     */
     RobustnessTestMonteCarlo (std::shared_ptr<BackTester<Decimal>> backtester,
 			      std::shared_ptr<PalStrategy<Decimal>> aPalStrategy,
 			      shared_ptr<RobustnessPermutationAttributes> permutationAttributes,
@@ -1798,7 +2108,11 @@ namespace mkc_timeseries
       return *this;
     }
 
-    // Returns boolean value indicating whether or not the PalStrategy is robust
+    /**
+     * @brief Executes the Monte Carlo robustness test across all permutations.
+     *
+     * @return True if the pattern passes all robustness criteria.
+     */
     bool runRobustnessTest()
     {
       std::shared_ptr<PriceActionLabPattern> originalPattern = mTheStrategy->getPalPattern();
@@ -1806,15 +2120,15 @@ namespace mkc_timeseries
       Decimal permutationIncrement(originalPatternStop / Decimal((unsigned int) mPermutationAttributes->getPermutationsDivisor()));
       Decimal numProfitablePermutations(DecimalConstants<Decimal>::DecimalZero);
       Decimal requiredPayoffRatio (originalPattern->getPayoffRatio());
-      Decimal requiredProfitability (RobustnessCalculator<Decimal>::requiredPALProfitability (mRobustnessCriteria.getDesiredProfitFactor(), requiredPayoffRatio, mRobustnessCriteria.getProfitabilitySafetyFactor())); 
+      Decimal requiredProfitability (RobustnessCalculator<Decimal>::requiredPALProfitability (mRobustnessCriteria.getDesiredProfitFactor(), requiredPayoffRatio, mRobustnessCriteria.getProfitabilitySafetyFactor()));
       std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
       clonedBackTester->addStrategy(mTheStrategy);
       clonedBackTester->backtest();
 
       addTestResult (clonedBackTester, originalPattern);
 
-      Decimal lowestStopToTest(calculateLowestStopPermutationValue (originalPatternStop, 
-									   permutationIncrement));
+      Decimal lowestStopToTest(calculateLowestStopPermutationValue (originalPatternStop,
+								   permutationIncrement));
       Decimal stopToTest(lowestStopToTest);
       Decimal profitTargetToTest(stopToTest * requiredPayoffRatio);
 
@@ -1847,21 +2161,22 @@ namespace mkc_timeseries
       return (mRobustnessQuality.isRobust ());
     }
 
+    /// Returns a const reference to the underlying RobustnessCalculator.
     const RobustnessCalculator<Decimal>& getRobustnessCalculator() const
     {
       return mRobustnessQuality;
     }
 
-  private: 
+  private:
     void backTestNewPermutation (std::shared_ptr<PriceActionLabPattern> aPattern,
-				 const Decimal& newStopLoss, 
+				 const Decimal& newStopLoss,
 				 const Decimal& newProfitTarget)
     {
       decimal7 *newStopLossPtr = mAstFactory->getDecimalNumber ((char *) num::toString(newStopLoss).c_str());
       decimal7 *newProfitTargetPtr = mAstFactory->getDecimalNumber ((char *)num::toString(newProfitTarget).c_str());
-      
+
       std::shared_ptr<BackTester<Decimal>> clonedBackTester = mTheBacktester->clone();
-	 
+
 
       ProfitTargetInPercentExpression *profitTarget;
       StopLossInPercentExpression *stopLoss;
@@ -1898,7 +2213,7 @@ namespace mkc_timeseries
     Decimal calculateLowestStopPermutationValue (const Decimal& originalStop,
 						       const Decimal& permutationIncrement) const
     {
-      return (originalStop - 
+      return (originalStop -
 	      (permutationIncrement *  Decimal (mPermutationAttributes->getNumPermutationsBelowRef())));
     }
 
@@ -1917,11 +2232,11 @@ namespace mkc_timeseries
       // Use Monte Carlo to (hopefully) get a better estimate of the payoff ratio
       //std::cout << "Running MonteCarloPayoffRatio for profit target " <<
       //pattern->getProfitTargetAsDecimal() << ", Stop = " << pattern->getStopLossAsDecimal() << std::endl << std::endl;
-      
+
       MonteCarloPayoffRatio<Decimal> monteCarloPayoffCalculator (backtester, 200);
       Decimal monteCarloPayoff(monteCarloPayoffCalculator.runPermutationTest());
 
-      std::shared_ptr<RobustnessTestResult<Decimal>> testResult =  
+      std::shared_ptr<RobustnessTestResult<Decimal>> testResult =
 	make_shared<RobustnessTestResult<Decimal>> (profitability,
 						 profitFactor,
 						 numTrades,

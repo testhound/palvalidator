@@ -1,3 +1,14 @@
+/**
+ * @file BoundedDrawdowns.h
+ * @brief Bootstrap confidence bounds on maximum-drawdown fractiles.
+ *
+ * Computes drawdown fractiles from percent-change series or Trade objects
+ * using i.i.d. or stationary block resampling, and provides BCa-adjusted
+ * confidence intervals via the BCaBootStrap engine.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>

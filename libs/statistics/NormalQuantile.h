@@ -1,3 +1,13 @@
+/**
+ * @file NormalQuantile.h
+ * @brief Quantile helpers and empirical CDF computation for bootstrap intervals.
+ *
+ * Provides type-7 linear-interpolation quantile, mid-rank empirical CDF,
+ * and a nearest-rank quantile used by the BCa and percentile bootstrap classes.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <cmath>

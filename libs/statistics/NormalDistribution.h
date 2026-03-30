@@ -3,9 +3,15 @@
 // Proprietary and confidential
 // Written by Michael K. Collison <collison956@gmail.com>, December 2024
 //
-// Normal Distribution Utility Functions
-// Provides standard normal CDF and inverse CDF (quantile) functions
-//
+
+/**
+ * @file NormalDistribution.h
+ * @brief Standard normal CDF (Φ) and inverse CDF (Φ⁻¹) utility functions.
+ *
+ * Provides NormalCDF (Abramowitz & Stegun rational approximation) and
+ * NormalQuantile (Beasley–Springer–Moro algorithm) as lightweight,
+ * header-only alternatives to Boost.Math for bootstrap computations.
+ */
 
 #pragma once
 

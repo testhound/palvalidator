@@ -1,4 +1,14 @@
-// In a new header, e.g., StrategyFamilyPartitioner.h
+/**
+ * @file StrategyFamilyPartitioner.h
+ * @brief Groups strategies into families by category, sub-type, and direction.
+ *
+ * Provides StrategyFamilyKey, FamilyStatistics, and the StrategyFamilyPartitioner
+ * class used by Romano–Wolf and other multiple-testing procedures to run
+ * family-wise permutation tests.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <map>
@@ -10,7 +20,9 @@
 
 namespace mkc_timeseries
 {
-  // A key to uniquely identify each family
+  /**
+   * @brief Composite key identifying a strategy family by category, sub-type, and direction.
+   */
   struct StrategyFamilyKey {
     mkc_timeseries::StrategyCategory category;
     mkc_timeseries::StrategySubType subType; // New field for granularity
@@ -29,15 +41,18 @@ namespace mkc_timeseries
     }
   };
 
-  // A struct to hold the analytical data for a single family
+  /// @brief Holds per-family count and percentage-of-total statistics.
   struct FamilyStatistics {
     StrategyFamilyKey key;
     size_t count = 0;
     double percentageOfTotal = 0.0;
   };
 
-  // In StrategyFamilyPartitioner.h
-
+  /**
+   * @brief Partitions a strategy container into families keyed by classification.
+   *
+   * @tparam Decimal Numeric type (e.g., dec::decimal<8>).
+   */
   template <class Decimal>
     class StrategyFamilyPartitioner
     {
@@ -161,6 +176,12 @@ namespace mkc_timeseries
     return direction_str + " - " + category_str;
   }
 
+  /**
+   * @brief Prints a formatted table of family statistics to std::cout.
+   *
+   * @tparam Decimal Numeric type.
+   * @param  partitioner The partitioner whose statistics will be printed.
+   */
   template<class Decimal>
   void printFamilyStatistics(const StrategyFamilyPartitioner<Decimal>& partitioner)
   {

@@ -1,3 +1,13 @@
+/**
+ * @file BasicBootstrap.h
+ * @brief Basic (reverse percentile) bootstrap confidence interval.
+ *
+ * Constructs a CI by reflecting the bootstrap quantiles around the point
+ * estimate: [2θ̂ − q_{1−α/2}, 2θ̂ − q_{α/2}].
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>
@@ -79,17 +89,18 @@ namespace palvalidator
     class BasicBootstrap
     {
     public:
+      /// @brief Holds the output of a basic bootstrap run.
       struct Result
       {
-        Decimal     mean;         // θ̂ on original sample
-        Decimal     lower;        // lower CI bound
-        Decimal     upper;        // upper CI bound
-        double      cl;           // confidence level
-        std::size_t B;            // requested bootstrap reps
-        std::size_t effective_B;  // usable (finite) reps
-        std::size_t skipped;      // degenerate reps skipped
-        std::size_t n;            // original sample size
-        std::size_t L;            // resampler L (diagnostic)
+        Decimal     mean;         ///< θ̂ on original sample.
+        Decimal     lower;        ///< Lower CI bound.
+        Decimal     upper;        ///< Upper CI bound.
+        double      cl;           ///< Confidence level.
+        std::size_t B;            ///< Requested bootstrap replicates.
+        std::size_t effective_B;  ///< Usable (finite) replicates.
+        std::size_t skipped;      ///< Degenerate replicates skipped.
+        std::size_t n;            ///< Original sample size.
+        std::size_t L;            ///< Resampler block length (diagnostic).
       };
 
     public:

@@ -1,3 +1,14 @@
+/**
+ * @file BoundFutureReturns.h
+ * @brief Conservative future-return bounds via BCa confidence intervals on empirical quantiles.
+ *
+ * Builds monthly returns from a ClosedPositionHistory (or accepts pre-computed
+ * returns) and computes BCa bootstrap confidence intervals around user-specified
+ * lower and upper quantiles for operational monitoring.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>
@@ -61,10 +72,11 @@ namespace mkc_timeseries
    *   - Lower monitoring bound  = lower CI endpoint of lower quantile (conservative)
    *   - Upper monitoring bound  = upper CI endpoint of upper quantile (conservative)
    *
-   * Template params:
-   *   Decimal   : your fixed-precision decimal type (e.g., dec::decimal<8>)
-   *   Resampler : StationaryBlockResampler<Decimal> by default (good for monthly series)
-   *   Rng       : RNG type used by your BCa bootstrap (e.g., randutils::mt19937_rng)
+   * @tparam Decimal    Fixed-precision decimal type (e.g., dec::decimal<8>).
+   * @tparam Resampler  Block resampler for BCa; defaults to StationaryBlockResampler<Decimal>,
+   *                    which suits monthly return series.
+   * @tparam Rng        Random-number generator consumed by the BCa bootstrap
+   *                    (e.g., randutils::mt19937_rng).
    */
   template <class Decimal,
 	    class Resampler = StationaryBlockResampler<Decimal>,
@@ -73,14 +85,20 @@ namespace mkc_timeseries
   {
   public:
     /**
+     * @brief Construct from a ClosedPositionHistory, building monthly returns internally.
+     *
+     * Delegates to the vector-based constructor after converting closed positions
+     * into a monthly-return series via buildMonthlyReturnsFromClosedPositions().
+     *
      * @param closedPositions  ClosedPositionHistory with realized trades
      * @param blockLen         Stationary block length (default 3 months)
      * @param lowerQuantileP   Lower quantile p in (0, 0.5) (default 0.10)
      * @param upperQuantileP   Upper quantile p in (0.5, 1)  (default 0.90)
      * @param numBootstraps    Number of bootstrap replicates B (default 5000)
      * @param confLevel        Confidence level in (0,1) for BCa CI (default 0.95)
+     * @param intervalType     BCa interval type: TWO_SIDED or ONE_SIDED (default TWO_SIDED).
      *
-     * Throws std::invalid_argument on invalid parameters or insufficient data.
+     * @throws std::invalid_argument If parameters are out of range or data is insufficient.
      */
     BoundFutureReturns(const ClosedPositionHistory<Decimal> &closedPositions,
                        unsigned blockLen        = 3,
@@ -104,9 +122,11 @@ namespace mkc_timeseries
      * @param upperQuantileP   Upper quantile p in (0.5, 1)  (default 0.90)
      * @param numBootstraps    Number of bootstrap replicates B (default 5000)
      * @param confLevel        Confidence level in (0,1) for BCa CI (default 0.95)
+     * @param intervalType     BCa interval type: TWO_SIDED or ONE_SIDED (default TWO_SIDED).
      *
      * This constructor avoids rebuilding monthly returns when they are already available.
-     * Throws std::invalid_argument on invalid parameters or insufficient data.
+     *
+     * @throws std::invalid_argument If parameters are out of range or fewer than 8 months of data.
      */
     BoundFutureReturns(const std::vector<Decimal> &monthlyReturns,
                        unsigned blockLen        = 3,
@@ -210,27 +230,46 @@ namespace mkc_timeseries
 
     // ---- Optional diagnostics / flexibility ----
 
+    /// Lower quantile probability p used for the lower tail.
     double getLowerQuantileP() const noexcept { return m_lowerP; }
+    /// Upper quantile probability p used for the upper tail.
     double getUpperQuantileP() const noexcept { return m_upperP; }
+    /// Number of bootstrap replicates B.
     unsigned getNumBootstraps() const noexcept { return m_B; }
+    /// Confidence level used for BCa intervals.
     double getConfidenceLevel() const noexcept { return m_conf; }
 
+    /// Pre-computed (or internally built) monthly return series.
     const std::vector<Decimal> &getMonthlyReturns() const noexcept { return m_monthly; }
 
+    /// Full BCa confidence-interval result for the lower quantile.
     QuantileCI<Decimal> getLowerQuantileCI() const noexcept { return m_lower; }
+    /// Full BCa confidence-interval result for the upper quantile.
     QuantileCI<Decimal> getUpperQuantileCI() const noexcept { return m_upper; }
 
-    // Point quantiles (if a client prefers central policy instead of conservative CI endpoints).
+    /// Point estimate of the lower quantile (no CI adjustment).
     Decimal getLowerPointQuantile() const noexcept { return m_lower.point; }
+    /// Point estimate of the upper quantile (no CI adjustment).
     Decimal getUpperPointQuantile() const noexcept { return m_upper.point; }
 
-    // If you later want to switch policy at runtime:
+    /**
+     * @brief Switch operational bounds to conservative policy (CI endpoints).
+     *
+     * Sets the lower bound to the BCa lower endpoint of the lower quantile and
+     * the upper bound to the BCa upper endpoint of the upper quantile.
+     */
     void useConservativePolicy() noexcept
     {
       m_operationalLower = m_lower.lo;
       m_operationalUpper = m_upper.hi;
     }
 
+    /**
+     * @brief Switch operational bounds to point-estimate policy.
+     *
+     * Sets both monitoring bounds to the raw quantile point estimates, ignoring
+     * the BCa confidence interval. Useful when a less conservative view is preferred.
+     */
     void usePointPolicy() noexcept
     {
       m_operationalLower = m_lower.point;
@@ -238,6 +277,13 @@ namespace mkc_timeseries
     }
 
   private:
+    /**
+     * @brief Validate constructor parameters against allowed ranges.
+     *
+     * @throws std::invalid_argument If lowerQuantileP is not in (0, 0.5),
+     *         upperQuantileP is not in (0.5, 1), numBootstraps < 1000,
+     *         or confLevel is not in (0, 1).
+     */
     void validateInputs() const
     {
       if (!(m_lowerP > 0.0 && m_lowerP < 0.5))
@@ -258,8 +304,11 @@ namespace mkc_timeseries
         }
     }
 
-    // Helper to create resampler - handles IIDResampler (no-arg constructor)
-    // vs StationaryBlockResampler (takes blockLen)
+    /**
+     * @brief Create a StationaryBlockResampler with the given block length.
+     *
+     * SFINAE overload selected when Resampler is StationaryBlockResampler.
+     */
     template<typename R = Resampler>
     typename std::enable_if<
       std::is_same<R, StationaryBlockResampler<Decimal>>::value, R>::type
@@ -268,6 +317,11 @@ namespace mkc_timeseries
       return R(blockLen);
     }
 
+    /**
+     * @brief Create an IIDResampler (ignores blockLen).
+     *
+     * SFINAE overload selected when Resampler is IIDResampler.
+     */
     template<typename R = Resampler>
     typename std::enable_if<
       std::is_same<R, IIDResampler<Decimal, Rng>>::value, R>::type

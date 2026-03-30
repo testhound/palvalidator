@@ -1,3 +1,14 @@
+/**
+ * @file RngUtils.h
+ * @brief Low-level random number generation utilities and Common Random Number (CRN) framework.
+ *
+ * Provides engine-agnostic helpers (index sampling, uniform doubles, Bernoulli
+ * trials), deterministic seed derivation via splitmix64 hashing, and the
+ * hierarchical CRNKey / CRNEngineProvider / CRNRng classes that ensure
+ * reproducible, independent random streams across strategies, metrics, folds,
+ * and replicates.
+ */
+
 #pragma once
 
 #include <cstdint>
@@ -13,14 +24,31 @@ namespace mkc_timeseries
   namespace rng_utils
   {
 
-    // --- Detection: does Rng have .engine()? (e.g., randutils::mt19937_rng) ---
+    /**
+     * @brief SFINAE trait detecting whether Rng exposes an .engine() accessor.
+     *
+     * True for wrapper types such as randutils::mt19937_rng; false for bare
+     * standard-library engines like std::mt19937_64.
+     *
+     * @tparam T The random number generator type to inspect.
+     */
     template <typename T, typename = void>
     struct has_engine_method : std::false_type {};
 
     template <typename T>
     struct has_engine_method<T, std::void_t<decltype(std::declval<T&>().engine())>> : std::true_type {};
 
-    // Return a reference to the underlying engine, whether wrapped or direct.
+    /**
+     * @brief Returns a reference to the underlying engine, unwrapping if necessary.
+     *
+     * If Rng has an .engine() method (detected via has_engine_method), calls it;
+     * otherwise returns rng itself. This allows uniform_int_distribution and
+     * related adapters to work with both wrapped and bare engines.
+     *
+     * @tparam Rng The random number generator type.
+     * @param  rng Reference to the generator instance.
+     * @return Reference to the underlying engine.
+     */
     template <typename Rng>
     inline auto& get_engine(Rng& rng)
     {
@@ -153,7 +181,15 @@ namespace mkc_timeseries
       return get_random_uniform_01(rng) < p;
     }
 
-    // Simple 64-bit splitmix hash (deterministic, good avalanche)
+    /**
+     * @brief 64-bit splitmix hash with good avalanche properties.
+     *
+     * Deterministic bijective mixing function used to derive uncorrelated
+     * seeds from sequential inputs.
+     *
+     * @param x Input value to hash.
+     * @return Hashed 64-bit value.
+     */
     inline uint64_t splitmix64(uint64_t x) {
       x += 0x9e3779b97f4a7c15ull;
       x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ull;
@@ -161,7 +197,12 @@ namespace mkc_timeseries
       return x ^ (x >> 31);
     }
 
-    // Combine several 64-bit values into one seed
+    /**
+     * @brief Combines several 64-bit values into a single seed via iterated splitmix64.
+     *
+     * @param parts Initializer list of 64-bit values to fold together.
+     * @return Combined 64-bit hash.
+     */
     inline uint64_t hash_combine64(std::initializer_list<uint64_t> parts) {
       uint64_t h = 0x6a09e667f3bcc909ull; // arbitrary IV
       for (auto v : parts) h = splitmix64(h ^ v);
@@ -372,6 +413,15 @@ namespace mkc_timeseries
       std::vector<uint64_t> m_tags;
     };
 
+    /**
+     * @brief Expands a 64-bit seed into an 8-word std::seed_seq for engine construction.
+     *
+     * Uses diversified splitmix64 rounds to produce eight decorrelated 32-bit
+     * words, ensuring full-state seeding for engines like std::mt19937_64.
+     *
+     * @param seed64 The 64-bit seed to expand.
+     * @return A std::seed_seq suitable for engine construction.
+     */
     inline std::seed_seq make_seed_seq(uint64_t seed64)
     {
       // Expand a 64-bit seed into eight 32-bit words using diversified SplitMix64
@@ -397,7 +447,17 @@ namespace mkc_timeseries
       return std::seed_seq(words.begin(), words.end());
     }
 
-    // Helper: construct a seeded engine regardless of API style
+    /**
+     * @brief Constructs a seeded engine regardless of API style.
+     *
+     * Handles both engines that accept a seed_seq in their constructor
+     * (e.g., std::mt19937_64) and those that require a separate .seed() call
+     * (e.g., randutils::mt19937_rng).
+     *
+     * @tparam Eng The engine type to construct.
+     * @param  sseq Seed sequence to initialise the engine.
+     * @return A fully seeded engine instance.
+     */
     template<class Eng>
     inline Eng construct_seeded_engine(std::seed_seq& sseq)
     {
@@ -414,8 +474,18 @@ namespace mkc_timeseries
       }
     }
 
-    // Helper that constructs engines from a CRNKey. Engine defaults to std::mt19937_64,
-    // but is fully generic. Completely domain-agnostic.
+    /**
+     * @brief Constructs deterministically-seeded engines from a CRNKey.
+     *
+     * Given a CRNKey (master seed + tag hierarchy), produces a fresh engine
+     * for any replicate index. Domain-agnostic; the default engine is
+     * std::mt19937_64 but any seedable engine type is supported.
+     *
+     * @tparam Eng The random engine type (default: std::mt19937_64).
+     *
+     * @see CRNKey
+     * @see CRNRng
+     */
     template<class Eng = std::mt19937_64>
     class CRNEngineProvider
     {
@@ -454,14 +524,30 @@ namespace mkc_timeseries
       CRNKey m_key;
     };
     
-    // Derive a 64-bit seed for a given CRNKey + replicate index
+    /**
+     * @brief Free-function convenience wrapper for CRNKey::make_seed_for().
+     *
+     * @param key       The CRN key encoding the tag hierarchy.
+     * @param replicate Bootstrap replicate index.
+     * @return Deterministic 64-bit seed.
+     */
     inline uint64_t make_seed(const CRNKey& key, std::size_t replicate)
     {
       return key.make_seed_for(replicate);
     }
 
 
-    // Domain-agnostic CRN RNG provider (wrapper over CRNEngineProvider + CRNKey)
+    /**
+     * @brief High-level CRN random-number provider combining CRNKey and CRNEngineProvider.
+     *
+     * Provides a fluent API for extending the tag hierarchy and producing fresh,
+     * deterministically-seeded engines per replicate. Copyable and movable.
+     *
+     * @tparam Eng The random engine type (default: std::mt19937_64).
+     *
+     * @see CRNKey
+     * @see CRNEngineProvider
+     */
     template<class Eng = std::mt19937_64>
     class CRNRng
     {

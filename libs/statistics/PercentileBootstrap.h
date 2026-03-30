@@ -1,3 +1,13 @@
+/**
+ * @file PercentileBootstrap.h
+ * @brief Standard n-out-of-n percentile bootstrap confidence interval.
+ *
+ * Forms the CI directly from empirical quantiles of the bootstrap
+ * distribution: [q_{α/2}, q_{1−α/2}].
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>
@@ -78,17 +88,18 @@ namespace palvalidator
     class PercentileBootstrap
     {
     public:
+      /// @brief Holds the output of a percentile bootstrap run.
       struct Result
       {
-        Decimal     mean;         // θ̂ on original sample
-        Decimal     lower;        // percentile lower bound
-        Decimal     upper;        // percentile upper bound
-        double      cl;           // confidence level
-        std::size_t B;            // requested bootstrap reps
-        std::size_t effective_B;  // usable (finite) reps
-        std::size_t skipped;      // degenerate reps skipped
-        std::size_t n;            // original sample size
-        std::size_t L;            // resampler L (diagnostic)
+        Decimal     mean;         ///< θ̂ on original sample.
+        Decimal     lower;        ///< Percentile lower bound.
+        Decimal     upper;        ///< Percentile upper bound.
+        double      cl;           ///< Confidence level.
+        std::size_t B;            ///< Requested bootstrap replicates.
+        std::size_t effective_B;  ///< Usable (finite) replicates.
+        std::size_t skipped;      ///< Degenerate replicates skipped.
+        std::size_t n;            ///< Original sample size.
+        std::size_t L;            ///< Resampler block length (diagnostic).
       };
 
     public:

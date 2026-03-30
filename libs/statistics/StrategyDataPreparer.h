@@ -13,6 +13,15 @@
  *  • Stateless utility – everything is done in a single static `prepare()` call.
   *************************************************************************************/
 
+/**
+ * @file StrategyDataPreparer.h
+ * @brief Produces the StrategyDataContainer used by permutation algorithms.
+ *
+ * Builds concrete PalStrategy objects (long/short) for each pattern, runs one
+ * baseline backtest per strategy, and records the statistic defined by
+ * BaselineStatPolicy.
+ */
+
 #pragma once
 
 #include <vector>

@@ -1,3 +1,14 @@
+/**
+ * @file PALMastersMonteCarloValidation.h
+ * @brief Orchestrator for Timothy Masters' stepwise permutation test on PAL strategies.
+ *
+ * Partitions strategies by direction or family, delegates to an
+ * IMastersSelectionBiasAlgorithm implementation (default: MastersRomanoWolfImproved),
+ * and collects per-strategy p-values via PermutationStatisticsCollector.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #ifndef __PAL_MASTER_MONTE_CARLO_VALIDATION_H
 #define __PAL_MASTER_MONTE_CARLO_VALIDATION_H 1
 
@@ -33,6 +44,7 @@ namespace mkc_timeseries
   using std::make_shared;
   using std::map;
 
+  /// @brief Exception thrown when PALMastersMonteCarloValidation encounters an error.
   class PALMastersMonteCarloValidationException : public std::runtime_error
   {
   public:
@@ -87,33 +99,40 @@ template <class Decimal, class BaselineStatPolicy>
 
       virtual ~PALMastersMonteCarloValidation() = default;
 
+      /// @brief Iterator to the first surviving strategy after the permutation test.
       SurvivingStrategiesIterator beginSurvivingStrategies() const
       {
 	    return mStrategySelectionPolicy.beginSurvivingStrategies();
       }
 
+      /// @brief Past-the-end iterator for surviving strategies.
       SurvivingStrategiesIterator endSurvivingStrategies() const
       {
 	    return mStrategySelectionPolicy.endSurvivingStrategies();
       }
 
+      /// @brief Returns the count of strategies that survived the permutation test.
       unsigned long getNumSurvivingStrategies() const
       {
 	    return static_cast<unsigned long>(mStrategySelectionPolicy.getNumSurvivingStrategies());
       }
 
+      /// @brief Returns a const reference to the permutation statistics collector.
       const PermutationStatisticsCollector<Decimal>& getStatisticsCollector() const {
         return *mStatisticsCollector;
       }
 
+      /// @brief Returns a mutable reference to the permutation statistics collector.
       PermutationStatisticsCollector<Decimal>& getStatisticsCollector() {
         return *mStatisticsCollector;
       }
 
+      /// @brief Returns all tested strategies paired with their p-values.
       std::vector<std::pair<std::shared_ptr<PalStrategy<Decimal>>, Decimal>> getAllTestedStrategies() const {
         return mStrategySelectionPolicy.getAllTestedStrategies();
       }
-      
+
+      /// @brief Returns the p-value for a specific strategy.
       Decimal getStrategyPValue(std::shared_ptr<PalStrategy<Decimal>> strategy) const {
         return mStrategySelectionPolicy.getStrategyPValue(strategy);
       }

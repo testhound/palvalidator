@@ -1,3 +1,15 @@
+/**
+ * @file MOutOfNPercentileBootstrap.h
+ *
+ * M-out-of-N percentile bootstrap with adaptive subsample ratio.
+ *
+ * Draws B resamples of size m < n (where m/n is the adaptive ratio),
+ * computes a percentile CI, and rescales to the full-sample scale. Supports
+ * pluggable ratio policies, reliability flags, and trade-level bootstrapping.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 #include <vector>
 #include <algorithm>
@@ -24,7 +36,7 @@ namespace palvalidator
     using palvalidator::analysis::IntervalType;
 
     /**
-     * @brief m-out-of-n percentile bootstrap (stationary-block resampling aware).
+     * m-out-of-n percentile bootstrap (stationary-block resampling aware).
      *
      * This class performs a conservative percentile bootstrap by drawing
      * \f$m=\lfloor \rho n \rfloor\f$ observations (with replacement via a provided
@@ -84,84 +96,77 @@ namespace palvalidator
     class MOutOfNPercentileBootstrap
     {
     public:
+      /**
+       * Holds the output of an M-out-of-N bootstrap run, including reliability flags.
+       */
       struct Result
       {
-        Decimal     mean;              // stat on original sample
-        Decimal     lower;             // percentile lower bound
-        Decimal     upper;             // percentile upper bound
-        double      cl;
-        std::size_t B;
-        std::size_t effective_B;
-        std::size_t skipped;
-        std::size_t n;             // sample size in SampleType units (bars or trades)
-        std::size_t m_sub;
-        std::size_t L;
-        double      computed_ratio;    // logical ratio reported to callers
-        double      skew_boot;         // skewness of usable bootstrap θ*'s
-        bool        degenerate_warning;
+        Decimal     mean;              /**< Statistic on original sample. */
+        Decimal     lower;             /**< Percentile lower bound. */
+        Decimal     upper;             /**< Percentile upper bound. */
+        double      cl;                /**< Confidence level. */
+        std::size_t B;                 /**< Requested bootstrap replicates. */
+        std::size_t effective_B;       /**< Usable (finite) replicates. */
+        std::size_t skipped;           /**< Degenerate replicates skipped. */
+        std::size_t n;                 /**< Sample size in SampleType units (bars or trades). */
+        std::size_t m_sub;             /**< Subsample size m. */
+        std::size_t L;                 /**< Resampler block length. */
+        double      computed_ratio;    /**< Logical m/n ratio reported to callers. */
+        double      skew_boot;         /**< Skewness of usable bootstrap θ* values. */
+        bool        degenerate_warning;/**< True if excessive NaN/non-finite replicates. */
 
-        // ----------------------------------------------------------------
-        // Reliability flags — analogous to BCa's isReliable() but split
-        // into distinct failure modes since M-out-of-N failures are
-        // distributed across the bootstrap distribution rather than
-        // concentrated in a single scalar parameter.
-        //
-        // NOTE: These flags are INDEPENDENT of degenerate_warning above.
-        // degenerate_warning measures NaN/non-finite replicates (resampling
-        // failures). The flags below assess whether the *valid* replicates
-        // form a structurally meaningful bootstrap distribution. Both can
-        // be set simultaneously and should be interpreted separately.
-        //
-        // distribution_degenerate:
-        //   True when the bootstrap distribution has very few distinct
-        //   values relative to B, indicating m_sub is too small for the
-        //   statistic to vary meaningfully across subsamples.
-        //   NOTE: uniqueness is measured via exact double equality (std::set),
-        //   which is a structural heuristic. For discrete statistics this is
-        //   reliable; for continuous statistics, tiny floating-point differences
-        //   may inflate the apparent unique count slightly. The 5% threshold
-        //   is intentionally conservative so genuine degeneracy is still caught.
-        //
-        // excessive_bias:
-        //   True (only meaningful when rescale_to_n=true) when the
-        //   bootstrap mean deviates substantially from theta_hat,
-        //   indicating the variance-scaling rescaling assumption
-        //   (Var ∝ 1/sample_size) is being violated.
-        //
-        // insufficient_spread:
-        //   True when the coefficient of variation of the bootstrap
-        //   distribution is near zero, indicating the distribution is
-        //   too concentrated to produce a meaningful interval.
-        //   NOTE: when |mean_boot| is near zero (< 1e-10), the test
-        //   switches from a relative CV check to an absolute SE check
-        //   to avoid division by a near-zero mean. The flag interpretation
-        //   therefore changes regime depending on the mean magnitude:
-        //   away from zero it is a relative spread test; near zero it is
-        //   an absolute spread test. Both are heuristic thresholds.
-        //
-        // ratio_near_boundary:
-        //   True when the computed ratio is very close to either the
-        //   lower bound (2/n) or upper bound ((n-1)/n), indicating
-        //   that clamping fired or the adaptive policy pushed the ratio
-        //   into a degenerate region.
-        //
-        // isReliable():
-        //   Convenience method: returns true if none of the above flags
-        //   are set. Downstream selectors (e.g., AutoBootstrapSelector)
-        //   can use this as a single gate, while diagnostic logging can
-        //   inspect individual flags for the reason.
-        // ----------------------------------------------------------------
-        bool        distribution_degenerate;  // bootstrap distribution too discrete
-        bool        excessive_bias;           // mean_boot far from theta_hat (rescale only)
-        bool        insufficient_spread;      // CV of bootstrap distribution near zero
-        bool        ratio_near_boundary;      // computed_ratio at or near valid-range limit
+        /**
+         * @name Reliability flags
+         *
+         * Analogous to BCa's isReliable() but split into distinct failure modes
+         * since M-out-of-N failures are distributed across the bootstrap
+         * distribution rather than concentrated in a single scalar parameter.
+         *
+         * These flags are INDEPENDENT of degenerate_warning above.
+         * degenerate_warning measures NaN/non-finite replicates (resampling
+         * failures). The flags below assess whether the *valid* replicates
+         * form a structurally meaningful bootstrap distribution. Both can
+         * be set simultaneously and should be interpreted separately.
+         * @{
+         */
 
-        // The actual bias fraction computed when excessive_bias was evaluated.
-        // Always populated (0.0 when rescale_to_n=false). Carried to the
-        // downstream tournament so the haircut can be calibrated to the
-        // severity of the bias rather than using a fixed fraction.
+        /**
+         * True when fewer than RELIABILITY_UNIQUE_RATIO_THRESHOLD of replicates
+         * are distinct, indicating m_sub is too small for meaningful variation.
+         */
+        bool        distribution_degenerate;
+        /**
+         * True (rescale_to_n only) when mean_boot deviates from θ̂ by more than
+         * RELIABILITY_BIAS_FRACTION_THRESHOLD, indicating the Var ∝ 1/n assumption fails.
+         */
+        bool        excessive_bias;
+        /**
+         * True when the coefficient of variation of the bootstrap distribution
+         * falls below RELIABILITY_MIN_CV_THRESHOLD.
+         */
+        bool        insufficient_spread;
+        /**
+         * True when computed_ratio is within RELIABILITY_BOUNDARY_FRACTION of
+         * either the lower (2/n) or upper ((n−1)/n) clamp limit.
+         */
+        bool        ratio_near_boundary;
+
+        /** @} */ // end Reliability flags
+
+        /**
+         * Bias fraction computed during excessive_bias evaluation.
+         * Always 0.0 when rescale_to_n=false. Used by the downstream tournament
+         * to calibrate the lower-bound haircut proportionally to bias severity.
+         */
         double      bias_fraction;
 
+        /**
+         * Returns true if none of the four reliability flags are set.
+         *
+         * Downstream selectors (e.g., AutoBootstrapSelector) use this as a
+         * single gate; diagnostic logging can inspect individual flags for
+         * the specific failure reason.
+         */
         bool isReliable() const noexcept
         {
           return !distribution_degenerate
@@ -171,59 +176,58 @@ namespace palvalidator
         }
       };
 
-      /// Configuration constant: maximum allowed fraction of degenerate replicates
-      static constexpr double MAX_DEGENERATE_FRACTION_WARN  = 0.10; // warn at >10% degenerate
-      static constexpr double MAX_DEGENERATE_FRACTION_ERROR = 0.25; // throw at >25% degenerate
+      /** Configuration constant: maximum allowed fraction of degenerate replicates. */
+      static constexpr double MAX_DEGENERATE_FRACTION_WARN  = 0.10; /**< Warn at >10% degenerate. */
+      static constexpr double MAX_DEGENERATE_FRACTION_ERROR = 0.25; /**< Throw at >25% degenerate. */
 
-      // ----------------------------------------------------------------
-      // Reliability thresholds — govern the four failure-mode flags in
-      // Result. These are intentionally conservative defaults: they flag
-      // pathological cases without triggering on normal bootstrap variance.
-      //
-      // RELIABILITY_UNIQUE_RATIO_THRESHOLD:
-      //   Bootstrap distribution is flagged as degenerate when fewer than
-      //   this fraction of replicates produce distinct values. At 0.05, a
-      //   distribution with only 5% distinct values (e.g., 20 unique values
-      //   from B=400 replicates) triggers the flag.
-      //
-      // RELIABILITY_BIAS_FRACTION_THRESHOLD:
-      //   Bootstrap mean is flagged as excessively biased when it deviates
-      //   from theta_hat by more than this fraction of |theta_hat|. Only
-      //   meaningful when rescale_to_n=true. At 0.20, a 20% relative
-      //   deviation triggers the flag.
-      //
-      // RELIABILITY_MIN_CV_THRESHOLD:
-      //   Bootstrap distribution is flagged as insufficiently spread when
-      //   its coefficient of variation falls below this value. At 0.01,
-      //   a distribution where SE is less than 1% of the mean triggers.
-      //
-      // RELIABILITY_BOUNDARY_FRACTION:
-      //   Computed ratio is flagged as near-boundary when it is within this
-      //   fraction of n from either the lower (2/n) or upper ((n-1)/n) limit.
-      //   At 3.0/n this means the ratio corresponds to m_sub within 1 trade
-      //   of either boundary.
-      // ----------------------------------------------------------------
+      /**
+       * @name Reliability thresholds
+       *
+       * Govern the four failure-mode flags in Result. These are intentionally
+       * conservative defaults: they flag pathological cases without triggering
+       * on normal bootstrap variance.
+       * @{
+       */
+
+      /**
+       * Bootstrap distribution is flagged as degenerate when fewer than this
+       * fraction of replicates produce distinct values. At 0.05, a distribution
+       * with only 5% distinct values (e.g., 20 unique from B=400) triggers.
+       */
       static constexpr double RELIABILITY_UNIQUE_RATIO_THRESHOLD = 0.05;
+
+      /**
+       * Bootstrap mean is flagged as excessively biased when it deviates from
+       * theta_hat by more than this fraction of |theta_hat|. Only meaningful
+       * when rescale_to_n=true. At 0.20, a 20% relative deviation triggers.
+       */
       static constexpr double RELIABILITY_BIAS_FRACTION_THRESHOLD = 0.20;
+
+      /**
+       * Bootstrap distribution is flagged as insufficiently spread when its
+       * coefficient of variation falls below this value. At 0.01, a distribution
+       * where SE is less than 1% of the mean triggers.
+       */
       static constexpr double RELIABILITY_MIN_CV_THRESHOLD = 0.01;
 
-      // Minimum absolute value of theta_hat used as denominator when computing
-      // the excessive_bias fraction. Prevents the fraction from becoming
-      // arbitrarily large when theta_hat is near zero (e.g., near-breakeven
-      // strategies), where tiny absolute differences in mean_boot produce
-      // enormous relative fractions that do not reflect genuine bootstrap
-      // pathology. This is a property of the bias fraction measurement itself
-      // and belongs here alongside the other reliability thresholds.
-      // Set to 0.001 (10 basis points) — approximately the smallest meaningful
-      // per-period return in typical trading strategy validation contexts.
+      /**
+       * Minimum absolute value of theta_hat used as denominator when computing
+       * the excessive_bias fraction. Prevents the fraction from becoming
+       * arbitrarily large when theta_hat is near zero (e.g., near-breakeven
+       * strategies), where tiny absolute differences in mean_boot produce
+       * enormous relative fractions that do not reflect genuine bootstrap
+       * pathology. Set to 0.001 (10 basis points).
+       */
       static constexpr double RELIABILITY_BIAS_MIN_ABS_THETA = 0.001;
+
+      /** @} */
 
     public:
       // ====================================================================
       // CONSTRUCTOR 1: Fixed Ratio
       // ====================================================================
       /**
-       * @brief Constructs an M-out-of-N bootstrap with fixed subsample ratio.
+       * Constructs an M-out-of-N bootstrap with fixed subsample ratio.
        *
        * @param B Number of bootstrap replicates (must be >= 400).
        * @param confidence_level Confidence level (must be in [0.90, 0.999]).
@@ -263,7 +267,9 @@ namespace palvalidator
         }
       }
 
-      // Copy constructor
+      /**
+       * Copy constructor. Resets executor, chunk hint, and diagnostics.
+       */
       MOutOfNPercentileBootstrap(const MOutOfNPercentileBootstrap& other)
         : m_B(other.m_B)
         , m_CL(other.m_CL)
@@ -284,7 +290,9 @@ namespace palvalidator
       {
       }
 
-      // Move constructor
+      /**
+       * Move constructor. Transfers all state; marks moved-from diagnostics invalid.
+       */
       MOutOfNPercentileBootstrap(MOutOfNPercentileBootstrap&& other) noexcept
         : m_B(other.m_B)
         , m_CL(other.m_CL)
@@ -307,7 +315,9 @@ namespace palvalidator
         other.m_diagValid = false;
       }
 
-      // Copy assignment operator
+      /**
+       * Copy assignment operator. Clears diagnostics under lock.
+       */
       MOutOfNPercentileBootstrap& operator=(const MOutOfNPercentileBootstrap& other)
       {
         if (this != &other) {
@@ -336,7 +346,9 @@ namespace palvalidator
         return *this;
       }
 
-      // Move assignment operator
+      /**
+       * Move assignment operator. Transfers diagnostics; marks moved-from invalid.
+       */
       MOutOfNPercentileBootstrap& operator=(MOutOfNPercentileBootstrap&& other) noexcept
       {
         if (this != &other) {
@@ -365,7 +377,9 @@ namespace palvalidator
         return *this;
       }
 
-      /// Fixed-ratio factory (thin wrapper over the existing constructor).
+      /**
+       * Fixed-ratio factory (thin wrapper over the existing constructor).
+       */
       static MOutOfNPercentileBootstrap
       createFixedRatio(std::size_t B,
                        double      confidence_level,
@@ -378,7 +392,9 @@ namespace palvalidator
 					  rescale_to_n, interval_type);
       }
 
-      /// Adaptive-ratio factory using a caller-supplied policy.
+      /**
+       * Adaptive-ratio factory using a caller-supplied policy.
+       */
       template<typename BootstrapStatistic>
       static MOutOfNPercentileBootstrap
       createAdaptiveWithPolicy( std::size_t B,
@@ -409,7 +425,9 @@ namespace palvalidator
         return instance;
       }
 
-      /// Adaptive-ratio factory using the default TailVolatilityAdaptivePolicy.
+      /**
+       * Adaptive-ratio factory using the default TailVolatilityAdaptivePolicy.
+       */
       template<typename BootstrapStatistic>
       static MOutOfNPercentileBootstrap
       createAdaptive(std::size_t B,
@@ -428,6 +446,21 @@ namespace palvalidator
       // ====================================================================
       // RUN METHODS
       // ====================================================================
+
+      /**
+       * Run the M-out-of-N bootstrap with a caller-supplied RNG.
+       *
+       * Seeds are precomputed in the calling thread so the caller RNG is never
+       * touched inside the parallel region.
+       *
+       * @param x              Input sample (bars or trades).
+       * @param sampler        Statistic callable mapping a sample vector to Decimal.
+       * @param rng            Caller-owned random engine (used only for seed generation).
+       * @param m_sub_override If > 0, overrides the adaptive/fixed subsample size.
+       * @param diagnosticLog  Optional stream for diagnostic output.
+       * @return Result containing bounds, diagnostics, and reliability flags.
+       * @throws std::invalid_argument If x.size() < 3.
+       */
       Result run(const std::vector<SampleType>& x,
                  Sampler                        sampler,
                  Rng&                           rng,
@@ -450,6 +483,20 @@ namespace palvalidator
         return run_core_(x, sampler, m_sub_override, make_engine, diagnosticLog);
       }
 
+      /**
+       * Run the M-out-of-N bootstrap with a CRN engine provider.
+       *
+       * Provider concept: `Rng make_engine(std::size_t b) const`.
+       *
+       * @tparam Provider  Engine provider type satisfying the make_engine concept.
+       * @param x              Input sample (bars or trades).
+       * @param sampler        Statistic callable.
+       * @param provider       CRN engine provider (const ref).
+       * @param m_sub_override If > 0, overrides the adaptive/fixed subsample size.
+       * @param diagnosticLog  Optional stream for diagnostic output.
+       * @return Result containing bounds, diagnostics, and reliability flags.
+       * @throws std::invalid_argument If x.size() < 3.
+       */
       template <class Provider>
       Result run(const std::vector<SampleType>& x,
                  Sampler                      sampler,
@@ -468,6 +515,31 @@ namespace palvalidator
       // ====================================================================
       // Advanced refinement (two-tier API)
       // ====================================================================
+
+      /**
+       * Run with adaptive ratio refinement via probe-engine probing.
+       *
+       * Two-tier API: first resolves the subsample ratio using the adaptive
+       * policy's refinement loop (which may run probe bootstraps internally),
+       * then executes the main bootstrap with the resolved ratio and a CRN
+       * provider from the factory.
+       *
+       * Only available when SampleType == Decimal (bar-level). A static_assert
+       * enforces this at compile time.
+       *
+       * @tparam BootstrapStatistic  Statistic functor type for the probe engine.
+       * @tparam StrategyT           Strategy type providing hashCode() for CRN tagging.
+       * @tparam BootstrapFactoryT   Factory type providing makeMOutOfN().
+       * @param x              Input sample.
+       * @param sampler        Statistic callable.
+       * @param strategy       Strategy reference for CRN key derivation.
+       * @param factory        Bootstrap factory for CRN provider construction.
+       * @param stageTag       CRN stage tag (metric identifier).
+       * @param fold           CRN fold identifier (0 = no cross-validation).
+       * @param diagnosticLog  Optional stream for diagnostic output.
+       * @return Result containing bounds, diagnostics, and reliability flags.
+       * @throws std::invalid_argument If x.size() < 3.
+       */
       template <typename BootstrapStatistic, typename StrategyT, typename BootstrapFactoryT>
       Result runWithRefinement(
         const std::vector<SampleType>& x,
@@ -558,6 +630,14 @@ namespace palvalidator
       // ====================================================================
       // POLICY CONFIGURATION
       // ====================================================================
+
+      /**
+       * Installs an adaptive ratio policy and switches to adaptive mode.
+       *
+       * @tparam BootstrapStatistic Statistic functor type used by the policy.
+       * @param  policy             Shared pointer to the policy (must not be null).
+       * @throws std::invalid_argument If policy is null.
+       */
       template<typename BootstrapStatistic>
       void setAdaptiveRatioPolicy(
         std::shared_ptr<IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>> policy)
@@ -569,27 +649,47 @@ namespace palvalidator
         m_ratio       = -1.0;  // switch to adaptive mode
       }
 
+      /**
+       * Returns true if the instance is configured for adaptive ratio selection.
+       */
       bool isAdaptiveMode() const { return m_ratio < 0.0; }
 
+      /**
+       * Returns true if rescaling from subsample size m to full size n is enabled.
+       */
       bool rescalesToN() const { return m_rescale_to_n; }
 
+      /**
+       * Hint for parallel_for_chunked granularity (0 = auto).
+       */
       void setChunkSizeHint(uint32_t c) { m_chunkHint = c; }
 
-      // Introspection
+      /** Returns the number of requested bootstrap replicates B. */
       std::size_t B()        const { return m_B; }
+      /** Returns the confidence level. */
       double      CL()       const { return m_CL; }
+      /** Returns the configured fixed ratio (negative if adaptive mode). */
       double      mratio()   const { return m_ratio; }
+      /** Returns a const reference to the resampler. */
       const Resampler& resampler() const { return m_resampler; }
 
       // ====================================================================
       // Diagnostics for AutoBootstrapSelector
       // ====================================================================
+
+      /**
+       * Returns true if diagnostics from a successful run are available.
+       */
       bool hasDiagnostics() const noexcept
       {
         std::lock_guard<std::mutex> lock(*m_diagMutex);
         return m_diagValid;
       }
 
+      /**
+       * Returns the vector of usable bootstrap statistics {θ*_b}.
+       * @throws std::logic_error If run() has not been called successfully.
+       */
       const std::vector<double>& getBootstrapStatistics() const
         {
           std::lock_guard<std::mutex> lock(*m_diagMutex);
@@ -597,6 +697,10 @@ namespace palvalidator
           return m_diagBootstrapStats;
         }
 
+      /**
+       * Returns the mean of usable bootstrap replicates.
+       * @throws std::logic_error If run() has not been called successfully.
+       */
       double getBootstrapMean() const
         {
           std::lock_guard<std::mutex> lock(*m_diagMutex);
@@ -604,6 +708,10 @@ namespace palvalidator
           return m_diagMeanBoot;
         }
 
+      /**
+       * Returns the sample variance of usable bootstrap replicates.
+       * @throws std::logic_error If run() has not been called successfully.
+       */
       double getBootstrapVariance() const
         {
           std::lock_guard<std::mutex> lock(*m_diagMutex);
@@ -611,6 +719,10 @@ namespace palvalidator
           return m_diagVarBoot;
         }
 
+      /**
+       * Returns the standard error of usable bootstrap replicates.
+       * @throws std::logic_error If run() has not been called successfully.
+       */
       double getBootstrapSe() const
         {
           std::lock_guard<std::mutex> lock(*m_diagMutex);
@@ -618,6 +730,10 @@ namespace palvalidator
           return m_diagSeBoot;
         }
 
+      /**
+       * Returns the skewness of usable bootstrap replicates.
+       * @throws std::logic_error If run() has not been called successfully.
+       */
       double getBootstrapSkewness() const
         {
           std::lock_guard<std::mutex> lock(*m_diagMutex);
@@ -625,11 +741,18 @@ namespace palvalidator
           return m_diagSkewBoot;
         }
 
-      // ----------------------------------------------------------------
-      // Reliability diagnostic accessors.
-      // These mirror the flags in Result and allow callers to inspect
-      // reliability without retaining the Result object.
-      // ----------------------------------------------------------------
+      /**
+       * @name Reliability diagnostic accessors
+       *
+       * Mirror the flags in Result, allowing callers to inspect reliability
+       * without retaining the Result object.
+       * @{
+       */
+
+      /**
+       * Returns true if the bootstrap distribution had too few distinct values.
+       * @throws std::logic_error If run() has not been called successfully.
+       */
       bool isDistributionDegenerate() const
       {
         std::lock_guard<std::mutex> lock(*m_diagMutex);
@@ -637,6 +760,10 @@ namespace palvalidator
         return m_diagDistributionDegenerate;
       }
 
+      /**
+       * Returns true if bootstrap mean deviated excessively from θ̂ (rescale_to_n only).
+       * @throws std::logic_error If run() has not been called successfully.
+       */
       bool isExcessiveBias() const
       {
         std::lock_guard<std::mutex> lock(*m_diagMutex);
@@ -644,6 +771,10 @@ namespace palvalidator
         return m_diagExcessiveBias;
       }
 
+      /**
+       * Returns true if the bootstrap distribution's CV was below threshold.
+       * @throws std::logic_error If run() has not been called successfully.
+       */
       bool isInsufficientSpread() const
       {
         std::lock_guard<std::mutex> lock(*m_diagMutex);
@@ -651,6 +782,10 @@ namespace palvalidator
         return m_diagInsufficientSpread;
       }
 
+      /**
+       * Returns true if the computed ratio was clamped to a boundary.
+       * @throws std::logic_error If run() has not been called successfully.
+       */
       bool isRatioNearBoundary() const
       {
         std::lock_guard<std::mutex> lock(*m_diagMutex);
@@ -658,7 +793,9 @@ namespace palvalidator
         return m_diagRatioNearBoundary;
       }
 
-      /// Convenience: returns true if none of the four reliability flags are set.
+      /**
+       * Convenience: returns true if none of the four reliability flags are set.
+       */
       bool isReliable() const
       {
         std::lock_guard<std::mutex> lock(*m_diagMutex);
@@ -669,19 +806,27 @@ namespace palvalidator
             && !m_diagRatioNearBoundary;
       }
 
-      /// Returns the bias fraction computed during the most recent run.
-      /// Always 0.0 when rescale_to_n=false. When rescale_to_n=true, reflects
-      /// |mean_boot - theta_hat| / max(|theta_hat|, RELIABILITY_BIAS_MIN_ABS_THETA).
-      /// Used by the downstream tournament to calibrate the lower bound haircut
-      /// proportionally to the severity of the bias rather than a fixed fraction.
+      /**
+       * Returns the bias fraction computed during the most recent run.
+       * Always 0.0 when rescale_to_n=false. When rescale_to_n=true, reflects
+       * |mean_boot - theta_hat| / max(|theta_hat|, RELIABILITY_BIAS_MIN_ABS_THETA).
+       * Used by the downstream tournament to calibrate the lower bound haircut
+       * proportionally to the severity of the bias rather than a fixed fraction.
+       */
       double getBiasFraction() const
       {
         std::lock_guard<std::mutex> lock(*m_diagMutex);
         ensureDiagnosticsAvailable();
         return m_diagBiasFraction;
       }
-      
+
+      /** @} */ // end Reliability diagnostic accessors
+
     private:
+      /**
+       * Throws std::logic_error if diagnostics are not yet populated.
+       * Caller must hold m_diagMutex.
+       */
       void ensureDiagnosticsAvailable() const
       {
         // Note: caller must hold m_diagMutex
@@ -695,6 +840,11 @@ namespace palvalidator
       // ====================================================================
       // INTERNAL HELPERS
       // ====================================================================
+
+      /**
+       * Validates B and CL constructor parameters.
+       * @throws std::invalid_argument If B < 400 or CL is not in (0.5, 1).
+       */
       void validateParameters() const
       {
         if (m_B == 0)
@@ -714,6 +864,24 @@ namespace palvalidator
       // ====================================================================
       // CORE BOOTSTRAP IMPLEMENTATION
       // ====================================================================
+
+      /**
+       * Core resampling loop shared by all run() overloads.
+       *
+       * Resolves the subsample size (from override, adaptive policy, or fixed ratio),
+       * runs B resamples in parallel via the executor, computes percentile quantiles,
+       * evaluates reliability flags, and populates diagnostics.
+       *
+       * @tparam EngineMaker  Callable with signature Rng(std::size_t b).
+       * @param  x              Input sample.
+       * @param  sampler        Statistic callable.
+       * @param  m_sub_override If > 0, overrides the subsample size.
+       * @param  make_engine    Per-replicate engine factory.
+       * @param  diagnosticLog  Optional stream for diagnostic output.
+       * @return Fully populated Result.
+       * @throws std::invalid_argument If x.size() < 3.
+       * @throws std::runtime_error    If the degenerate replicate fraction exceeds the error threshold.
+       */
       template <class EngineMaker>
       Result run_core_(const std::vector<SampleType>& x,
                        Sampler                         sampler,
@@ -1135,6 +1303,19 @@ namespace palvalidator
       // ====================================================================
       // ADAPTIVE RATIO DISPATCH
       // ====================================================================
+
+      /**
+       * Dispatches to the installed adaptive ratio policy to compute m/n.
+       *
+       * Falls back to a default TailVolatilityAdaptivePolicy if no policy was
+       * explicitly installed. Only available for bar-level (SampleType == Decimal).
+       *
+       * @tparam BootstrapStatistic Statistic functor type for the policy (defaults to Sampler).
+       * @param  x             Input sample.
+       * @param  ctx           Pre-computed distributional context (tail index, skewness, etc.).
+       * @param  diagnosticLog Optional stream for diagnostic output.
+       * @return The adaptive subsample ratio in (0, 1).
+       */
       template<typename BootstrapStatistic = Sampler>
       double computeAdaptiveRatio(const std::vector<Decimal>&                x,
                                   const detail::StatisticalContext<Decimal>& ctx,
@@ -1161,31 +1342,35 @@ namespace palvalidator
       }
 
     private:
-      std::size_t  m_B;
-      double       m_CL;
-      double       m_ratio;       // -1.0 = adaptive mode, else fixed ratio
-      Resampler    m_resampler;
-      bool         m_rescale_to_n; // NEW: rescaling mode flag
-      mutable std::shared_ptr<Executor> m_exec;
-      mutable uint32_t           m_chunkHint{0};
-      std::shared_ptr<void>      m_ratioPolicy;  // type-erased policy pointer
+      std::size_t  m_B;            /**< Number of bootstrap replicates. */
+      double       m_CL;           /**< Confidence level. */
+      double       m_ratio;        /**< Fixed ratio (−1.0 = adaptive mode). */
+      Resampler    m_resampler;    /**< Injected resampling strategy. */
+      bool         m_rescale_to_n; /**< If true, rescale CI from m to n. */
+      mutable std::shared_ptr<Executor> m_exec;   /**< Parallel executor. */
+      mutable uint32_t           m_chunkHint{0};  /**< Chunk size hint for parallel_for. */
+      std::shared_ptr<void>      m_ratioPolicy;   /**< Type-erased adaptive ratio policy. */
 
-      // Diagnostics from most recent run (protected by mutex for thread safety)
+      /** @name Diagnostics from most recent run (protected by m_diagMutex)
+       *  @{ */
       mutable std::unique_ptr<std::mutex> m_diagMutex;
-      mutable std::vector<double> m_diagBootstrapStats;
-      mutable double              m_diagMeanBoot;
-      mutable double              m_diagVarBoot;
-      mutable double              m_diagSeBoot;
-      mutable double              m_diagSkewBoot;
-      mutable bool                m_diagValid;
+      mutable std::vector<double> m_diagBootstrapStats;  /**< Usable θ* values. */
+      mutable double              m_diagMeanBoot;        /**< Mean of bootstrap distribution. */
+      mutable double              m_diagVarBoot;         /**< Variance of bootstrap distribution. */
+      mutable double              m_diagSeBoot;          /**< Standard error of bootstrap distribution. */
+      mutable double              m_diagSkewBoot;        /**< Skewness of bootstrap distribution. */
+      mutable bool                m_diagValid;           /**< True after a successful run(). */
+      /** @} */
 
-      // Reliability flags from most recent run (protected by same mutex)
+      /** @name Reliability flags from most recent run (protected by same mutex)
+       *  @{ */
       mutable bool                m_diagDistributionDegenerate{false};
       mutable bool                m_diagExcessiveBias{false};
       mutable bool                m_diagInsufficientSpread{false};
       mutable bool                m_diagRatioNearBoundary{false};
       mutable double              m_diagBiasFraction{0.0};
-      IntervalType m_interval_type;
+      /** @} */
+      IntervalType m_interval_type; /**< Interval type (two-sided or one-sided). */
     };
   }
 } // namespace palvalidator::analysis

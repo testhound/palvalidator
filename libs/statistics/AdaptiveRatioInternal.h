@@ -1,3 +1,14 @@
+/**
+ * @file AdaptiveRatioInternal.h
+ * @brief Internal helpers for adaptive M-out-of-N ratio selection.
+ *
+ * Provides the Hill tail-index estimator, StatisticalContext for distributional
+ * diagnostics, CandidateScore for ratio refinement, and the IProbeEngineMaker /
+ * ConcreteProbeEngineMaker interfaces for pluggable probe engines.
+ *
+ * Copyright (C) MKC Associates, LLC — All Rights Reserved.
+ */
+
 #pragma once
 
 #include <vector>
