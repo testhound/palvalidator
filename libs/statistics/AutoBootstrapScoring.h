@@ -9,6 +9,7 @@
 #include "AutoBootstrapConfiguration.h"
 #include "AutoCIResult.h"
 #include "BootstrapPenaltyCalculator.h"
+#include "number.h"
 
 /**
  * @file AutoBootstrapScoring.h
@@ -463,6 +464,14 @@ namespace palvalidator
                                    const RawComponents& raw) const
         {
           if (!std::isfinite(candidate.getScore()))
+            return false;
+
+          // Explicit guard on the interval bounds themselves.  The score path
+          // should propagate NaN/Inf from non-finite bounds, but an explicit
+          // check here makes the gate self-contained and does not rely on that
+          // implicit invariant surviving future engine changes.
+          if (!std::isfinite(num::to_double(candidate.getLower())) ||
+              !std::isfinite(num::to_double(candidate.getUpper())))
             return false;
           
           if (raw.getDomainPenalty() > 0.0)
