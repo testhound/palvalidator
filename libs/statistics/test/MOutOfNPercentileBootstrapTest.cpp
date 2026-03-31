@@ -1613,7 +1613,11 @@ TEST_CASE("MOutOfNPercentileBootstrap: diagnostics consistent with Result",
         }
         const double se_re = std::sqrt(v_re);
 
-        // Skewness: E[(X - mean)^3] / SE^3  with E over m
+        // Population skewness: E[(X - mean)^3] / pop_stddev^3  with E over m.
+        // Both the third central moment and the variance in the denominator use
+        // the population divisor (m), consistent with the implementation.
+        // At effective_B >> 1 the Bessel correction is negligible, but both
+        // sides of the REQUIRE must use the same formula to avoid a systematic gap.
         double skew_re = 0.0;
         if (m > 2 && se_re > 0.0)
         {
@@ -1624,7 +1628,10 @@ TEST_CASE("MOutOfNPercentileBootstrap: diagnostics consistent with Result",
                 m3 += d * d * d;
             }
             m3 /= static_cast<double>(m);
-            skew_re = m3 / (se_re * se_re * se_re);
+            const double pop_var    = v_re * static_cast<double>(m - 1)
+                                           / static_cast<double>(m);
+            const double pop_stddev = std::sqrt(pop_var);
+            skew_re = m3 / (pop_stddev * pop_stddev * pop_stddev);
         }
 
         REQUIRE(mean_b          == Catch::Approx(m_re).margin(1e-12));
