@@ -230,7 +230,7 @@ namespace palvalidator
        * Constructs an M-out-of-N bootstrap with fixed subsample ratio.
        *
        * @param B Number of bootstrap replicates (must be >= 400).
-       * @param confidence_level Confidence level (must be in [0.90, 0.999]).
+       * @param confidence_level Confidence level (must be in (0.5, 1.0)).
        * @param m_ratio Subsample ratio m/n (must be in (0, 1)).
        * @param resampler Resampling strategy.
        * @param rescale_to_n If true, rescale CI bounds and diagnostics to target
@@ -255,7 +255,7 @@ namespace palvalidator
         , m_diagBootstrapStats()
         , m_diagMeanBoot(0.0)
         , m_diagVarBoot(0.0)
-        , m_diagSeBoot(0.0)
+        , m_diagStddevBoot(0.0)
         , m_diagSkewBoot(0.0)
         , m_diagValid(false)
 	, m_interval_type(interval_type)
@@ -283,10 +283,10 @@ namespace palvalidator
         , m_diagBootstrapStats()
         , m_diagMeanBoot(0.0)
         , m_diagVarBoot(0.0)
-        , m_diagSeBoot(0.0)
+        , m_diagStddevBoot(0.0)
         , m_diagSkewBoot(0.0)
         , m_diagValid(false)
-	, m_interval_type(other.m_interval_type)
+        , m_interval_type(other.m_interval_type)
       {
       }
 
@@ -306,9 +306,14 @@ namespace palvalidator
         , m_diagBootstrapStats(std::move(other.m_diagBootstrapStats))
         , m_diagMeanBoot(other.m_diagMeanBoot)
         , m_diagVarBoot(other.m_diagVarBoot)
-        , m_diagSeBoot(other.m_diagSeBoot)
+        , m_diagStddevBoot(other.m_diagStddevBoot)
         , m_diagSkewBoot(other.m_diagSkewBoot)
         , m_diagValid(other.m_diagValid)
+        , m_diagDistributionDegenerate(other.m_diagDistributionDegenerate)
+        , m_diagExcessiveBias(other.m_diagExcessiveBias)
+        , m_diagInsufficientSpread(other.m_diagInsufficientSpread)
+        , m_diagRatioNearBoundary(other.m_diagRatioNearBoundary)
+        , m_diagBiasFraction(other.m_diagBiasFraction)
 	, m_interval_type(other.m_interval_type)
       {
         // Reset moved-from object
@@ -336,11 +341,16 @@ namespace palvalidator
           if (m_diagMutex) {
             std::lock_guard<std::mutex> lock(*m_diagMutex);
             m_diagBootstrapStats.clear();
-            m_diagMeanBoot = 0.0;
-            m_diagVarBoot = 0.0;
-            m_diagSeBoot = 0.0;
-            m_diagSkewBoot = 0.0;
-            m_diagValid = false;
+            m_diagMeanBoot                = 0.0;
+            m_diagVarBoot                 = 0.0;
+            m_diagStddevBoot              = 0.0;
+            m_diagSkewBoot                = 0.0;
+            m_diagValid                   = false;
+            m_diagDistributionDegenerate  = false;
+            m_diagExcessiveBias           = false;
+            m_diagInsufficientSpread      = false;
+            m_diagRatioNearBoundary       = false;
+            m_diagBiasFraction            = 0.0;
           }
         }
         return *this;
@@ -364,12 +374,17 @@ namespace palvalidator
 	  m_interval_type = other.m_interval_type;
 
           // Transfer diagnostic data
-          m_diagBootstrapStats = std::move(other.m_diagBootstrapStats);
-          m_diagMeanBoot = other.m_diagMeanBoot;
-          m_diagVarBoot = other.m_diagVarBoot;
-          m_diagSeBoot = other.m_diagSeBoot;
-          m_diagSkewBoot = other.m_diagSkewBoot;
-          m_diagValid = other.m_diagValid;
+          m_diagBootstrapStats          = std::move(other.m_diagBootstrapStats);
+          m_diagMeanBoot                = other.m_diagMeanBoot;
+          m_diagVarBoot                 = other.m_diagVarBoot;
+          m_diagStddevBoot              = other.m_diagStddevBoot;
+          m_diagSkewBoot                = other.m_diagSkewBoot;
+          m_diagValid                   = other.m_diagValid;
+          m_diagDistributionDegenerate  = other.m_diagDistributionDegenerate;
+          m_diagExcessiveBias           = other.m_diagExcessiveBias;
+          m_diagInsufficientSpread      = other.m_diagInsufficientSpread;
+          m_diagRatioNearBoundary       = other.m_diagRatioNearBoundary;
+          m_diagBiasFraction            = other.m_diagBiasFraction;
 
           // Reset moved-from object
           other.m_diagValid = false;
@@ -720,15 +735,33 @@ namespace palvalidator
         }
 
       /**
-       * Returns the standard error of usable bootstrap replicates.
+       * Returns the sample standard deviation of usable bootstrap replicates.
+       *
+       * @note This is the standard deviation of the bootstrap distribution of θ*,
+       *       which serves as the bootstrap standard error of the statistic. It is
+       *       computed as sqrt(sample_variance) with Bessel's correction (divisor m-1).
+       *       It is NOT std_dev / sqrt(m) (the standard error of the mean).
        * @throws std::logic_error If run() has not been called successfully.
        */
-      double getBootstrapSe() const
+      double getBootstrapStdDev() const
         {
           std::lock_guard<std::mutex> lock(*m_diagMutex);
           ensureDiagnosticsAvailable();
-          return m_diagSeBoot;
+          return m_diagStddevBoot;
         }
+
+      /**
+       * @deprecated Use getBootstrapStdDev() instead.
+       *
+       * This method was renamed to clarify that it returns the standard deviation
+       * of the bootstrap distribution of θ* (the bootstrap SE of the statistic),
+       * not the standard error of the mean (std_dev / sqrt(m)). The two quantities
+       * differ by a factor of sqrt(m), so the old name was misleading.
+       *
+       * getBootstrapStdDev() is a drop-in replacement: it returns the identical value.
+       * @throws std::logic_error If run() has not been called successfully.
+       */
+      double getBootstrapSe() const { return getBootstrapStdDev(); }
 
       /**
        * Returns the skewness of usable bootstrap replicates.
@@ -847,10 +880,6 @@ namespace palvalidator
        */
       void validateParameters() const
       {
-        if (m_B == 0)
-        {
-          throw std::invalid_argument("MOutOfNPercentileBootstrap: B must be > 0");
-        }
         if (m_B < 400)
         {
           throw std::invalid_argument("MOutOfNPercentileBootstrap: B should be >= 400 for reliable intervals");
@@ -954,7 +983,6 @@ namespace palvalidator
         }
 
         // Clamp to valid range [2, n-1]
-	// WITH this:
 	const std::size_t m_sub_before_clamp = m_sub;
 	if (m_sub < 2)
 	  m_sub = 2;
@@ -1049,10 +1077,10 @@ namespace palvalidator
           var_boot /= static_cast<double>(m - 1);
         }
 
-        const double se_boot = std::sqrt(var_boot);
+        const double stddev_boot = std::sqrt(var_boot);
 
         double skew_boot = 0.0;
-        if (m > 2 && se_boot > 0.0)
+        if (m > 2 && stddev_boot > 0.0)
         {
           double m3 = 0.0;
           for (double v : thetas_d)
@@ -1060,8 +1088,17 @@ namespace palvalidator
             const double d = v - mean_boot;
             m3 += d * d * d;
           }
+          // Population skewness: divide both the third central moment and the
+          // variance by m so the formula is internally consistent.
+          // Using population rather than sample (Bessel-corrected) moments is
+          // appropriate here because m = effective_B >> 1, making the correction
+          // negligible, and this matches the standard convention for bootstrap
+          // diagnostic skewness.
+          const double pop_var    = var_boot * static_cast<double>(m - 1)
+                                             / static_cast<double>(m);
+          const double pop_stddev = std::sqrt(pop_var);
           m3 /= static_cast<double>(m);
-          skew_boot = m3 / (se_boot * se_boot * se_boot);
+          skew_boot = m3 / (pop_stddev * pop_stddev * pop_stddev);
         }
 
         // ====================================================================
@@ -1088,8 +1125,8 @@ namespace palvalidator
           {
             (*diagnosticLog) << "[M-out-of-N Rescaling] n=" << n << ", m_sub=" << m_sub 
                            << ", scale_factor=" << scale_factor << "\n";
-            (*diagnosticLog) << "  Before rescaling: mean_boot=" << mean_boot 
-                           << ", se_boot=" << se_boot << "\n";
+            (*diagnosticLog) << "  Before rescaling: mean_boot=" << mean_boot
+                           << ", stddev_boot=" << stddev_boot << "\n";
           }
           
 	  // Rescale the m-out-of-n bootstrap replicates to the full-sample scale.
@@ -1120,8 +1157,8 @@ namespace palvalidator
           
           if (diagnosticLog)
           {
-            (*diagnosticLog) << "  After rescaling: mean_boot=" << mean_boot 
-                           << ", se_boot=" << std::sqrt(var_boot) << "\n";
+            (*diagnosticLog) << "  After rescaling: mean_boot=" << mean_boot
+                           << ", stddev_boot=" << std::sqrt(var_boot) << "\n";
           }
           
           // Note: skewness remains unchanged (scale-invariant)
@@ -1136,7 +1173,6 @@ namespace palvalidator
         switch (m_interval_type)
 	  {
           case IntervalType::TWO_SIDED:
-	  default:
             pl = alpha / 2.0;        // 2.5% for CL=0.95
             pu = 1.0 - alpha / 2.0;  // 97.5% for CL=0.95
             break;
@@ -1150,6 +1186,10 @@ namespace palvalidator
             pl = 1e-10;              // extreme lower empirical quantile (not truly unbounded)
             pu = 1.0 - alpha;        // 95% for CL=0.95 - less conservative upper bound
             break;
+
+          default:
+            throw std::invalid_argument(
+              "MOutOfNPercentileBootstrap: unhandled IntervalType value in run_core_");
         }
 
         // Sort once and use efficient sorted quantile function
@@ -1216,13 +1256,18 @@ namespace palvalidator
         // clamping fired or the adaptive policy pushed the ratio into a
         // degenerate region where subsample behaviour is unreliable.
         //
-        // The guard (isAdaptiveMode() || clamping fired || m_sub_override > 0)
-        // is intentional: a caller who explicitly chose a small fixed ratio
-        // should NOT be flagged — they made a deliberate choice. The flag
-        // is only meaningful when the ratio was computed or adjusted
-        // internally (adaptive policy, clamping, or override), where an
-        // extreme value signals a pathological internal outcome rather than
-        // a deliberate user decision.
+        // The guard distinguishes three cases:
+        //  - Adaptive mode: always checked; the policy computed the ratio internally
+        //    and an extreme value signals a pathological outcome.
+        //  - Clamping fired (m_sub != m_sub_before_clamp): the computed ratio was
+        //    out of range and was silently adjusted; flagging informs callers.
+        //  - m_sub_override > 0: the caller supplied an explicit subsample size,
+        //    which is treated as an internally computed value (not a deliberate
+        //    ratio choice) and is therefore subject to boundary flagging.
+        //
+        // A caller who explicitly chose a small *fixed ratio* via the constructor
+        // is NOT flagged — that is a deliberate, documented choice. Only the three
+        // cases above represent values that were computed or adjusted internally.
         const double lower_boundary = 3.0 / static_cast<double>(n);
         const double upper_boundary =
             static_cast<double>(n - 2) / static_cast<double>(n);
@@ -1268,7 +1313,7 @@ namespace palvalidator
           m_diagBootstrapStats          = thetas_d;
           m_diagMeanBoot                = mean_boot;
           m_diagVarBoot                 = var_boot;
-          m_diagSeBoot                  = std::sqrt(var_boot);
+          m_diagStddevBoot              = std::sqrt(var_boot);
           m_diagSkewBoot                = skew_boot;
           m_diagDistributionDegenerate  = distribution_degenerate;
           m_diagExcessiveBias           = excessive_bias;
@@ -1357,7 +1402,7 @@ namespace palvalidator
       mutable std::vector<double> m_diagBootstrapStats;  /**< Usable θ* values. */
       mutable double              m_diagMeanBoot;        /**< Mean of bootstrap distribution. */
       mutable double              m_diagVarBoot;         /**< Variance of bootstrap distribution. */
-      mutable double              m_diagSeBoot;          /**< Standard error of bootstrap distribution. */
+      mutable double              m_diagStddevBoot;      /**< Std dev of bootstrap distribution (bootstrap SE of statistic). */
       mutable double              m_diagSkewBoot;        /**< Skewness of bootstrap distribution. */
       mutable bool                m_diagValid;           /**< True after a successful run(). */
       /** @} */
