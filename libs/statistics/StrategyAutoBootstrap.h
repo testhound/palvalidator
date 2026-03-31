@@ -348,6 +348,17 @@ namespace palvalidator
                            /*wStability*/   1.0);
           }
 
+	if (os)
+	  {
+	    (*os) << "   [AutoCI] Weight profile: "
+		  << (isRatioStatistic ? "ratio-statistic" : "returns-based")
+		  << "  (wCenterShift=" << weights.getCenterShiftWeight()
+		  << "  wSkew="         << weights.getSkewWeight()
+		  << "  wLength="       << weights.getLengthWeight()
+		  << "  wStability="    << weights.getStabilityWeight()
+		  << ")\n";
+	  }
+
 	// 1) Normal bootstrap
 	if (m_algorithmsConfiguration.enableNormal())
 	  {
@@ -498,16 +509,18 @@ namespace palvalidator
 
 		    const std::size_t n_trades = returns.size();
 
-		    // BUG-2 FIX: Require at least 6 trades so the subsample has a
-		    // minimum of ~4 observations (0.75 * 6 = 4.5 → 4).
-		    // For n_trades < 6 the min_m6_floor below would exceed 1.0, asking
-		    // the engine to draw more observations than exist in the original
-		    // sample — oversampling, not subsampling. Skip the engine instead.
-		    if (n_trades < 6)
+		    // BUG-2 FIX: Require at least 8 trades so the subsample is a
+		    // genuine subsample.  At n=6 or n=7 the n^(2/3)/n floor reaches
+		    // or exceeds 0.75, which combined with the min_m6_floor drives
+		    // trade_ratio to 1.0 — the engine then clamps m_sub to n-1,
+		    // yielding near-full resampling with no variance-reduction benefit.
+		    // Skipping at n < 8 is consistent with the guard's intent: prevent
+		    // degenerate subsamples that provide no subsampling benefit.
+		    if (n_trades < 8)
 		      {
 			if (os)
 			  (*os) << "   [AutoCI] MOutOfNPercentileBootstrap skipped: "
-				   "fewer than 6 trades (n=" << n_trades << ")\n";
+				   "fewer than 8 trades (n=" << n_trades << ")\n";
 		      }
 		    else
 		      {
