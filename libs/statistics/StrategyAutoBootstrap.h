@@ -239,19 +239,30 @@ namespace palvalidator
        * @param sampler_instance An instance of Sampler. This allows passing a configured
        * statistic (e.g., LogProfitFactorStat with a specific stop-loss) rather than
        * default-constructing one. Defaults to Sampler() if not provided.
+       * @param sharedExec Optional persistent thread pool. When non-null the same pool
+       * is injected into every engine constructed inside run(), eliminating the
+       * per-engine spawn/join cost. When null (the default) the constructor checks
+       * whether the factory already carries a shared executor (set e.g. by
+       * PerformanceFilter) and inherits it automatically. Only when neither source
+       * supplies a pool is a private pool created. The caller is responsible for
+       * keeping any externally-supplied executor alive at least as long as this object.
        */
       StrategyAutoBootstrap(Factory& factory,
                             const mkc_timeseries::BacktesterStrategy<Decimal>& strategy,
                             const BootstrapConfiguration& bootstrapConfiguration,
                             const BootstrapAlgorithmsConfiguration& algorithmsConfiguration,
                             Sampler sampler_instance = Sampler(),
-			    IntervalType interval_type = IntervalType::TWO_SIDED)
+			    IntervalType interval_type = IntervalType::TWO_SIDED,
+                            std::shared_ptr<Executor> sharedExec = nullptr)
         : m_factory(factory),
           m_strategy(strategy),
           m_bootstrapConfiguration(bootstrapConfiguration),
           m_algorithmsConfiguration(algorithmsConfiguration),
           m_sampler_instance(sampler_instance),
-	  m_interval_type(interval_type)
+	  m_interval_type(interval_type),
+          m_exec(sharedExec             ? std::move(sharedExec)
+                 : factory.getSharedExecutor() ? factory.getSharedExecutor()
+                 : std::make_shared<Executor>())
       {}
 
       /**
@@ -303,6 +314,13 @@ namespace palvalidator
 	    throw std::invalid_argument(
 					"StrategyAutoBootstrap::run: requires at least 2 returns.");
 	  }
+
+	// Inject the persistent executor into the factory before any make* calls.
+	// This ensures all six engines constructed below share the same thread pool
+	// rather than each spawning and joining their own. The factory stores the
+	// shared_ptr by value, so if this StrategyAutoBootstrap instance is the sole
+	// owner, the pool remains live for the entire run().
+	m_factory.setSharedExecutor(m_exec);
 
 	const std::size_t blockSize         = m_bootstrapConfiguration.getBlockSize();
 	const double      cl                = m_bootstrapConfiguration.getConfidenceLevel();
@@ -566,6 +584,32 @@ namespace palvalidator
 	// 5) Percentile-T bootstrap (double bootstrap)
 	if (m_algorithmsConfiguration.enablePercentileT())
 	  {
+	    // Pre-run sample size gate.
+	    //
+	    // CandidateGateKeeper::isCommonCandidateValid() in AutoBootstrapScoring.h
+	    // unconditionally rejects any PercentileT candidate where
+	    //   n < AutoBootstrapConfiguration::kPercentileTMinSampleSize (= 20).
+	    //
+	    // Without this guard the full double bootstrap still runs:
+	    //   B_outer (25 000) x MIN_INNER (100) = 2.5 M statistic evaluations
+	    // per strategy, only for the result to be silently discarded.  When the
+	    // median sample size is 13 and the minimum is 9, this is wasted work for
+	    // the majority of strategies in the tournament.
+	    //
+	    // returns.size() is in SampleType units (bars at bar-level, trades at
+	    // trade-level), matching exactly what PercentileTBootstrap::run_impl
+	    // stores in Result::n and what the gate subsequently reads via getN().
+	    if (returns.size() < AutoBootstrapConfiguration::kPercentileTMinSampleSize)
+	      {
+		if (os)
+		  (*os) << "   [AutoCI] PercentileTBootstrap skipped: n="
+			<< returns.size()
+			<< " < kPercentileTMinSampleSize="
+			<< AutoBootstrapConfiguration::kPercentileTMinSampleSize
+			<< "\n";
+	      }
+	    else
+	      {
 	    try
 	      {
 		auto [engine, crn] =
@@ -593,6 +637,7 @@ namespace palvalidator
 			  << e.what() << "\n";
 		  }
 	      }
+	      } // end else (n >= kPercentileTMinSampleSize)
 	  }
 
 	// 6) BCa (Bias-Corrected and Accelerated)
@@ -829,7 +874,10 @@ namespace palvalidator
       BootstrapConfiguration             m_bootstrapConfiguration;
       BootstrapAlgorithmsConfiguration   m_algorithmsConfiguration;
       Sampler                            m_sampler_instance;
-      IntervalType                       m_interval_type; 
+      IntervalType                       m_interval_type;
+      /// Persistent thread pool shared across all six engines in every run() call.
+      /// Always non-null: either caller-supplied or self-created at construction.
+      std::shared_ptr<Executor>          m_exec;
     };
   } // namespace analysis
 } // namespace palvalidator

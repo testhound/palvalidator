@@ -295,6 +295,56 @@ public:
    */
   explicit TradingBootstrapFactory(uint64_t masterSeed) : m_masterSeed(masterSeed) {}
 
+  /**
+   * @brief Constructs a factory with a pre-created shared executor.
+   *
+   * The supplied executor is injected into every heavy bootstrap engine
+   * (BCa, PercentileT, MOutOfN) that this factory constructs, ensuring the
+   * same thread pool is reused across all engines in a tournament run rather
+   * than spawning and joining a new pool for each engine.
+   *
+   * Pass the same shared_ptr to StrategyAutoBootstrap (which calls
+   * setSharedExecutor on this factory at the start of each run()) to get
+   * full persistence across all strategies in the outer tournament loop.
+   *
+   * @param masterSeed  Root seed for the CRN hierarchy.
+   * @param sharedExec  A live ThreadPoolExecutor to share across engines.
+   */
+  TradingBootstrapFactory(uint64_t masterSeed,
+                          std::shared_ptr<concurrency::ThreadPoolExecutor<>> sharedExec)
+    : m_masterSeed(masterSeed)
+    , m_sharedExec(std::move(sharedExec))
+  {}
+
+  /**
+   * @brief Replaces the shared executor used for subsequent engine construction.
+   *
+   * Called by StrategyAutoBootstrap::run() to inject its own persistent pool
+   * into this factory before the six make* calls. Passing nullptr clears the
+   * shared executor so each subsequent engine creates its own pool.
+   *
+   * @param exec  New shared executor (may be nullptr).
+   */
+  void setSharedExecutor(std::shared_ptr<concurrency::ThreadPoolExecutor<>> exec)
+  {
+    m_sharedExec = std::move(exec);
+  }
+
+  /**
+   * @brief Returns the currently stored shared executor, or nullptr if none is set.
+   *
+   * Used by StrategyAutoBootstrap's constructor to inherit an executor that was
+   * installed at the factory level (e.g. by PerformanceFilter) without requiring
+   * callers between the two — such as BootstrapAnalysisStage — to be aware of
+   * executor management at all.
+   *
+   * @return The shared executor, or nullptr.
+   */
+  std::shared_ptr<concurrency::ThreadPoolExecutor<>> getSharedExecutor() const
+  {
+    return m_sharedExec;
+  }
+
   // ========== Overloads accepting BacktesterStrategy (calls deterministicHashCode()) ==========
 
   /**
@@ -623,7 +673,12 @@ public:
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
-    Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n, interval_type);
+    std::shared_ptr<Executor> typedExec;
+    if constexpr (std::is_same_v<Executor, concurrency::ThreadPoolExecutor<>>)
+      typedExec = m_sharedExec;
+
+    Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n, interval_type,
+                 std::move(typedExec));
     return std::make_pair(std::move(mn), std::move(crn));
   }
 
@@ -673,7 +728,12 @@ public:
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
-    Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n, interval_type);
+    std::shared_ptr<Executor> typedExec;
+    if constexpr (std::is_same_v<Executor, concurrency::ThreadPoolExecutor<>>)
+      typedExec = m_sharedExec;
+
+    Bootstrap mn(B, CL, m_ratio, resampler, rescale_to_n, interval_type,
+                 std::move(typedExec));
     return std::make_pair(std::move(mn), std::move(crn));
   }
 
@@ -722,9 +782,14 @@ public:
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
+    std::shared_ptr<Executor> typedExec;
+    if constexpr (std::is_same_v<Executor, concurrency::ThreadPoolExecutor<>>)
+      typedExec = m_sharedExec;
+
     // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
     // via MOutOfNPercentileBootstrap::createAdaptive.
-    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler, rescale_to_n, interval_type);
+    auto mn = Bootstrap::template createAdaptive<Sampler>(
+                B, CL, resampler, rescale_to_n, interval_type, std::move(typedExec));
 
     return std::make_pair(std::move(mn), std::move(crn));
   }
@@ -771,8 +836,13 @@ public:
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::MOUTOFN, L, fold) );
 
+    std::shared_ptr<Executor> typedExec;
+    if constexpr (std::is_same_v<Executor, concurrency::ThreadPoolExecutor<>>)
+      typedExec = m_sharedExec;
+
     // Use the default TailVolatilityAdaptivePolicy<Decimal, Sampler>
-    auto mn = Bootstrap::template createAdaptive<Sampler>(B, CL, resampler, rescale_to_n, interval_type);
+    auto mn = Bootstrap::template createAdaptive<Sampler>(
+                B, CL, resampler, rescale_to_n, interval_type, std::move(typedExec));
 
     return std::make_pair(std::move(mn), std::move(crn));
   }
@@ -830,7 +900,12 @@ public:
     const uint64_t sid = static_cast<uint64_t>(strategy.deterministicHashCode());
     CRNRng<Engine> crn( makeCRNKey(sid, stageTag, BootstrapMethods::PERCENTILE_T, L, fold) );
 
-    PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner, interval_type);
+    std::shared_ptr<Executor> typedExec;
+    if constexpr (std::is_same_v<Executor, concurrency::ThreadPoolExecutor<>>)
+      typedExec = m_sharedExec;
+
+    PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner, interval_type,
+          std::move(typedExec));
     return std::make_pair(std::move(pt), std::move(crn));
   }
 
@@ -879,7 +954,13 @@ public:
     using mkc_timeseries::rng_utils::CRNRng;
 
     CRNRng<Engine> crn( makeCRNKey(strategyId, stageTag, BootstrapMethods::PERCENTILE_T, L, fold) );
-    PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner, interval_type);
+
+    std::shared_ptr<Executor> typedExec;
+    if constexpr (std::is_same_v<Executor, concurrency::ThreadPoolExecutor<>>)
+      typedExec = m_sharedExec;
+
+    PT pt(B_outer, B_inner, CL, resampler, m_ratio_outer, m_ratio_inner, interval_type,
+          std::move(typedExec));
     return std::make_pair(std::move(pt), std::move(crn));
   }
 
@@ -1217,6 +1298,12 @@ private:
   /// Master seed from which all CRN keys in this factory are derived.
   uint64_t m_masterSeed;
 
+  /// Optional shared executor injected into heavy engines (BCa, PercentileT, MOutOfN).
+  /// Null by default; set via the two-argument constructor or setSharedExecutor().
+  /// When non-null and the engine's Executor type matches ThreadPoolExecutor<>,
+  /// this pool is reused rather than constructing a new one per engine.
+  std::shared_ptr<concurrency::ThreadPoolExecutor<>> m_sharedExec;
+
   /**
    * @brief Shared implementation for all bar-level BCa overloads.
    *
@@ -1261,8 +1348,17 @@ private:
         .with_tags({ stageTag, BootstrapMethods::BCA, L, fold })
     );
 
+    // Pass the shared executor when the template Executor matches the stored pool type.
+    // For any other Executor (e.g. SingleThreadExecutor in unit tests) typedExec is
+    // nullptr and the engine creates its own — zero-cost since SingleThreadExecutor
+    // has no threads to spawn.
+    std::shared_ptr<Executor> typedExec;
+    if constexpr (std::is_same_v<Executor, concurrency::ThreadPoolExecutor<>>)
+      typedExec = m_sharedExec;
+
     return BCaBootStrap<Decimal, Resampler, Engine, Provider, Decimal, Executor>(
-        returns, B, CL, std::move(statFn), std::move(sampler), prov, interval_type);
+        returns, B, CL, std::move(statFn), std::move(sampler), prov,
+        interval_type, std::move(typedExec));
   }
 
   // ---------------------------------------------------------------------------
@@ -1327,8 +1423,13 @@ private:
         .with_tags({ stageTag, BootstrapMethods::BCA, L, fold })
     );
 
+    std::shared_ptr<Executor> typedExec;
+    if constexpr (std::is_same_v<Executor, concurrency::ThreadPoolExecutor<>>)
+      typedExec = m_sharedExec;
+
     return BCaBootStrap<Decimal, Resampler, Engine, Provider, TradeT, Executor>(
-        trades, B, CL, std::move(statFn), std::move(sampler), prov, interval_type);
+        trades, B, CL, std::move(statFn), std::move(sampler), prov,
+        interval_type, std::move(typedExec));
   }
 
   /**

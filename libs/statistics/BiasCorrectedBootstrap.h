@@ -873,7 +873,8 @@ namespace mkc_timeseries
     BCaBootStrap(const std::vector<SampleType>& returns,
                  unsigned int num_resamples,
                  double confidence_level = 0.95,
-		 IntervalType interval_type = IntervalType::TWO_SIDED)
+		 IntervalType interval_type = IntervalType::TWO_SIDED,
+                 std::shared_ptr<Executor> exec = nullptr)
       : m_returns(returns),
         m_num_resamples(num_resamples),
         m_confidence_level(confidence_level),
@@ -882,7 +883,8 @@ namespace mkc_timeseries
         m_is_calculated(false),
         m_z0(0.0),
         m_accel(DecimalConstants<Decimal>::DecimalZero),
-	m_interval_type(interval_type)
+	m_interval_type(interval_type),
+        m_exec(exec ? std::move(exec) : std::make_shared<Executor>())
     {
       validateConstructorArgs();
     }
@@ -894,7 +896,8 @@ namespace mkc_timeseries
                  unsigned int num_resamples,
                  double confidence_level,
                  StatFn statistic,
-		 IntervalType interval_type = IntervalType::TWO_SIDED)
+		 IntervalType interval_type = IntervalType::TWO_SIDED,
+                 std::shared_ptr<Executor> exec = nullptr)
       : m_returns(returns),
         m_num_resamples(num_resamples),
         m_confidence_level(confidence_level),
@@ -903,7 +906,8 @@ namespace mkc_timeseries
         m_is_calculated(false),
         m_z0(0.0),
         m_accel(DecimalConstants<Decimal>::DecimalZero),
-	m_interval_type(interval_type)
+	m_interval_type(interval_type),
+        m_exec(exec ? std::move(exec) : std::make_shared<Executor>())
     {
       if (!m_statistic)
         throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
@@ -918,7 +922,8 @@ namespace mkc_timeseries
                  double confidence_level,
                  StatFn statistic,
                  Sampler sampler,
-		 IntervalType interval_type = IntervalType::TWO_SIDED)
+		 IntervalType interval_type = IntervalType::TWO_SIDED,
+                 std::shared_ptr<Executor> exec = nullptr)
       : m_returns(returns),
         m_num_resamples(num_resamples),
         m_confidence_level(confidence_level),
@@ -927,7 +932,8 @@ namespace mkc_timeseries
         m_is_calculated(false),
         m_z0(0.0),
         m_accel(DecimalConstants<Decimal>::DecimalZero),
-	m_interval_type(interval_type)
+	m_interval_type(interval_type),
+        m_exec(exec ? std::move(exec) : std::make_shared<Executor>())
     {
       if (!m_statistic)
         throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
@@ -945,7 +951,8 @@ namespace mkc_timeseries
                  StatFn statistic,
                  Sampler sampler,
                  const P& provider,
-		 IntervalType interval_type = IntervalType::TWO_SIDED)
+		 IntervalType interval_type = IntervalType::TWO_SIDED,
+                 std::shared_ptr<Executor> exec = nullptr)
       : m_returns(returns),
         m_num_resamples(num_resamples),
         m_confidence_level(confidence_level),
@@ -955,7 +962,8 @@ namespace mkc_timeseries
         m_is_calculated(false),
         m_z0(0.0),
         m_accel(DecimalConstants<Decimal>::DecimalZero),
-	m_interval_type(interval_type)
+	m_interval_type(interval_type),
+        m_exec(exec ? std::move(exec) : std::make_shared<Executor>())
     {
       if (!m_statistic)
         throw std::invalid_argument("BCaBootStrap: statistic function must be valid.");
@@ -1205,6 +1213,12 @@ namespace mkc_timeseries
     // Default: 1000 (alpha / 1000).  Exposed via setOneSidedTailRatio().
     double               m_one_sided_tail_ratio{1000.0};
 
+    // Persistent parallel executor — constructed once per instance, reused across
+    // every calculateBCaBounds() call.  Stored as shared_ptr so the implicitly-
+    // generated copy constructor (shared_ptr copy) keeps the pool alive in both
+    // the original and the copy without a null-pointer hazard.
+    mutable std::shared_ptr<Executor> m_exec;
+
     // Test hooks
     void setStatistic(const Decimal& theta) { m_theta_hat = theta; }
     void setMean(const Decimal& theta)      { m_theta_hat = theta; }
@@ -1354,8 +1368,8 @@ namespace mkc_timeseries
       std::atomic<unsigned int> count_less{0};
       std::atomic<unsigned int> count_equal{0};
 
-      Executor exec{};
-
+      // m_exec is a persistent member — avoids constructing and joining a fresh
+      // ThreadPoolExecutor (hardware_concurrency() threads) on every BCa call.
       // Compute chunk size hint for parallel_for_chunked.
       //
       // The hint is policy-aware: the correct value differs fundamentally
@@ -1401,7 +1415,7 @@ namespace mkc_timeseries
       if constexpr (std::is_void_v<Provider>)
 	{
 	  concurrency::parallel_for_chunked(
-	    static_cast<uint32_t>(m_num_resamples), exec,
+	    static_cast<uint32_t>(m_num_resamples), *m_exec,
 	    [&](uint32_t chunk_begin, uint32_t chunk_end)
 	    {
 	      // One Rng instance per worker thread, default-constructed on first use.
@@ -1440,7 +1454,7 @@ namespace mkc_timeseries
 	{
 	  // Provider path: deterministic per-replicate engines — naturally parallel.
 	  concurrency::parallel_for_chunked(
-	    static_cast<uint32_t>(m_num_resamples), exec,
+	    static_cast<uint32_t>(m_num_resamples), *m_exec,
 	    [&](uint32_t chunk_begin, uint32_t chunk_end)
 	    {
 	      // Same local-accumulator pattern as the Provider=void path above:
