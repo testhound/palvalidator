@@ -20,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <thread>
 #include "randutils.hpp"
 #include "RngUtils.h"
 #include "StatUtils.h"
@@ -242,13 +243,14 @@ namespace palvalidator
                                  double      m_ratio,
                                  const Resampler& resampler,
                                  bool        rescale_to_n = false,
-				 IntervalType interval_type = IntervalType::TWO_SIDED)
+				 IntervalType interval_type = IntervalType::TWO_SIDED,
+                                 std::shared_ptr<Executor> exec = nullptr)
         : m_B(B)
         , m_CL(confidence_level)
         , m_ratio(m_ratio)
         , m_resampler(resampler)
         , m_rescale_to_n(rescale_to_n)
-        , m_exec(std::make_shared<Executor>())
+        , m_exec(exec ? std::move(exec) : std::make_shared<Executor>())
         , m_chunkHint(0)
         , m_ratioPolicy(nullptr)
         , m_diagMutex(std::make_unique<std::mutex>())
@@ -401,10 +403,11 @@ namespace palvalidator
                        double      m_ratio,
                        const Resampler& resampler,
                        bool        rescale_to_n = false,
-		       IntervalType interval_type = IntervalType::TWO_SIDED)
+		       IntervalType interval_type = IntervalType::TWO_SIDED,
+                       std::shared_ptr<Executor> exec = nullptr)
       {
         return MOutOfNPercentileBootstrap(B, confidence_level, m_ratio, resampler,
-					  rescale_to_n, interval_type);
+					  rescale_to_n, interval_type, std::move(exec));
       }
 
       /**
@@ -417,7 +420,8 @@ namespace palvalidator
 				const Resampler& resampler,
 				std::shared_ptr<IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>> policy,
 				bool        rescale_to_n = false,
-				IntervalType interval_type = IntervalType::TWO_SIDED)
+				IntervalType interval_type = IntervalType::TWO_SIDED,
+                                std::shared_ptr<Executor> exec = nullptr)
       {
         if (!policy)
         {
@@ -431,7 +435,8 @@ namespace palvalidator
 					    /*m_ratio=*/0.5,
 					    resampler,
 					    rescale_to_n,
-					    interval_type);
+					    interval_type,
+                                            std::move(exec));
 
         instance.m_ratio      = -1.0;  // switch to adaptive mode
         instance.m_ratioPolicy =
@@ -449,13 +454,15 @@ namespace palvalidator
                      double      confidence_level,
                      const Resampler& resampler,
                      bool        rescale_to_n = false,
-		     IntervalType interval_type = IntervalType::TWO_SIDED)
+		     IntervalType interval_type = IntervalType::TWO_SIDED,
+                     std::shared_ptr<Executor> exec = nullptr)
       {
         auto defaultPolicy = std::make_shared<
           TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic>>();
 
         return createAdaptiveWithPolicy<BootstrapStatistic>(
-          B, confidence_level, resampler, defaultPolicy, rescale_to_n, interval_type);
+          B, confidence_level, resampler, defaultPolicy, rescale_to_n, interval_type,
+          std::move(exec));
       }
 
       // ====================================================================
@@ -1000,23 +1007,58 @@ namespace palvalidator
         // Pre-allocate; NaN marks skipped/invalid replicates
         std::vector<double> thetas_d(m_B, std::numeric_limits<double>::quiet_NaN());
 
+        // -----------------------------------------------------------------------
+        // Priority 3 — Adaptive chunk size.
+        //
+        // Mirrors the formula used in BCaBootStrap and PercentileTBootstrap:
+        // target ~6 chunks per hardware thread so workers stay busy long enough
+        // to amortise queue-lock overhead, which dominates when n is small (e.g.
+        // n=27 bar returns or n=13 trades).  The SingleThreadExecutor path uses
+        // a single chunk covering the entire loop to eliminate lambda-dispatch
+        // overhead in the serial case.  When m_chunkHint has been set explicitly
+        // by the caller via setChunkSizeHint(), it overrides this calculation.
+        // -----------------------------------------------------------------------
+        uint32_t chunkHint;
+        if (m_chunkHint > 0) {
+          chunkHint = m_chunkHint;  // caller-provided override takes precedence
+        } else if constexpr (std::is_same_v<Executor, concurrency::SingleThreadExecutor>) {
+          chunkHint = static_cast<uint32_t>(m_B);
+        } else {
+          constexpr unsigned int kChunksPerThread = 6u;
+          const unsigned int hw =
+            std::max(1u, static_cast<unsigned int>(std::thread::hardware_concurrency()));
+          chunkHint = std::max(
+            1u,
+            static_cast<uint32_t>(
+              (static_cast<uint32_t>(m_B) + hw * kChunksPerThread - 1u)
+              / (hw * kChunksPerThread)));
+        }
+
         concurrency::parallel_for_chunked(
           static_cast<uint32_t>(m_B),
           *m_exec,
           [&](uint32_t b) {
             auto rng = make_engine(b);
-            // y is std::vector<SampleType>.
-            // When SampleType = Decimal:        vector of bar returns (original behaviour).
-            // When SampleType = Trade<Decimal>: vector of Trade objects.
-            // SampleType must be default-constructible; Trade<Decimal> satisfies this.
-            std::vector<SampleType> y;
+            // -----------------------------------------------------------------------
+            // Priority 2 — Per-thread scratch buffer (no per-replicate heap alloc).
+            //
+            // y is declared thread_local so each worker thread allocates the vector
+            // exactly once and reuses the storage for every replicate it processes.
+            // resize() is O(1) when the requested size <= existing capacity, which
+            // holds for all replicates after the first one on each thread.
+            // The resampler overwrites every element before reading it, so stale
+            // values from a prior replicate are never observed.
+            // Trade<Decimal> is default-constructible, so thread_local
+            // vector<SampleType> works for both bar-level and trade-level paths.
+            // -----------------------------------------------------------------------
+            thread_local std::vector<SampleType> y;
             y.resize(m_sub);
             m_resampler(x, y, m_sub, rng);
             const double v = num::to_double(sampler(y));
             if (std::isfinite(v))
               thetas_d[b] = v;
           },
-          /*chunkSizeHint=*/m_chunkHint);
+          chunkHint);
 
         // Compact NaNs and compute skipped count
         std::size_t skipped = 0;

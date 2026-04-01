@@ -15,6 +15,7 @@
 #include "BarAlignedSeries.h"
 #include "CostStressUtils.h"
 #include "filtering/FilteringPipeline.h"
+#include "ParallelExecutors.h"
 #include "TradingBootstrapFactory.h"
 #include "ConfigSeeds.h"
 #include <limits>
@@ -39,7 +40,8 @@ namespace palvalidator
       mFilteringSummary(),
       mApplyFragileAdvice(true),
       mLSensitivity(),
-      mBootstrapFactory(std::make_unique<BootstrapFactory>(masterSeed)),
+      mBootstrapFactory(std::make_unique<BootstrapFactory>(masterSeed,
+							   std::make_shared<concurrency::ThreadPoolExecutor<>>())),
       mObserver(std::move(observer)),
       mTradeLevelBootstrapping(tradeLevelBootstrapping)
     {

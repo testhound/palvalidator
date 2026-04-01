@@ -68,6 +68,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -308,13 +309,15 @@ namespace palvalidator
                            const Resampler& resampler,
                            double           m_ratio_outer = 1.0,
                            double           m_ratio_inner = 1.0,
-                           IntervalType     interval_type = IntervalType::TWO_SIDED)
+                           IntervalType     interval_type = IntervalType::TWO_SIDED,
+                           std::shared_ptr<Executor> exec = nullptr)
         : m_B_outer(B_outer)
         , m_B_inner(B_inner)
         , m_CL(confidence_level)
         , m_resampler(resampler)
         , m_ratio_outer(m_ratio_outer)
         , m_ratio_inner(m_ratio_inner)
+        , m_exec(exec ? std::move(exec) : std::make_shared<Executor>())
         , m_diagTValues()
         , m_diagThetaStars()
         , m_diagSeHat(0.0)
@@ -342,6 +345,7 @@ namespace palvalidator
         , m_resampler(other.m_resampler)
         , m_ratio_outer(other.m_ratio_outer)
         , m_ratio_inner(other.m_ratio_inner)
+        , m_exec(std::make_shared<Executor>())
         , m_diagMutex()
         , m_diagTValues()
         , m_diagThetaStars()
@@ -362,6 +366,7 @@ namespace palvalidator
           m_ratio_outer  = other.m_ratio_outer;
           m_ratio_inner  = other.m_ratio_inner;
           m_interval_type = other.m_interval_type;
+          m_exec         = std::make_shared<Executor>();
 
           std::lock_guard<std::mutex> lock(m_diagMutex);
           m_diagTValues.clear();
@@ -381,6 +386,7 @@ namespace palvalidator
         , m_resampler(std::move(other.m_resampler))
         , m_ratio_outer(other.m_ratio_outer)
         , m_ratio_inner(other.m_ratio_inner)
+        , m_exec(std::move(other.m_exec))
         , m_diagTValues(std::move(other.m_diagTValues))
         , m_diagThetaStars(std::move(other.m_diagThetaStars))
         , m_diagSeHat(other.m_diagSeHat)
@@ -409,6 +415,7 @@ namespace palvalidator
           m_ratio_outer  = other.m_ratio_outer;
           m_ratio_inner  = other.m_ratio_inner;
           m_interval_type = other.m_interval_type;
+          m_exec         = std::move(other.m_exec);
 
           m_diagTValues    = std::move(other.m_diagTValues);
           m_diagThetaStars = std::move(other.m_diagThetaStars);
@@ -656,102 +663,192 @@ namespace palvalidator
         std::vector<double> theta_star_ds(m_B_outer, std::numeric_limits<double>::quiet_NaN());
         std::vector<double> tvals         (m_B_outer, std::numeric_limits<double>::quiet_NaN());
 
-        // Diagnostics counters
-        std::atomic<std::size_t> skipped_outer{0};
-        std::atomic<std::size_t> skipped_inner_total{0};
-        std::atomic<std::size_t> inner_attempted_total{0};
-
         const std::size_t Ldiag = m_resampler.getL();
 
-        // Copy resampler per task to avoid shared mutation of any internal state.
+        // Copy resampler once; each worker task gets its own copy of this.
         const Resampler resampler_base_copy = m_resampler;
 
-        // Parallelize outer loop only.
-        Executor exec{};
-        concurrency::parallel_for_chunked(
-          static_cast<uint32_t>(m_B_outer),
-          exec,
-          [&, sampler, make_engine, resampler_base_copy](uint32_t b32)
-          {
-            Resampler resampler_local = resampler_base_copy;
+        // -----------------------------------------------------------------------
+        // Persistent-worker model with dynamic work-stealing and local counters.
+        //
+        // Improvement 1 — eliminate per-inner-loop atomics.
+        //   The previous implementation called fetch_add on inner_attempted_total
+        //   and skipped_inner_total inside the inner loop body — up to
+        //   B_outer × B_inner = 62.5 million atomic RMW operations per strategy.
+        //   Each atomic on a shared cache line forces a bus transaction that
+        //   serialises across all cores.  Moving to per-worker plain size_t
+        //   accumulators and a single fetch_add per worker task at the end
+        //   eliminates that contention entirely.
+        //
+        // Improvement 2 — dynamic work-stealing via fetch_add on next_outer.
+        //   The previous parallel_for_chunked assigned static ranges to chunks.
+        //   Because some outer replicates terminate the inner loop early (after
+        //   MIN_INNER ≈ 100 iterations) and others run all B_inner ≈ 2500, static
+        //   chunks load-balance poorly.  Each persistent worker instead claims
+        //   the next outer index atomically.  A worker that draws many
+        //   early-terminating replicates immediately picks up more work rather
+        //   than sitting idle while a slower chunk finishes.
+        //
+        // Bug fix 1 — IParallelExecutor has no waitAll().
+        //   The sketch proposed m_exec->waitAll(futures); that method does not
+        //   exist on IParallelExecutor or ThreadPoolExecutor.  The correct idiom
+        //   is f.get() per future, which also propagates any exception thrown
+        //   inside the worker task — no hand-rolled exception_ptr machinery needed.
+        //
+        // Bug fix 2 — exception propagation via futures, not shared state.
+        //   The sketch stored first_exception in a non-atomic shared variable
+        //   and read it without a lock after the futures completed.  Letting
+        //   f.get() re-throw the stored exception is the standard idiom and is
+        //   free of data races.
+        //
+        // Reproducibility is preserved: each replicate's RNG still comes from
+        // make_engine(b), so which worker runs replicate b does not affect the
+        // result.
+        //
+        // Per-worker scratch buffers: y_outer and y_inner are allocated once per
+        // worker task (not once per replicate as before) and reused across all
+        // replicates claimed by that worker.  This is equivalent to the previous
+        // thread_local approach while being slightly more explicit.
+        //
+        // SingleThreadExecutor path: worker_count = 1 so the entire loop runs
+        // as a single inline task on the calling thread — identical behaviour
+        // to before, with no concurrency overhead.
+        // -----------------------------------------------------------------------
 
-            const std::size_t b = static_cast<std::size_t>(b32);
-            Rng rng_b = make_engine(b);
+        // Number of persistent worker tasks to submit.
+        // Capped at m_B_outer so we never submit more workers than replicates.
+        const std::size_t worker_count = [&]() -> std::size_t {
+          if constexpr (std::is_same_v<Executor, concurrency::SingleThreadExecutor>)
+            return 1u;
+          const unsigned int hw =
+            std::max(1u, static_cast<unsigned int>(std::thread::hardware_concurrency()));
+          return static_cast<std::size_t>(std::min(
+            static_cast<std::size_t>(hw), m_B_outer));
+        }();
 
-            // y_outer and y_inner are std::vector<SampleType>.
-            // When SampleType = Decimal:        vectors of Decimal (original behaviour).
-            // When SampleType = Trade<Decimal>: vectors of Trade objects.
-            // Value-initialization is safe because Trade has a default constructor.
-            std::vector<SampleType> y_outer(m_outer);
-            std::vector<SampleType> y_inner(m_inner);
+        // Per-worker diagnostic accumulators — plain size_t, no atomics needed
+        // inside the hot loop.
+        struct WorkerStats {
+          std::size_t skipped_outer         = 0;
+          std::size_t skipped_inner_total   = 0;
+          std::size_t inner_attempted_total = 0;
+        };
+        std::vector<WorkerStats> worker_stats(worker_count);
 
-            // OUTER resample: fill y_outer from x
-            resampler_local(x, y_outer, m_outer, rng_b);
+        // Shared atomic index: each worker claims the next outer replicate.
+        std::atomic<std::size_t> next_outer{0};
 
-            // theta* on OUTER resample
-            const Decimal theta_star   = sampler(y_outer);
-            const double  theta_star_d = num::to_double(theta_star);
-            if (!std::isfinite(theta_star_d)) {
-              skipped_outer.fetch_add(1, std::memory_order_relaxed);
-              return;
-            }
+        // Submit exactly worker_count long-lived tasks.
+        std::vector<std::future<void>> futures;
+        futures.reserve(worker_count);
 
-            // Inner loop: estimate SE* via Welford online variance.
-            // Adaptive stopping: halt once SE* stabilizes to within REL_EPS.
-            double mean = 0.0, m2 = 0.0;
-            std::size_t eff_inner = 0;
+        for (std::size_t worker_id = 0; worker_id < worker_count; ++worker_id) {
+          futures.emplace_back(
+            m_exec->submit(
+              [&, worker_id, sampler, make_engine, resampler_base_copy]()
+              {
+                Resampler resampler_local = resampler_base_copy;
 
-            auto push_inner = [&](double v) noexcept {
-              ++eff_inner;
-              const double delta = v - mean;
-              mean += delta / static_cast<double>(eff_inner);
-              m2   += delta * (v - mean);
-            };
+                // Per-worker scratch buffers: allocated once, reused for every
+                // replicate this worker processes.
+                std::vector<SampleType> y_outer(m_outer);
+                std::vector<SampleType> y_inner(m_inner);
 
-            double last_se = std::numeric_limits<double>::infinity();
+                WorkerStats& local = worker_stats[worker_id];
 
-            for (std::size_t j = 0; j < m_B_inner; ++j) {
-              inner_attempted_total.fetch_add(1, std::memory_order_relaxed);
+                for (;;) {
+                  const std::size_t b =
+                    next_outer.fetch_add(1, std::memory_order_relaxed);
+                  if (b >= m_B_outer) break;
 
-              // INNER resample: fill y_inner from y_outer
-              resampler_local(y_outer, y_inner, m_inner, rng_b);
+                  Rng rng_b = make_engine(b);
 
-              const double v = num::to_double(sampler(y_inner));
-              if (!std::isfinite(v)) {
-                skipped_inner_total.fetch_add(1, std::memory_order_relaxed);
-                continue;
-              }
-              push_inner(v);
+                  // OUTER resample
+                  resampler_local(x, y_outer, m_outer, rng_b);
 
-              if (eff_inner >= MIN_INNER && ((eff_inner % CHECK_EVERY) == 0)) {
-                // Use sample variance (÷ N-1) for an unbiased SE* estimate.
-                const double se_now = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner - 1)));
-                if (std::isfinite(se_now) &&
-                    std::fabs(se_now - last_se) <= REL_EPS * std::max(se_now, 1e-300)) {
-                  break;
+                  const Decimal theta_star   = sampler(y_outer);
+                  const double  theta_star_d = num::to_double(theta_star);
+                  if (!std::isfinite(theta_star_d)) {
+                    ++local.skipped_outer;
+                    continue;
+                  }
+
+                  // Inner loop: estimate SE* via Welford online variance.
+                  // Adaptive stopping: halt once SE* stabilizes to within REL_EPS.
+                  double mean = 0.0, m2 = 0.0;
+                  std::size_t eff_inner = 0;
+
+                  auto push_inner = [&](double v) noexcept {
+                    ++eff_inner;
+                    const double delta = v - mean;
+                    mean += delta / static_cast<double>(eff_inner);
+                    m2   += delta * (v - mean);
+                  };
+
+                  double last_se = std::numeric_limits<double>::infinity();
+
+                  for (std::size_t j = 0; j < m_B_inner; ++j) {
+                    ++local.inner_attempted_total;  // plain increment, no atomic
+
+                    resampler_local(y_outer, y_inner, m_inner, rng_b);
+
+                    const double v = num::to_double(sampler(y_inner));
+                    if (!std::isfinite(v)) {
+                      ++local.skipped_inner_total;  // plain increment, no atomic
+                      continue;
+                    }
+                    push_inner(v);
+
+                    if (eff_inner >= MIN_INNER && ((eff_inner % CHECK_EVERY) == 0)) {
+                      // Use sample variance (÷ N-1) for an unbiased SE* estimate.
+                      const double se_now = std::sqrt(
+                        std::max(0.0, m2 / static_cast<double>(eff_inner - 1)));
+                      if (std::isfinite(se_now) &&
+                          std::fabs(se_now - last_se) <=
+                            REL_EPS * std::max(se_now, 1e-300)) {
+                        break;
+                      }
+                      last_se = se_now;
+                    }
+                  }
+
+                  if (eff_inner < MIN_INNER) {
+                    ++local.skipped_outer;
+                    continue;
+                  }
+
+                  // Use sample variance (÷ N-1, Bessel-corrected) for an unbiased SE*.
+                  // eff_inner >= MIN_INNER >= 2 here, so eff_inner - 1 >= 1 is safe.
+                  const double se_star = std::sqrt(
+                    std::max(0.0, m2 / static_cast<double>(eff_inner - 1)));
+                  if (!(se_star > 0.0) || !std::isfinite(se_star)) {
+                    ++local.skipped_outer;
+                    continue;
+                  }
+
+                  const double t_b = (theta_star_d - theta_hat_d) / se_star;
+
+                  theta_star_ds[b] = theta_star_d;
+                  tvals[b]         = t_b;
                 }
-                last_se = se_now;
               }
-            }
+            )
+          );
+        }
 
-            if (eff_inner < MIN_INNER) {
-              skipped_outer.fetch_add(1, std::memory_order_relaxed);
-              return;
-            }
+        // Wait for all workers.  f.get() re-throws any exception propagated
+        // through the future — no hand-rolled exception_ptr needed.
+        for (auto& f : futures) f.get();
 
-            // Use sample variance (÷ N-1, Bessel-corrected) for an unbiased SE*.
-            // eff_inner >= MIN_INNER >= 2 here, so eff_inner - 1 >= 1 is safe.
-            const double se_star = std::sqrt(std::max(0.0, m2 / static_cast<double>(eff_inner - 1)));
-            if (!(se_star > 0.0) || !std::isfinite(se_star)) {
-              skipped_outer.fetch_add(1, std::memory_order_relaxed);
-              return;
-            }
-
-            const double t_b = (theta_star_d - theta_hat_d) / se_star;
-
-            theta_star_ds[b] = theta_star_d;
-            tvals[b]         = t_b;
-          });
+        // Reduce per-worker accumulators into totals.
+        std::size_t skipped_outer         = 0;
+        std::size_t skipped_inner_total   = 0;
+        std::size_t inner_attempted_total = 0;
+        for (const auto& ws : worker_stats) {
+          skipped_outer         += ws.skipped_outer;
+          skipped_inner_total   += ws.skipped_inner_total;
+          inner_attempted_total += ws.inner_attempted_total;
+        }
 
         // Collect effective outer replicates (finite pivot values only)
         std::vector<double> t_eff;     t_eff.reserve(m_B_outer);
@@ -901,11 +998,10 @@ namespace palvalidator
         const double eff_fraction =
           static_cast<double>(effective_B) / static_cast<double>(m_B_outer);
         const double inner_attempted_d =
-          static_cast<double>(inner_attempted_total.load(std::memory_order_relaxed));
+          static_cast<double>(inner_attempted_total);
         const double inner_fail_rate =
           (inner_attempted_d > 0.0)
-          ? static_cast<double>(skipped_inner_total.load(std::memory_order_relaxed))
-            / inner_attempted_d
+          ? static_cast<double>(skipped_inner_total) / inner_attempted_d
           : 0.0;
 
         const bool low_effective_replicates =
@@ -933,9 +1029,9 @@ namespace palvalidator
         R.B_outer                   = m_B_outer;
         R.B_inner                   = m_B_inner;
         R.effective_B               = effective_B;
-        R.skipped_outer             = skipped_outer.load(std::memory_order_relaxed);
-        R.skipped_inner_total       = skipped_inner_total.load(std::memory_order_relaxed);
-        R.inner_attempted_total     = inner_attempted_total.load(std::memory_order_relaxed);
+        R.skipped_outer             = skipped_outer;
+        R.skipped_inner_total       = skipped_inner_total;
+        R.inner_attempted_total     = inner_attempted_total;
         R.n                         = n;
         R.m_outer                   = m_outer;
         R.m_inner                   = m_inner;
@@ -961,6 +1057,11 @@ namespace palvalidator
       double       m_ratio_outer;   ///< Fraction of n for each outer resample.
       double       m_ratio_inner;   ///< Fraction of m_outer for each inner resample.
       /// @}
+
+      /// Persistent parallel executor — constructed once, reused across run() calls.
+      /// Stored as shared_ptr so the copy constructor can create an independent pool
+      /// per copy rather than leaving either object with a null executor.
+      mutable std::shared_ptr<Executor> m_exec;
 
       /// @name Diagnostics for the most recent successful run (protected by m_diagMutex)
       /// Getters return copies to avoid reference invalidation by concurrent run().
