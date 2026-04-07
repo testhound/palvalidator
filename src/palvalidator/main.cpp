@@ -828,9 +828,9 @@ int main(int argc, char **argv)
     if (pipelineMode == PipelineMode::PermutationAndBootstrap ||
         pipelineMode == PipelineMode::BootstrapOnly) {
         
-        std::cout << "\nEnter number of bootstrap samples (default: 25000): ";
+        std::cout << "\nEnter number of bootstrap samples (default: 15000): ";
         std::getline(std::cin, input);
-        numBootstrapSamples = input.empty() ? 25000 : std::stoul(input);
+        numBootstrapSamples = input.empty() ? 15000 : std::stoul(input);
         
         // Ask for bootstrapping type
         std::cout << "\nChoose bootstrapping type:" << std::endl;
@@ -871,7 +871,7 @@ int main(int argc, char **argv)
     else
       {
         // Set default value for permutation-only mode (won't be used)
-        numBootstrapSamples = 25000;
+        numBootstrapSamples = 15000;
         tradeLevelBootstrapping = true;
         sameDayExits = false;
       }
