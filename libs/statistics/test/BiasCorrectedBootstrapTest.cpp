@@ -1451,3 +1451,145 @@ TEST_CASE("BCaBootStrap: Efron diagnostics are populated and stable",
         }
     }
 }
+
+TEST_CASE("StationaryBlockResampler operator(): circular wrap produces correct values",
+          "[Resampler][Stationary][WrapAround]")
+{
+    // Set L >> xn so the geometric draw is always larger than xn, forcing
+    // k = min(sampledLen, remaining, xn) = xn on every block.  Each block
+    // therefore copies exactly one full circular rotation of x starting from
+    // the randomly chosen idx.
+    //
+    // For xn=5 and idx in {0..4}, the expected 5-element blocks are:
+    //   idx=0 → [0,1,2,3,4]          (no wrap)
+    //   idx=1 → [1,2,3,4,0]
+    //   idx=2 → [2,3,4,0,1]
+    //   idx=3 → [3,4,0,1,2]          (copy x[3,4] then x[0,1,2])
+    //   idx=4 → [4,0,1,2,3]          (copy x[4]   then x[0,1,2,3])
+    //
+    // In all cases y[block*xn + j] == (y[block*xn] + j) % xn.
+    // This invariant fails if the wrap-around copy is off-by-one or
+    // copies from the wrong source position.
+
+    using D      = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    const std::size_t xn = 5;
+    const std::size_t n  = 50;  // 10 complete blocks of size xn
+
+    std::vector<D> x(xn);
+    for (std::size_t i = 0; i < xn; ++i)
+        x[i] = D(static_cast<int>(i));
+
+    Policy pol(1000);  // L >> xn guarantees k == xn every block
+
+    randutils::seed_seq_fe128 seed{42u, 1u, 2u, 3u};
+    randutils::mt19937_rng rng(seed);
+
+    auto y = pol(x, n, rng);
+    REQUIRE(y.size() == n);
+
+    const int ixn = static_cast<int>(xn);
+    for (std::size_t block = 0; block < n / xn; ++block)
+    {
+        const int base = static_cast<int>(num::to_double(y[block * xn]));
+        REQUIRE(base >= 0);
+        REQUIRE(base < ixn);
+
+        for (std::size_t j = 0; j < xn; ++j)
+        {
+            const int expected = (base + static_cast<int>(j)) % ixn;
+            const int actual   = static_cast<int>(num::to_double(y[block * xn + j]));
+            INFO("block=" << block << " j=" << j
+                 << " base=" << base << " expected=" << expected << " actual=" << actual);
+            REQUIRE(actual == expected);
+        }
+    }
+}
+
+TEST_CASE("StationaryBlockResampler operator(): geometric block lengths have correct mean",
+          "[Resampler][Stationary][BlockLengthDistribution]")
+{
+    // Estimates mean block length from the output by counting positions where
+    // the next value is not the circular successor of the current value — i.e.,
+    // positions where a new block begins.  For large n the estimate converges
+    // to the true mean block length L.
+    //
+    // xn is large relative to L so the xn cap on k almost never fires,
+    // keeping the distribution untruncated.
+
+    using D      = DecimalType;
+    using Policy = StationaryBlockResampler<D>;
+
+    const std::size_t xn = 100000;
+    const std::size_t n  = 500000;
+    const std::size_t L  = 8;
+
+    std::vector<D> x(xn);
+    for (std::size_t i = 0; i < xn; ++i)
+        x[i] = D(static_cast<int>(i));
+
+    Policy pol(L);
+
+    randutils::seed_seq_fe128 seed{99u, 88u, 77u, 66u};
+    randutils::mt19937_rng rng(seed);
+
+    auto y = pol(x, n, rng);
+    REQUIRE(y.size() == n);
+
+    // Count block boundaries: a boundary at t means y[t+1] != (y[t]+1) % xn.
+    std::size_t boundaries = 0;
+    const int ixn = static_cast<int>(xn);
+    for (std::size_t t = 0; t + 1 < n; ++t)
+    {
+        const int cur = static_cast<int>(num::to_double(y[t]));
+        const int nxt = static_cast<int>(num::to_double(y[t + 1]));
+        if (nxt != (cur + 1) % ixn)
+            ++boundaries;
+    }
+
+    // estimated_mean = n / num_blocks ≈ n / (boundaries + 1)
+    const double estimated =
+        static_cast<double>(n) / static_cast<double>(boundaries + 1);
+
+    // Allow ±15% — extremely conservative for n=500000; the CLT guarantees
+    // the estimate is within ~1% of L with overwhelming probability.
+    REQUIRE(estimated == Catch::Approx(static_cast<double>(L)).margin(L * 0.15));
+}
+
+TEST_CASE("IIDResampler value-returning operator(): empty input throws",
+          "[Resampler][IID][Error]")
+{
+    // Gap 1: the value-returning overload's empty-input guard is never
+    // exercised directly. Integration tests only reach it indirectly through
+    // BCaBootStrap, which validates the sample before calling the resampler.
+    using D      = DecimalType;
+    using Policy = IIDResampler<D>;
+
+    Policy pol;
+    randutils::mt19937_rng rng;
+    std::vector<D> empty;
+
+    REQUIRE_THROWS_AS(pol(empty, 10, rng), std::invalid_argument);
+}
+
+TEST_CASE("IIDResampler in-place operator(): empty input throws",
+          "[Resampler][IID][InPlace][Error]")
+{
+    // Gap 2: the updated in-place overload gained an explicit self-contained
+    // empty-input guard (previously it relied on delegation to the
+    // value-returning overload). That guard has no direct test.
+    using D      = DecimalType;
+    using Policy = IIDResampler<D>;
+
+    Policy pol;
+    randutils::mt19937_rng rng;
+    std::vector<D> empty;
+    std::vector<D> y;
+
+    REQUIRE_THROWS_AS(pol(empty, y, 10, rng), std::invalid_argument);
+
+    // y must not have been modified before the exception was thrown.
+    REQUIRE(y.empty());
+}
+
