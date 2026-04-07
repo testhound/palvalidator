@@ -137,232 +137,381 @@ namespace mkc_timeseries
   // --------------------------- Resampling Policies -----------------------------
 
   /**
-   * @struct IIDResampler
-   * @brief Classic i.i.d. (independent and identically distributed) bootstrap resampler.
+ * @struct IIDResampler
+ * @brief Classic i.i.d. (independent and identically distributed) bootstrap resampler.
+ *
+ * This policy creates a new sample of size n by drawing n items with replacement
+ * from the original data set. It is suitable for data that is i.i.d., meaning
+ * there are no dependencies or serial correlations between elements.
+ *
+ * GENERALIZATION:
+ * The template parameter is T rather than Decimal, allowing this resampler to
+ * be used with any copyable element type. In particular:
+ *
+ *   - IIDResampler<Decimal>        : bar-level bootstrap
+ *   - IIDResampler<Trade<Decimal>> : trade-level bootstrap
+ *
+ * The jackknife method is a function template so it can accept statistics that
+ * return a different type than T. For example, a statistic may map
+ * std::vector<Trade<Decimal>> -> Decimal.
+ *
+ * Reference:
+ *   - Efron, B. (1987). Better Bootstrap Confidence Intervals.
+ *     Journal of the American Statistical Association, 82(397), 171–185.
+ *
+ * @tparam T   Element type of the sample vector.
+ * @tparam Rng Random number generator type.
+ */
+template <class T, class Rng = randutils::mt19937_rng>
+struct IIDResampler
+{
+  /**
+   * @brief Draws an IID bootstrap resample of size n.
    *
-   * This policy creates a new sample of size n by drawing n items with replacement
-   * from the original data set. It is suitable for data that is i.i.d., meaning
-   * there are no dependencies or serial correlations between elements.
-   *
-   * GENERALIZATION: The template parameter is now T rather than Decimal, allowing
-   * this resampler to be used with any copyable type. In particular:
-   *
-   *   - IIDResampler<Decimal>          : bar-level bootstrap (existing usage, unchanged)
-   *   - IIDResampler<Trade<Decimal>>   : trade-level bootstrap (new capability)
-   *
-   * The jackknife method is now a function template so it can accept statistics
-   * that return a different type than T (e.g., a stat that takes
-   * std::vector<Trade<Decimal>> and returns Decimal).
-   *
-   * @tparam T   The element type of the sample vector (e.g., Decimal or Trade<Decimal>).
-   * @tparam Rng The random number generator type.
+   * @param x   The original data vector.
+   * @param n   The size of the resampled vector.
+   * @param rng A high-quality random number generator.
+   * @return    A new vector of size n containing elements sampled with
+   *            replacement from x.
+   * @throws std::invalid_argument If x is empty.
    */
-  template <class T, class Rng = randutils::mt19937_rng>
-  struct IIDResampler
+  std::vector<T>
+  operator()(const std::vector<T>& x, std::size_t n, Rng& rng) const
   {
-    /**
-     * @brief Resamples the input vector with replacement.
-     *
-     * @param x The original data vector.
-     * @param n The size of the resampled vector.
-     * @param rng A high-quality random number generator.
-     * @return A new vector of size n, containing elements sampled with replacement from x.
-     * @throws std::invalid_argument If the input vector x is empty.
-     */
-    std::vector<T>
-    operator()(const std::vector<T>& x, size_t n, Rng& rng) const
-    {
-      if (x.empty())
-	{
-	  throw std::invalid_argument("IIDResampler: empty sample.");
-	}
-      std::vector<T> y;
-      y.reserve(n);
-      for (size_t j = 0; j < n; ++j)
-	{
-	  const size_t idx = mkc_timeseries::rng_utils::get_random_index(rng, x.size());
-	  y.push_back(x[idx]);
-	}
-      return y;
-    }
+    if (x.empty())
+      {
+        throw std::invalid_argument("IIDResampler: empty sample.");
+      }
 
-    /**
-     * @brief In-place resampling interface for MOutOfNPercentileBootstrap compatibility.
-     *
-     * @param x The original data vector.
-     * @param y The output vector to fill (will be resized to n).
-     * @param n The number of elements to resample.
-     * @param rng A high-quality random number generator.
-     */
-    void operator()(const std::vector<T>& x, std::vector<T>& y, size_t n, Rng& rng) const
-    {
-      y = (*this)(x, n, rng);
-    }
+    std::vector<T> y;
+    y.reserve(n);
 
-    /**
-     * @brief Gets the effective block length for IID resampling (always 1).
-     * @return 1 (IID resampling has no block structure).
-     */
-    size_t getL() const { return 1; }
+    for (std::size_t j = 0; j < n; ++j)
+      {
+        const std::size_t idx =
+          mkc_timeseries::rng_utils::get_random_index(rng, x.size());
+        y.push_back(x[idx]);
+      }
 
-    /**
-     * @brief Performs a classic delete-one jackknife.
-     *
-     * @details
-     * The jackknife procedure computes the acceleration factor 'a' for the BCa
-     * bootstrap by measuring the influence of each individual element on the
-     * statistic. For a dataset of size n it produces n pseudo-values, each
-     * computed on a leave-one-out subset of size n-1.
-     *
-     * GENERALIZATION: StatFunc is now a deduced template parameter rather than a
-     * fixed std::function typedef. This allows the statistic to map
-     * std::vector<T> -> R where R need not equal T. In particular, when
-     * T = Trade<Decimal> and the statistic is GeoMeanStat, R = Decimal and the
-     * returned pseudo-value vector is std::vector<Decimal> as required by
-     * BCaBootStrap::calculateBCaBounds().
-     *
-     * The backward-compatible alias StatFn is preserved for any code that
-     * references IIDResampler<Decimal>::StatFn explicitly.
-     *
-     * Reference: Efron, B. (1987). Better Bootstrap Confidence Intervals.
-     * Journal of the American Statistical Association, 82(397), 171–185.
-     *
-     * @tparam StatFunc  Any callable with signature R(const std::vector<T>&).
-     * @param  x         The original data vector.
-     * @param  stat      The statistic function applied to each leave-one-out subset.
-     * @return           A vector of n jackknife pseudo-values of type R.
-     * @throws std::invalid_argument If x has fewer than 2 elements.
-     */
-    template <class StatFunc>
-    auto jackknife(const std::vector<T>& x, const StatFunc& stat) const
-      -> std::vector<decltype(stat(x))>
-    {
-      using ResultType = decltype(stat(x));
-
-      const size_t n = x.size();
-      if (n < 2)
-	{
-	  throw std::invalid_argument("IIDResampler::jackknife requires n >= 2.");
-	}
-
-      std::vector<ResultType> jk;
-      jk.reserve(n);
-
-      std::vector<T> tmp;
-      tmp.reserve(n - 1);
-
-      for (size_t i = 0; i < n; ++i)
-	{
-	  tmp.clear();
-	  tmp.insert(tmp.end(), x.begin(), x.begin() + i);
-	  tmp.insert(tmp.end(), x.begin() + i + 1, x.end());
-	  jk.push_back(stat(tmp));
-	}
-      return jk;
-    }
-
-    // ---------------------------------------------------------------------------
-    // Backward-compatible StatFn typedef.
-    //
-    // Existing code that references IIDResampler<Decimal>::StatFn continues to
-    // compile unchanged. When T = Trade<Decimal> this typedef produces
-    // std::function<Trade<Decimal>(const std::vector<Trade<Decimal>>&)>, which is
-    // not the correct statistic signature for the trade path — but that is fine
-    // because trade-level callers never reference this alias; they pass a
-    // GeoMeanStat (or equivalent) callable directly to BCaBootStrap.
-    // ---------------------------------------------------------------------------
-    using StatFn = std::function<T(const std::vector<T>&)>;
-  };
+    return y;
+  }
 
   /**
+   * @brief In-place resampling interface for compatibility with callers that
+   *        expect an output vector parameter.
+   *
+   * @param x   The original data vector.
+   * @param y   Output vector, resized and filled with n IID bootstrap draws.
+   * @param n   Number of elements to resample.
+   * @param rng Random number generator.
+   * @throws std::invalid_argument If x is empty.
+   */
+  void operator()(const std::vector<T>& x,
+                  std::vector<T>& y,
+                  std::size_t n,
+                  Rng& rng) const
+  {
+    y = (*this)(x, n, rng);
+  }
+
+  /**
+   * @brief Gets the effective block length for IID resampling.
+   * @return 1, since IID resampling has no block structure.
+   */
+  std::size_t getL() const { return 1; }
+
+  /**
+ * @brief Performs a classic delete-one jackknife.
+ *
+ * @details
+ * ## Purpose
+ *
+ * The jackknife is used by BCaBootStrap to estimate the acceleration parameter
+ * `â`, which measures the rate of change of the standard error of the statistic
+ * with respect to the true parameter value. It does this by quantifying how
+ * much influence each individual observation has on the statistic — the
+ * so-called influence function.
+ *
+ * ## Algorithm
+ *
+ * For a dataset `x` of size `n`, the method produces `n` pseudo-values by
+ * systematically removing one observation at a time and evaluating the supplied
+ * statistic on the remaining `n - 1` observations:
+ *
+ * @code
+ * for i in [0, n):
+ *     leaveOneOutSample = x[0..i-1] + x[i+1..n-1]   // x with x[i] removed
+ *     jackknifeValues[i] = stat(leaveOneOutSample)
+ * @endcode
+ *
+ * Each pass through the loop constructs `leaveOneOutSample` using two
+ * contiguous copies:
+ *
+ * @code
+ * First insert:   x[0],   x[1],   ... x[i-1]          // elements before i
+ * Second insert:  x[i+1], x[i+2], ... x[n-1]          // elements after i
+ *                          ^
+ *                          x[i] is the gap — never copied
+ * @endcode
+ *
+ * Two separate inserts are required because the elements before and after
+ * index `i` are not contiguous in memory once `x[i]` is excluded. The first
+ * insert covers the range `[begin, begin+i)` and the second covers
+ * `[begin+i+1, end)`, leaving exactly one element — `x[i]` — uncopied.
+ *
+ * ### Worked example
+ *
+ * For `x = [A, B, C, D, E]` (n=5) with statistic `mean`:
+ *
+ * @code
+ * i=0: remove A → [B, C, D, E] → mean(B,C,D,E)
+ * i=1: remove B → [A, C, D, E] → mean(A,C,D,E)
+ * i=2: remove C → [A, B, D, E] → mean(A,B,D,E)
+ * i=3: remove D → [A, B, C, E] → mean(A,B,C,E)
+ * i=4: remove E → [A, B, C, D] → mean(A,B,C,D)
+ * @endcode
+ *
+ * The returned vector contains all five pseudo-values in the same order.
+ *
+ * ## Memory strategy
+ *
+ * `leaveOneOutSample` is allocated once before the loop with capacity `n - 1`
+ * and cleared on each iteration rather than re-declared inside the loop. This
+ * means the two `insert` calls never trigger a heap reallocation, keeping the
+ * inner loop allocation-free across all `n` iterations.
+ *
+ * ## Return type generalization
+ *
+ * `StatFunc` is a deduced template parameter rather than a fixed
+ * `std::function` typedef. This allows the statistic to return a type `R`
+ * that differs from the element type `T`. For example:
+ *
+ *   - `T = Decimal`,          `R = Decimal`  : bar-level mean or Sharpe ratio
+ *   - `T = Trade<Decimal>`,   `R = Decimal`  : trade-level statistic that
+ *                                              aggregates trades into a scalar
+ *   - `T = Decimal`,          `R = double`   : statistic that returns a
+ *                                              plain double
+ *
+ * The return type `std::vector<R>` is deduced via `decltype(stat(x))`, so the
+ * caller does not need to specify it explicitly.
+ *
+ * ## Reference
+ *
+ * Efron, B. (1987). Better Bootstrap Confidence Intervals.
+ * Journal of the American Statistical Association, 82(397), 171–185.
+ * See eq. 6.7 for the acceleration estimate derived from jackknife
+ * pseudo-values.
+ *
+ * @tparam StatFunc Any callable with signature `R(const std::vector<T>&)`.
+ * @param  x        The original data vector. Must contain at least 2 elements.
+ * @param  stat     Statistic applied to each leave-one-out sample.
+ * @return          A vector of `n` jackknife pseudo-values of type `R`,
+ *                  where `R = decltype(stat(x))`.
+ * @throws std::invalid_argument If `x` has fewer than 2 elements.
+ */
+  template <class StatFunc>
+  auto jackknife(const std::vector<T>& x, const StatFunc& stat) const
+    -> std::vector<decltype(stat(x))>
+  {
+    using ResultType = decltype(stat(x));
+
+    const std::size_t n = x.size();
+    if (n < 2)
+      {
+        throw std::invalid_argument("IIDResampler::jackknife requires n >= 2.");
+      }
+
+    std::vector<ResultType> jackknifeValues;
+    jackknifeValues.reserve(n);
+
+    std::vector<T> leaveOneOutSample;
+    leaveOneOutSample.reserve(n - 1);
+
+    for (std::size_t i = 0; i < n; ++i)
+      {
+        leaveOneOutSample.clear();
+
+        leaveOneOutSample.insert(leaveOneOutSample.end(),
+                                 x.begin(),
+                                 x.begin() + static_cast<std::ptrdiff_t>(i));
+
+        leaveOneOutSample.insert(leaveOneOutSample.end(),
+                                 x.begin() + static_cast<std::ptrdiff_t>(i + 1),
+                                 x.end());
+
+        jackknifeValues.push_back(stat(leaveOneOutSample));
+      }
+
+    return jackknifeValues;
+  }
+
+  // Backward-compatible typedef. This preserves existing code that refers to
+  // IIDResampler<T>::StatFn explicitly, even though jackknife() itself supports
+  // statistics whose return type differs from T.
+  using StatFn = std::function<T(const std::vector<T>&)>;
+};
+
+    /**
    * @struct StationaryBlockResampler
    * @brief Stationary Block Bootstrap resampler (Politis & Romano, 1994).
    *
    * @details
    * This policy is designed for time series data with serial correlation. It
    * resamples blocks of data rather than individual observations. The blocks
-   * have a variable length drawn from a geometric distribution, with a specified
-   * mean block length `L`.
+   * have a variable length drawn from a geometric distribution, with mean
+   * block length `L`.
    *
    * The resampling process treats the time series as circular. If a block
-   * continues past the end of the series, it simply "wraps around" to the
-   * beginning.
+   * continues past the end of the series, it wraps around to the beginning.
+   *
+   * IMPLEMENTATION NOTES
+   * --------------------
+   * 1. Thread safety:
+   *    The geometric distribution is constructed locally inside operator()
+   *    rather than stored as mutable shared state. This keeps the resampler
+   *    safe when the enclosing bootstrap runs in parallel and multiple threads
+   *    invoke operator() on the same resampler instance concurrently.
+   *
+   * 2. Block-length cap:
+   *    A sampled geometric block length may exceed the source sample size `xn`.
+   *    We cap each copied block at `xn`, so a single block never wraps more
+   *    than once around the circular sample. This avoids duplicating the same
+   *    observations repeatedly within one block when L is large relative to n.
+   *
+   * 3. Jackknife design:
+   *    The jackknife uses a circular, non-overlapping delete-block scheme
+   *    (Künsch 1989), producing floor(n / L_eff) pseudo-values. When n is not
+   *    divisible by L_eff, the trailing observations do not form a standalone
+   *    deleted block; this is standard for the non-overlapping construction.
+   *
+   * 4. Order of retained observations in jackknife replicates:
+   *    After deleting a block, the retained sample is assembled circularly:
+   *    observations after the deleted block come first, then the observations
+   *    before it. This preserves circular adjacency but does rotate the series.
+   *    For order-insensitive statistics (e.g. mean-like summaries) this is
+   *    typically harmless. For order-sensitive statistics, callers should be
+   *    aware of this behaviour.
    *
    * NOTE: This resampler is appropriate for bar-level bootstrapping where
    * consecutive bars exhibit serial correlation. For trade-level bootstrapping,
    * use IIDResampler<Trade<Decimal>> since trades are the independent atomic unit
    * and no block structure is required.
    *
-   * Reference: Politis, D. N., & Romano, J. P. (1994). The stationary bootstrap.
-   * Journal of the American Statistical Association, 89(428), 1303-1313.
+   * Reference:
+   *   - Politis, D. N., & Romano, J. P. (1994). The stationary bootstrap.
+   *     Journal of the American Statistical Association, 89(428), 1303–1313.
+   *   - Künsch, H. R. (1989). The Jackknife and the Bootstrap for General
+   *     Stationary Observations. The Annals of Statistics, 17(3), 1217–1241.
    *
    * @tparam Decimal The numeric type used for the data (e.g., double, number).
+   * @tparam Rng     The random number generator type.
    */
   template <class Decimal, class Rng = randutils::mt19937_rng>
   struct StationaryBlockResampler
   {
     explicit StationaryBlockResampler(size_t L = 3)
-      : m_L(std::max<size_t>(2, L)),
-	m_geo(1.0 / static_cast<double>(m_L))
+      : m_L(std::max<size_t>(2, L))
     {}
 
+    /**
+     * @brief Draws a stationary-bootstrap resample of size n.
+     *
+     * @param x   Original sample.
+     * @param n   Requested resample size.
+     * @param rng Random number generator.
+     * @return    Resampled vector of size n.
+     * @throws std::invalid_argument if x is empty.
+     */
     std::vector<Decimal>
     operator()(const std::vector<Decimal>& x, size_t n, Rng& rng) const
     {
       if (x.empty())
-	throw std::invalid_argument("StationaryBlockResampler: empty sample.");
+        {
+          throw std::invalid_argument("StationaryBlockResampler: empty sample.");
+        }
 
       const size_t xn = x.size();
       std::vector<Decimal> y(n);
 
-      size_t idx = mkc_timeseries::rng_utils::get_random_index(rng, xn);
+      // Local distribution keeps operator() thread-safe even when the same
+      // resampler instance is used concurrently by multiple worker threads.
+      std::geometric_distribution<size_t> geometricBlockLength(
+        1.0 / static_cast<double>(m_L));
 
       size_t pos = 0;
       while (pos < n)
-	{
-	  size_t len = 1 + m_geo(mkc_timeseries::rng_utils::get_engine(rng));
-	  size_t remaining = n - pos;
-	  size_t k = std::min({len, remaining, xn});
+        {
+          const size_t idx = mkc_timeseries::rng_utils::get_random_index(rng, xn);
 
-	  size_t room_to_end = xn - idx;
-	  if (k <= room_to_end) {
-	    std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(idx),
-		       static_cast<std::ptrdiff_t>(k),
-		       y.begin() + static_cast<std::ptrdiff_t>(pos));
-	  } else {
-	    std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(idx),
-		       static_cast<std::ptrdiff_t>(room_to_end),
-		       y.begin() + static_cast<std::ptrdiff_t>(pos));
-	    const size_t rem = k - room_to_end;
-	    std::copy_n(x.begin(),
-		       static_cast<std::ptrdiff_t>(rem),
-		       y.begin() + static_cast<std::ptrdiff_t>(pos + room_to_end));
-	  }
+          // Geometric distribution returns the number of failures before the
+          // first success, so 1 + draw gives a block length with mean m_L.
+          const size_t sampledLen =
+            1 + geometricBlockLength(mkc_timeseries::rng_utils::get_engine(rng));
 
-	  pos += k;
-	  idx = mkc_timeseries::rng_utils::get_random_index(rng, xn);
-	}
+          const size_t remaining = n - pos;
+
+          // Cap at xn so one copied block never wraps more than once around the
+          // circular source sample.
+          const size_t k = std::min({sampledLen, remaining, xn});
+
+          const size_t roomToEnd = xn - idx;
+          if (k <= roomToEnd)
+            {
+              std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(idx),
+                          static_cast<std::ptrdiff_t>(k),
+                          y.begin() + static_cast<std::ptrdiff_t>(pos));
+            }
+          else
+            {
+              std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(idx),
+                          static_cast<std::ptrdiff_t>(roomToEnd),
+                          y.begin() + static_cast<std::ptrdiff_t>(pos));
+
+              const size_t rem = k - roomToEnd;
+              std::copy_n(x.begin(),
+                          static_cast<std::ptrdiff_t>(rem),
+                          y.begin() + static_cast<std::ptrdiff_t>(pos + roomToEnd));
+            }
+
+          pos += k;
+        }
 
       return y;
     }
 
     /**
-     * @brief Performs a delete-block jackknife (Künsch 1989) for the BCa
-     * acceleration factor.
+     * @brief In-place resampling interface for compatibility with callers that
+     *        expect an output vector parameter.
+     */
+    void operator()(const std::vector<Decimal>& x,
+                    std::vector<Decimal>& y,
+                    size_t m,
+                    Rng& rng) const
+    {
+      y = (*this)(x, m, rng);
+    }
+
+    /**
+     * @brief Performs a circular non-overlapping delete-block jackknife
+     *        (Künsch 1989) for BCa acceleration estimation.
      *
-     * Uses non-overlapping blocks stepping by L_eff to produce floor(n/L_eff)
-     * genuinely distinct pseudo-values, avoiding the systematic underestimation
-     * of |a| caused by the sliding-window delete approach.
+     * @details
+     * Uses effective block length L_eff = min(m_L, n - minKeep), where minKeep=2,
+     * then forms floor(n / L_eff) pseudo-values by deleting circular blocks
+     * [b*L_eff, b*L_eff + L_eff) modulo n.
      *
-     * Reference: Künsch, H. R. (1989). The Jackknife and the Bootstrap for
-     * General Stationary Observations. The Annals of Statistics, 17(3), 1217–1241.
+     * This implementation does not silently fall back to delete-one IID
+     * jackknife when the number of blocks is small, because that changes the
+     * dependence model used to estimate the BCa acceleration parameter.
+     * Instead, it returns the block jackknife implied by the chosen L and n.
+     * Callers may inspect the resulting acceleration diagnostics upstream if
+     * they wish to reject or degrade such cases.
      *
      * @tparam StatFunc Any callable with signature R(const std::vector<Decimal>&).
-     * @param x The original time series data vector.
-     * @param stat The statistic function to apply to each jackknife replicate.
-     * @return A vector of floor(n/L_eff) jackknife pseudo-values.
-     * @throws std::invalid_argument If x has fewer than 3 elements or the sample
-     *         is too small for the configured block length.
+     * @param x    Original time-series sample.
+     * @param stat Statistic evaluated on each delete-block replicate.
+     * @return     Vector of floor(n / L_eff) jackknife pseudo-values.
+     * @throws std::invalid_argument if x has fewer than 3 elements.
      */
     template <class StatFunc>
     auto jackknife(const std::vector<Decimal>& x, const StatFunc& stat) const
@@ -371,50 +520,52 @@ namespace mkc_timeseries
       using ResultType = decltype(stat(x));
 
       const std::size_t n = x.size();
+      constexpr std::size_t minKeep = 2;
 
-      const std::size_t minKeep = 2;
       if (n < minKeep + 1)
-	{
-	  throw std::invalid_argument(
-				      "StationaryBlockResampler::jackknife requires n >= 3.");
-	}
+        {
+          throw std::invalid_argument(
+            "StationaryBlockResampler::jackknife requires n >= 3.");
+        }
 
       const std::size_t L_eff = std::min<std::size_t>(m_L, n - minKeep);
-
-      if (n < L_eff + minKeep)
-	{
-	  throw std::invalid_argument(
-				      "StationaryBlockResampler::jackknife: sample too small for "
-				      "delete-block jackknife with this block length. "
-				      "Reduce block length or increase sample size.");
-	}
-
       const std::size_t keep = n - L_eff;
       const std::size_t numBlocks = n / L_eff;
+
+      // Defensive guard. Given the construction of L_eff and n >= 3,
+      // numBlocks should always be at least 1, but keep the check explicit.
+      if (numBlocks == 0)
+        {
+          throw std::invalid_argument(
+            "StationaryBlockResampler::jackknife could not form any delete-block replicates.");
+        }
 
       std::vector<ResultType> jk(numBlocks);
       std::vector<Decimal> y(keep);
 
       for (std::size_t b = 0; b < numBlocks; ++b)
-	{
-	  const std::size_t start      = b * L_eff;
-	  const std::size_t start_keep = (start + L_eff) % n;
-	  const std::size_t tail       = std::min<std::size_t>(keep, n - start_keep);
+        {
+          const std::size_t start = b * L_eff;
 
-	  std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(start_keep),
-		      static_cast<std::ptrdiff_t>(tail),
-		      y.begin());
+          // Keep the complement of the deleted block, beginning immediately
+          // after it and wrapping circularly if needed.
+          const std::size_t startKeep = (start + L_eff) % n;
+          const std::size_t tail = std::min<std::size_t>(keep, n - startKeep);
 
-	  const std::size_t head = keep - tail;
-	  if (head != 0)
-	    {
-	      std::copy_n(x.begin(),
-			  static_cast<std::ptrdiff_t>(head),
-			  y.begin() + static_cast<std::ptrdiff_t>(tail));
-	    }
+          std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(startKeep),
+                      static_cast<std::ptrdiff_t>(tail),
+                      y.begin());
 
-	  jk[b] = stat(y);
-	}
+          const std::size_t head = keep - tail;
+          if (head != 0)
+            {
+              std::copy_n(x.begin(),
+                          static_cast<std::ptrdiff_t>(head),
+                          y.begin() + static_cast<std::ptrdiff_t>(tail));
+            }
+
+          jk[b] = stat(y);
+        }
 
       return jk;
     }
@@ -422,20 +573,11 @@ namespace mkc_timeseries
     size_t meanBlockLen() const { return m_L; }
     size_t getL()         const { return m_L; }
 
-    void operator()(const std::vector<Decimal>& x,
-		    std::vector<Decimal>& y,
-		    size_t m,
-		    Rng& rng) const
-    {
-      y = (*this)(x, m, rng);
-    }
-
     // Backward-compatible typedef
     using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
 
   private:
     size_t m_L;
-    mutable std::geometric_distribution<size_t> m_geo;
   };
 
   /**

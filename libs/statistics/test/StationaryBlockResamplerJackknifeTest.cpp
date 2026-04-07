@@ -210,3 +210,71 @@ TEST_CASE("StationaryBlockResampler jackknife - nonlinear stat (third central mo
         REQUIRE(jk[b].getAsDouble() ==
                 Catch::Approx(ref[b].getAsDouble()).margin(1e-10));
 }
+
+TEST_CASE("StationaryBlockResampler jackknife: circular assembly produces correct exact values",
+          "[Resampler][Jackknife][Stationary][Circular]")
+{
+    // x = [0..9], n=10, L=3
+    // L_eff = min(3, 10-2) = 3,  keep = 7,  numBlocks = floor(10/3) = 3
+    //
+    // b=0: delete [0,1,2], start_keep=3
+    //      tail=min(7, 10-3)=7, head=0  →  y=[3,4,5,6,7,8,9]          sum=42  (no wrap)
+    //
+    // b=1: delete [3,4,5], start_keep=6
+    //      tail=min(7, 10-6)=4, head=3  →  y=[6,7,8,9,0,1,2]          sum=33  (tail+head wrap)
+    //
+    // b=2: delete [6,7,8], start_keep=9
+    //      tail=min(7, 10-9)=1, head=6  →  y=[9,0,1,2,3,4,5]          sum=24  (tail+head wrap)
+    //
+    // b=1 and b=2 exercise the circular assembly path (head != 0).
+    // This test replaces the former "Block deletion is circular" test whose
+    // comment described a sliding-window jackknife and whose assertion
+    // (stat < full_sum) was trivially true for any positive deletion.
+
+    using D      = dec::decimal<8>;
+    using Policy = mkc_timeseries::StationaryBlockResampler<D>;
+
+    const std::size_t n = 10;
+    std::vector<D> x(n);
+    for (std::size_t i = 0; i < n; ++i)
+        x[i] = D(static_cast<int>(i));
+
+    Policy pol(3);
+
+    auto sum_fn = [](const std::vector<D>& v) -> D {
+        return std::accumulate(v.begin(), v.end(), D(0));
+    };
+
+    auto jk = pol.jackknife(x, sum_fn);
+
+    REQUIRE(jk.size() == 3u);
+
+    // b=0: no wrap
+    REQUIRE(num::to_double(jk[0]) == Catch::Approx(42.0).epsilon(1e-12));
+
+    // b=1: tail=[6,7,8,9], head=[0,1,2]  →  sum=33
+    REQUIRE(num::to_double(jk[1]) == Catch::Approx(33.0).epsilon(1e-12));
+
+    // b=2: tail=[9], head=[0,1,2,3,4,5]  →  sum=24
+    REQUIRE(num::to_double(jk[2]) == Catch::Approx(24.0).epsilon(1e-12));
+}
+
+TEST_CASE("StationaryBlockResampler jackknife: n=2 throws invalid_argument",
+          "[Resampler][Jackknife][Stationary][Error]")
+{
+    // n=2 satisfies n < minKeep+1 (where minKeep=2) and must throw.
+    // The existing error test only provides n=1; this closes the gap for n=2.
+
+    using D      = dec::decimal<8>;
+    using Policy = mkc_timeseries::StationaryBlockResampler<D>;
+
+    Policy pol(3);
+
+    auto mean_fn = [](const std::vector<D>& v) -> D {
+        return std::accumulate(v.begin(), v.end(), D(0)) / D(v.size());
+    };
+
+    std::vector<D> two_elements = { D(1), D(2) };
+    REQUIRE_THROWS_AS(pol.jackknife(two_elements, mean_fn), std::invalid_argument);
+}
+

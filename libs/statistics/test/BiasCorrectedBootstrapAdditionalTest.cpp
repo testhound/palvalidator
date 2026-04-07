@@ -829,3 +829,132 @@ TEST_CASE("StationaryBlockResampler::getL and meanBlockLen are consistent", "[St
     REQUIRE(resampler.getL() == 7);
     REQUIRE(resampler.meanBlockLen() == 7);
 }
+
+TEST_CASE("IIDResampler::jackknife: n=2 boundary succeeds and produces correct values",
+          "[IIDResampler][Jackknife][BoundaryCase]")
+{
+    // Gap 3: n=1 and empty both throw, but n=2 (the minimum valid input)
+    // is never exercised. Confirms the boundary succeeds, returns exactly
+    // 2 pseudo-values, and that each value is correct.
+    //
+    // x = [3, 7]
+    //   replicate 0: remove x[0] → keep [7]   → mean = 7.0
+    //   replicate 1: remove x[1] → keep [3]   → mean = 3.0
+    using D      = DecimalType;
+    using Policy = IIDResampler<D>;
+
+    Policy pol;
+
+    std::vector<D> x = { D(3), D(7) };
+
+    auto mean_fn = [](const std::vector<D>& v) -> D {
+        return std::accumulate(v.begin(), v.end(), D(0)) / D(v.size());
+    };
+
+    std::vector<D> jk;
+    REQUIRE_NOTHROW(jk = pol.jackknife(x, mean_fn));
+
+    REQUIRE(jk.size() == 2u);
+    REQUIRE(num::to_double(jk[0]) == Catch::Approx(7.0).epsilon(1e-12));
+    REQUIRE(num::to_double(jk[1]) == Catch::Approx(3.0).epsilon(1e-12));
+}
+
+TEST_CASE("IIDResampler::jackknife: non-linear statistic produces correct values",
+          "[IIDResampler][Jackknife][NonLinear]")
+{
+    // Gap 4: every existing jackknife test uses arithmetic mean, which is
+    // linear in the leave-one-out sample. A non-linear statistic is needed
+    // to catch an incorrect subset construction that coincidentally produces
+    // the right mean but wrong higher moments.
+    //
+    // x = [2, 4, 6, 8], n=4
+    // Population variance stat: Σ(xi - mean)² / n
+    //
+    // Full mean = 5.0
+    //
+    // replicate 0: remove 2  → y=[4,6,8], mean=6.0
+    //              var = ((4-6)²+(6-6)²+(8-6)²)/3 = (4+0+4)/3 = 8/3
+    //
+    // replicate 1: remove 4  → y=[2,6,8], mean=16/3
+    //              var = ((2-16/3)²+(6-16/3)²+(8-16/3)²)/3
+    //                  = (100/9 + 4/9 + 64/9)/3 = 168/27 = 56/9
+    //
+    // replicate 2: remove 6  → y=[2,4,8], mean=14/3
+    //              var = ((2-14/3)²+(4-14/3)²+(8-14/3)²)/3
+    //                  = (64/9 + 4/9 + 100/9)/3 = 168/27 = 56/9
+    //
+    // replicate 3: remove 8  → y=[2,4,6], mean=4.0
+    //              var = ((2-4)²+(4-4)²+(6-4)²)/3 = (4+0+4)/3 = 8/3
+    using D      = DecimalType;
+    using Policy = IIDResampler<D>;
+
+    Policy pol;
+
+    std::vector<D> x = { D(2), D(4), D(6), D(8) };
+
+    auto pop_var = [](const std::vector<D>& v) -> D {
+        const std::size_t m = v.size();
+        D mu = std::accumulate(v.begin(), v.end(), D(0)) / D(m);
+        D ss = D(0);
+        for (const auto& val : v)
+        {
+            const D d = val - mu;
+            ss += d * d;
+        }
+        return ss / D(m);
+    };
+
+    auto jk = pol.jackknife(x, pop_var);
+
+    REQUIRE(jk.size() == 4u);
+
+    REQUIRE(num::to_double(jk[0]) == Catch::Approx(8.0  / 3.0).margin(1e-7));
+    REQUIRE(num::to_double(jk[1]) == Catch::Approx(56.0 / 9.0).margin(1e-7));
+    REQUIRE(num::to_double(jk[2]) == Catch::Approx(56.0 / 9.0).margin(1e-7));
+    REQUIRE(num::to_double(jk[3]) == Catch::Approx(8.0  / 3.0).margin(1e-7));
+}
+
+TEST_CASE("IIDResampler::jackknife: return type R differs from element type T",
+          "[IIDResampler][Jackknife][ReturnTypeGeneralization]")
+{
+    // Gap 5: the generalization note states that StatFunc may map
+    // std::vector<T> → R where R ≠ T. The decltype trailing return and
+    // ResultType deduction exist solely for this case, but no test exercises
+    // it. Here T = DecimalType and R = double, as would occur when a
+    // statistic converts to double for computation (e.g. a Sharpe ratio
+    // helper that returns double regardless of input type).
+    //
+    // x = [10, 20, 30], n=3
+    // Statistic: returns double mean of the leave-one-out sample.
+    //
+    // replicate 0: remove 10 → [20, 30] → mean = 25.0
+    // replicate 1: remove 20 → [10, 30] → mean = 20.0
+    // replicate 2: remove 30 → [10, 20] → mean = 15.0
+    using T      = DecimalType;
+    using Policy = IIDResampler<T>;
+
+    Policy pol;
+
+    std::vector<T> x = { T(10), T(20), T(30) };
+
+    // Statistic returns double, not DecimalType.
+    auto double_mean = [](const std::vector<T>& v) -> double {
+        double s = 0.0;
+        for (const auto& val : v)
+            s += num::to_double(val);
+        return s / static_cast<double>(v.size());
+    };
+
+    // Confirm the return type is deduced as std::vector<double>, not
+    // std::vector<DecimalType>.
+    auto jk = pol.jackknife(x, double_mean);
+
+    static_assert(std::is_same_v<decltype(jk), std::vector<double>>,
+                  "jackknife return type must be std::vector<R> where R = double");
+
+    REQUIRE(jk.size() == 3u);
+    REQUIRE(jk[0] == Catch::Approx(25.0).epsilon(1e-12));
+    REQUIRE(jk[1] == Catch::Approx(20.0).epsilon(1e-12));
+    REQUIRE(jk[2] == Catch::Approx(15.0).epsilon(1e-12));
+}
+
