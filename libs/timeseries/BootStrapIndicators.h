@@ -54,7 +54,7 @@ namespace mkc_timeseries
      *
      * 3. **Configures Block Resampler:**
      *    - Calculates block length adaptively:
-     *      * For n >= 100: Uses ACF-based calculation via StatUtils
+     *      * For n >= 100: Uses ACF-based calculation (see BLOCK LENGTH SELECTION below)
      *      * For n < 100: Uses n^(1/3) heuristic
      *    - Creates StationaryBlockResampler with this length
      *
@@ -87,6 +87,8 @@ namespace mkc_timeseries
      * constexpr size_t kMinBootstrapSize = 30;
      * constexpr unsigned int kNumResamples = 10000;
      * constexpr double kConfidenceLevel = 0.90;
+     * constexpr std::size_t kMaxACFLag = 20;
+     * constexpr double kBonferroniZ = 3.05;
      * ```
      *
      * **kMinBootstrapSize = 30:**
@@ -108,15 +110,29 @@ namespace mkc_timeseries
      * - 0.95 = more conservative (wider CI)
      * - Don't go outside [0.80, 0.95] range
      *
+     * **kMaxACFLag = 20:**
+     * - Maximum lag used in ACF analysis for block length selection
+     * - Must match M in the Bonferroni threshold formula (see below)
+     * - 20 lags is sufficient to detect weekly/monthly return cycles in daily data
+     *
+     * **kBonferroniZ = 3.05:**
+     * - z-critical for Bonferroni-corrected ACF significance test
+     * - Derived from: qnorm(1 - 0.05 / (2 * kMaxACFLag)) = qnorm(0.99875) ≈ 3.023
+     * - Rounded up to 3.05 for a small conservative margin
+     * - Controls family-wise error rate at ≤5% across all kMaxACFLag lags
+     * - Do not reduce below 3.0 or the multiple-testing protection is compromised
+     *
      * ## BLOCK LENGTH SELECTION
      *
      * The block length L is computed adaptively:
      *
      * **For large series (n >= 100):** ACF-based calculation
      * ```cpp
-     * logReturns = percentBarsToLogBars(rocVec)
+     * logReturns = percentBarsToLogBars(rocVec / 100)
      * acf = computeACF(logReturns, maxLag=20)
-     * L = suggestStationaryBlockLengthFromACF(acf, n, minL=2, maxL=12)
+     * threshold = kBonferroniZ / sqrt(n)          // Bonferroni-corrected band
+     * L = minBlockL (=2) if no consecutive pair of lags exceeds threshold
+     * L = last k+1 where both |rho[k]| and |rho[k+1]| exceed threshold, clamped to [2,12]
      * ```
      *
      * **For smaller series (n < 100):** n^(1/3) heuristic
@@ -124,21 +140,59 @@ namespace mkc_timeseries
      * L = max(2, floor(n^(1/3)))
      * ```
      *
-     * The ACF-based approach analyzes actual autocorrelation structure:
-     * - **More accurate:** Based on observed dependencies in the data
-     * - **Adaptive:** Adjusts to different correlation patterns
-     * - **Robust:** Falls back to n^(1/3) if ACF calculation fails
+     * ### Why log-returns for the ACF?
      *
-     * Both approaches balance:
-     * - **Too small (L→1):** Breaks dependencies, underestimates uncertainty
-     * - **Too large (L→n):** Poor resampling coverage, overestimates uncertainty
+     * The ACF is computed on log-returns rather than percent-ROC directly because
+     * log-returns are additive and yield an unbiased ACF estimator. For the small
+     * returns typical of daily financial data, log(1+r) ≈ r, so the autocorrelation
+     * structures of the two series are numerically identical. The block length derived
+     * from the log-return ACF is therefore fully valid for the percent-ROC bootstrap.
      *
-     * Examples:
-     * - n=50:  L=3 (n^(1/3) heuristic)
-     * - n=100: L=4-6 (ACF-based, varies by correlation)
-     * - n=200: L=3-8 (ACF-based, varies by correlation)
-     * - n=500: L=2-12 (ACF-based, capped at maxL=12)
-     * - n=1000: L=2-12 (ACF-based, capped at maxL=12)
+     * ### Why the Bonferroni threshold — not 2/sqrt(n)?
+     *
+     * The naive ±2/√n pointwise band has a ~1.2% false-positive rate per lag. When
+     * testing all kMaxACFLag=20 lags simultaneously, the family-wise false-positive
+     * rate (the probability of any lag spuriously exceeding the band) is approximately
+     * 1 - (1 - 0.012)^20 ≈ 22%. In practice this caused block lengths to be driven to
+     * the cap (12) even for pure white-noise return series, making the bootstrap
+     * artificially conservative.
+     *
+     * The Bonferroni threshold threshold = kBonferroniZ / sqrt(n) controls the
+     * family-wise error rate at ≤5%, so a white-noise series almost never triggers a
+     * spurious large block length.
+     *
+     * ### Why the consecutive-lag rule?
+     *
+     * Even with the Bonferroni threshold, a single isolated lag can occasionally
+     * exceed the band by chance. The consecutive-lag rule requires both lag k and
+     * lag k+1 to exceed the threshold before L is updated. Genuine autocorrelation
+     * (AR, MA, GARCH volatility clustering) always produces a run of significant lags
+     * starting from lag 1 and decaying monotonically. An isolated exceedance at a
+     * high lag with no neighbours above the band is a noise artifact, not a real
+     * dependence structure.
+     *
+     * ### Why L=2 minimum and not L=1 (IID)?
+     *
+     * Failing to reject ρ(k)=0 at all lags is not the same as proving independence.
+     * Two practical reasons to keep L ≥ 2 even for apparently white-noise data:
+     *
+     * 1. **Test power:** With n=3000 and kBonferroniZ=3.05, autocorrelations below
+     *    ~0.055 are statistically undetectable but still real. Daily returns routinely
+     *    carry autocorrelations of 0.01-0.04 from microstructure effects.
+     * 2. **Volatility clustering:** The ACF of raw returns being near zero is entirely
+     *    consistent with significant autocorrelation in squared returns (ARCH/GARCH
+     *    effects). Adjacent observations share a common variance environment even when
+     *    their signs are independent. L=2 preserves same-day neighboring pairs and
+     *    partially captures this structure. An IID bootstrap would destroy it entirely.
+     *
+     * ### Expected block lengths by sample size
+     *
+     * For essentially uncorrelated daily financial return data:
+     * - n=50:   L=3  (n^(1/3) heuristic, ACF too noisy)
+     * - n=100:  L=2  (Bonferroni threshold suppresses noise spikes)
+     * - n=500:  L=2  (white noise → minimum; genuine AR → 3-8)
+     * - n=1000: L=2  (white noise → minimum; genuine AR → 3-8)
+     * - n=3000: L=2  (white noise → minimum; genuine AR → 3-12)
      *
      * ## WIDTH STATISTIC FUNCTIONS
      *
@@ -288,145 +342,172 @@ namespace mkc_timeseries
     BootstrappedWidthBounds<Decimal>
     ComputeBootstrappedWidths(const std::vector<Decimal>& rocVec)
     {
-      // --- Configuration ---
-      // Minimum sample size for a stable bootstrap
+      // -----------------------------------------------------------------------
+      // Configuration
+      // -----------------------------------------------------------------------
+
+      // Minimum sample size for a stable bootstrap (CLT / BCa reliability).
       constexpr size_t kMinBootstrapSize = 30;
 
-      // Number of resamples (2000 is a good minimum)
+      // Number of bootstrap resamples.  10 000 gives very stable CI estimates.
       constexpr unsigned int kNumResamples = 10000;
-      
-      // We use a 90% CI to get the 5th and 95th percentiles
 
+      // Confidence level → 90 % CI uses the 5th and 95th percentiles of the
+      // bootstrapped width distributions.
       constexpr double kConfidenceLevel = 0.90;
 
-      // Small epsilon for degenerate cases
+      // ACF lag range.  kMaxACFLag must match M used in the Bonferroni threshold.
+      constexpr std::size_t  kMaxACFLag = 20;
+      constexpr unsigned int kMinBlockL  = 2;
+      constexpr unsigned int kMaxBlockL  = 12;
+
+      // Bonferroni z-critical: α=0.05 family-wise, M=kMaxACFLag two-sided tests.
+      //   z = qnorm(1 − 0.05 / (2 * 20)) = qnorm(0.99875) ≈ 3.023
+      // Rounded up to 3.05 for a small conservative margin.
+      constexpr double kBonferroniZ = 3.05;
+
+      // Sentinel for degenerate / insufficient-data returns.
       const Decimal eps = DecimalConstants<Decimal>::createDecimal("1e-8");
 
+      // -----------------------------------------------------------------------
+      // Guard: need enough data for a meaningful bootstrap
+      // -----------------------------------------------------------------------
       if (rocVec.size() < kMinBootstrapSize)
-      {
-        // Not enough data, return degenerate epsilon bounds
-        // std::cerr << "Warning: Not enough data for bootstrap (" << rocVec.size() << " < " << kMinBootstrapSize << "). Returning eps." << std::endl;
         return {eps, eps, eps, eps};
-      }
+
+      // -----------------------------------------------------------------------
+      // Width statistics (lambdas passed to BCaBootStrap)
+      // -----------------------------------------------------------------------
 
       using StatFn = std::function<Decimal(const std::vector<Decimal>&)>;
 
-      // 1. Statistic for Upside (Profit) Width (for Longs)
+      // Upside width = q90 − q50  (profit potential; used for LONG targets)
       StatFn calc_upside_width = [](const std::vector<Decimal>& v) -> Decimal {
         if (v.size() < 2) return DecimalConstants<Decimal>::DecimalZero;
-        // LinearInterpolationQuantile is in TimeSeriesIndicators.h and makes its own copy
-        Decimal med = LinearInterpolationQuantile(v, 0.50);
-        Decimal q90 = LinearInterpolationQuantile(v, 0.90);
+        Decimal med   = LinearInterpolationQuantile(v, 0.50);
+        Decimal q90   = LinearInterpolationQuantile(v, 0.90);
         Decimal width = q90 - med;
-        return (width < DecimalConstants<Decimal>::DecimalZero) ?
-               DecimalConstants<Decimal>::DecimalZero : width;
+        return (width < DecimalConstants<Decimal>::DecimalZero)
+               ? DecimalConstants<Decimal>::DecimalZero : width;
       };
 
-      // 2. Statistic for Downside (Stop) Width (for Longs)
+      // Downside width = q50 − q10  (risk exposure; used for LONG stops)
       StatFn calc_downside_width = [](const std::vector<Decimal>& v) -> Decimal {
         if (v.size() < 2) return DecimalConstants<Decimal>::DecimalZero;
-        Decimal med = LinearInterpolationQuantile(v, 0.50);
-        Decimal q10 = LinearInterpolationQuantile(v, 0.10);
+        Decimal med   = LinearInterpolationQuantile(v, 0.50);
+        Decimal q10   = LinearInterpolationQuantile(v, 0.10);
         Decimal width = med - q10;
-        return (width < DecimalConstants<Decimal>::DecimalZero) ?
-               DecimalConstants<Decimal>::DecimalZero : width;
+        return (width < DecimalConstants<Decimal>::DecimalZero)
+               ? DecimalConstants<Decimal>::DecimalZero : width;
       };
 
-      // 3. Configure Stationary Block Resampler
+      // -----------------------------------------------------------------------
+      // Block length selection
+      // -----------------------------------------------------------------------
       const size_t n = rocVec.size();
       size_t L;
-      
-      std::cout << "[BootStrapIndicators] Block Length Calculation for n=" << n << " observations:" << std::endl;
-      
-      // Use ACF-based block length calculation for larger series (n >= 100)
-      if (n >= 100) {
-        std::cout << "  Method: ACF-based (n >= 100)" << std::endl;
-        try {
-          // Compute ACF with reasonable parameters
-          const std::size_t maxACFLag = std::min<std::size_t>(20, n - 1);
-          const unsigned int minACFL = 2;
-          const unsigned int maxACFL = 12;
-          
-	  std::vector<Decimal> decimalReturns;
-	  decimalReturns.reserve(rocVec.size());
-	  const Decimal hundred = DecimalConstants<Decimal>::createDecimal("100.0");
-	  for (const auto& roc_pct : rocVec) {
-	    decimalReturns.push_back(roc_pct / hundred);
-	  }
-	  
-	  // Convert decimal returns to log returns
-	  auto logReturns = StatUtils<Decimal>::percentBarsToLogBars(decimalReturns);
-          
-          // Compute ACF and suggest block length
-          const auto acf = StatUtils<Decimal>::computeACF(logReturns, maxACFLag);
-          
-          // Compute both thresholds
-	  double stat_thresh = 2.0 / std::sqrt(static_cast<double>(n));
-	  double prac_thresh = std::min(0.05, 2.5 / std::sqrt(static_cast<double>(n)));
-	  double threshold = std::max(stat_thresh, prac_thresh);
 
-	  // Find last significant lag using hybrid threshold
-	  unsigned int L_acf = minACFL;
-	  for (std::size_t k = 1; k < acf.size(); ++k) {
-	    if (std::fabs(acf[k].getAsDouble()) > threshold) {
-	      L_acf = static_cast<unsigned int>(k);
-	    }
-	  }
-	  L_acf = std::max(minACFL, std::min(maxACFL, L_acf));
-	  L = static_cast<std::size_t>(L_acf);
+      std::cout << "[BootStrapIndicators] Block Length Calculation for n=" << n
+                << " observations:\n";
 
-	  std::cout << "  Statistical threshold: " << stat_thresh << std::endl;
-	  std::cout << "  Practical threshold: " << prac_thresh << std::endl;
-	  std::cout << "  Using threshold: " << threshold << std::endl;
-          
-          // Print ACF diagnostic information
-          std::cout << "  ACF analysis: maxLag=" << maxACFLag << ", range=[" << minACFL << "," << maxACFL << "]" << std::endl;
-          std::cout << "  ACF values: ";
-          for (std::size_t i = 0; i < std::min<std::size_t>(acf.size(), 10); ++i) {
-            std::cout << "ρ[" << i << "]=" << acf[i] << " ";
+      if (n >= 100)
+      {
+        std::cout << "  Method: ACF-based (n >= 100)\n";
+        try
+        {
+          const std::size_t maxACFLag = std::min<std::size_t>(kMaxACFLag, n - 1);
+
+          // --- Convert percent-ROC → decimal → log-returns for ACF ---
+          // Log-returns share the same autocorrelation structure as percent-ROC
+          // for small returns and are the natural input for an unbiased ACF
+          // estimator.  The block length derived here is applied to the
+          // bootstrap of the original percent-ROC values.
+          std::vector<Decimal> decimalReturns;
+          decimalReturns.reserve(n);
+          const Decimal hundred = DecimalConstants<Decimal>::createDecimal("100.0");
+          for (const auto& roc_pct : rocVec)
+            decimalReturns.push_back(roc_pct / hundred);
+
+          auto logReturns = StatUtils<Decimal>::percentBarsToLogBars(decimalReturns);
+          const auto acf  = StatUtils<Decimal>::computeACF(logReturns, maxACFLag);
+
+          // --- Bonferroni-corrected significance threshold ---
+          // Controls family-wise error rate at <=5% across all M=kMaxACFLag lags.
+          // This eliminates the ~22% spurious-large-L rate of the raw 2/sqrt(n)
+          // pointwise band when testing 20 lags simultaneously.
+          const double threshold =
+              kBonferroniZ / std::sqrt(static_cast<double>(n));
+
+          // --- Consecutive-lag rule (secondary guard) ---
+          // Update L only when two *adjacent* lags both exceed the Bonferroni
+          // band.  Combined with the corrected threshold, the overall false-
+          // positive probability is negligible.  Genuine autocorrelation always
+          // produces runs starting at lag 1, not isolated high-lag pairs.
+          unsigned int L_acf = kMinBlockL;   // default: minimum for white noise
+          for (std::size_t k = 1; k + 1 < acf.size(); ++k)
+          {
+            const double rk  = std::fabs(acf[k    ].getAsDouble());
+            const double rk1 = std::fabs(acf[k + 1].getAsDouble());
+            if (rk > threshold && rk1 > threshold)
+              L_acf = static_cast<unsigned int>(k + 1);
           }
-          if (acf.size() > 10) std::cout << "...";
-          std::cout << std::endl;
-          std::cout << "  ACF-suggested block length: L=" << L << std::endl;
-          
-        } catch (const std::exception& e) {
-          // Fallback to n^(1/3) heuristic if ACF calculation fails
-          L = std::max<size_t>(2, static_cast<size_t>(std::pow(static_cast<double>(n), 1.0/3.0)));
-          std::cout << "  ACF calculation failed (" << e.what() << ")" << std::endl;
-          std::cout << "  Fallback to n^(1/3) heuristic: L=" << L << std::endl;
+          L_acf = std::max(kMinBlockL, std::min(kMaxBlockL, L_acf));
+          L     = static_cast<std::size_t>(L_acf);
+
+          // --- Diagnostics ---
+          std::cout << "  Bonferroni threshold (" << kBonferroniZ << "/sqrt(n)): "
+                    << threshold << "\n";
+          std::cout << "  (z=" << kBonferroniZ << ", M=" << maxACFLag
+                    << " lags, FWER=5%)\n";
+          std::cout << "  ACF analysis: maxLag=" << maxACFLag
+                    << ", block range=[" << kMinBlockL << "," << kMaxBlockL << "]\n";
+          std::cout << "  ACF values:\n";
+          for (std::size_t i = 0; i < acf.size(); ++i)
+          {
+            const double av = std::fabs(acf[i].getAsDouble());
+            std::cout << "    rho[" << i << "] = " << acf[i]
+                      << (i > 0 && av > threshold ? "  *** above Bonferroni band" : "")
+                      << "\n";
+          }
+          std::cout << "  ACF-suggested block length: L=" << L << "\n";
         }
-      } else {
-        std::cout << "  Method: n^(1/3) heuristic (n < 100)" << std::endl;
-        // Use original n^(1/3) heuristic for smaller series
-        L = std::max<size_t>(2, static_cast<size_t>(std::pow(static_cast<double>(n), 1.0/3.0)));
-        std::cout << "  Calculated block length: L=" << L << std::endl;
+        catch (const std::exception& e)
+        {
+          // Fallback: n^(1/3) heuristic (Politis & White, 2004).
+          L = std::max<size_t>(
+                2, static_cast<size_t>(
+                     std::pow(static_cast<double>(n), 1.0 / 3.0)));
+          std::cout << "  ACF calculation failed (" << e.what() << ")\n";
+          std::cout << "  Fallback to n^(1/3) heuristic: L=" << L << "\n";
+        }
       }
-      
-      std::cout << "  Final block length used: L=" << L << std::endl << std::endl;
-      
+      else
+      {
+        // For small series the ACF is too noisy; use the n^(1/3) heuristic.
+        std::cout << "  Method: n^(1/3) heuristic (n < 100)\n";
+        L = std::max<size_t>(
+              2, static_cast<size_t>(
+                   std::pow(static_cast<double>(n), 1.0 / 3.0)));
+        std::cout << "  Calculated block length: L=" << L << "\n";
+      }
+
+      std::cout << "  Final block length used: L=" << L << "\n\n";
+
+      // -----------------------------------------------------------------------
+      // Bootstrap
+      // -----------------------------------------------------------------------
       StationaryBlockResampler<Decimal> blockSampler(L);
 
       try
       {
-        // 4. Run Bootstrap for Upside Width
         BCaBootStrap<Decimal, StationaryBlockResampler<Decimal>> bca_up(
-            rocVec,
-            kNumResamples,
-            kConfidenceLevel,
-            calc_upside_width,
-            blockSampler
-        );
+            rocVec, kNumResamples, kConfidenceLevel,
+            calc_upside_width, blockSampler);
 
-        // 5. Run Bootstrap for Downside Width
         BCaBootStrap<Decimal, StationaryBlockResampler<Decimal>> bca_down(
-            rocVec,
-            kNumResamples,
-            kConfidenceLevel,
-            calc_downside_width,
-            blockSampler
-        );
+            rocVec, kNumResamples, kConfidenceLevel,
+            calc_downside_width, blockSampler);
 
-        // 6. Extract all four bounds
         return {
           bca_up.getLowerBound(),
           bca_up.getUpperBound(),
@@ -434,13 +515,12 @@ namespace mkc_timeseries
           bca_down.getUpperBound()
         };
       }
-      catch (const std::exception& e)
+      catch (const std::exception&)
       {
-        // In case of bootstrap failure (e.g., all samples are identical)
-        // std::cerr << "Bootstrap failed: " << e.what() << ". Returning eps." << std::endl;
         return {eps, eps, eps, eps};
       }
     }
+    
   } // namespace detail
 
   /**

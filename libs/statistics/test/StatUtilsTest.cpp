@@ -1171,13 +1171,24 @@ TEST_CASE("StatUtils::suggestStationaryBlockLengthFromACF heuristic", "[StatUtil
         REQUIRE(L == 2);
     }
 
-    SECTION("Clamp to maxL when significance extends beyond range") {
-        // n=100 -> thresh = 0.2; make lag 9 still significant
+     SECTION("Clamp to maxL when consecutive significance extends beyond range") {
+        // With n=100 and an 11-element ACF (M=10 lags), the Bonferroni threshold is:
+        //   z = sqrt(2) * erfinv(1 - 0.05/10) ≈ 2.807
+        //   thresh = 2.807 / sqrt(100) ≈ 0.281
+        //
+        // The old test placed a single significant lag at acf[9]=0.25.  That is
+        // correctly ignored by the consecutive-lag rule because no adjacent lag
+        // is also significant — an isolated spike is almost certainly noise.
+        //
+        // The new test places TWO adjacent lags (7 and 8) both at 0.35 > 0.281.
+        // The consecutive-lag rule fires at k=7: L_acf = 8, then clamped to maxL=6.
         std::vector<DecimalType> acf(11, createDecimal("0.0"));
         acf[0] = createDecimal("1.0");
-        acf[9] = createDecimal("0.25"); // significant far out
-        unsigned L = Stat::suggestStationaryBlockLengthFromACF(acf, /*nSamples=*/100, /*minL=*/2, /*maxL=*/6);
-        REQUIRE(L == 6); // clamped to maxL
+        acf[7] = createDecimal("0.35");   // above Bonferroni threshold
+        acf[8] = createDecimal("0.35");   // above Bonferroni threshold — consecutive pair
+        unsigned L = Stat::suggestStationaryBlockLengthFromACF(acf, /*nSamples=*/100,
+                                                               /*minL=*/2, /*maxL=*/6);
+        REQUIRE(L == 6); // L_acf=8 clamped to maxL
     }
 
     SECTION("Empty ACF or zero nSamples throws") {
@@ -1190,32 +1201,37 @@ TEST_CASE("StatUtils::suggestStationaryBlockLengthFromACF heuristic", "[StatUtil
 
 // --------------------------- Smoke test: Monthly -> ACF -> BlockLen ---------------------------
 
-TEST_CASE("StatUtils: end-to-end monthly->ACF->block length", "[StatUtils][ACF][Monthly][Smoke]") {
+TEST_CASE("StatUtils: end-to-end monthly->ACF->block length",
+          "[StatUtils][ACF][Monthly][Smoke]")
+{
     using D    = DecimalType;
     using Stat = StatUtils<DecimalType>;
-
-    // Fabricate 12 months in 2021 with deliberate short-range dependence:
-    // Pairs of identical returns increase |rho(1)|, and the symmetric design keeps mean ~ 0.
-    // Sequence (Jan..Dec): +2%, +2%, -2%, -2%, +1.5%, +1.5%, -1.5%, -1.5%, +1%, +1%, -1%, -1%
+ 
+    // Fabricate 12 months with deliberate short-range pair structure:
+    // Sequence (Jan..Dec): +2%, +2%, -2%, -2%, +1.5%, +1.5%, -1.5%, -1.5%,
+    //                      +1%, +1%, -1%, -1%
+    // Identical adjacent returns create a strong rho[2] (same-sign pairs two
+    // apart) but alternate so that rho[1] is small.  This exercises the ACF
+    // estimator with a non-trivial correlation pattern.
     ClosedPositionHistory<D> hist;
     TradingVolume one(1, TradingVolume::CONTRACTS);
-
+ 
     auto add_long_1bar = [&](int y, int m, int d, const char* r_str) {
         D r     = createDecimal(r_str);
         D entry = createDecimal("100");
         D exit  = entry * (D("1.0") + r);
-
+ 
         TimeSeriesDate de(y, m, d);
         auto e = createTimeSeriesEntry(de, entry, entry, entry, entry, 10);
-        auto pos = std::make_shared<TradingPositionLong<D>>(myCornSymbol, e->getOpenValue(), *e, one);
-
+        auto pos = std::make_shared<TradingPositionLong<D>>(
+                       myCornSymbol, e->getOpenValue(), *e, one);
+ 
         int d_exit = std::min(d + 1, 28);
         TimeSeriesDate dx(y, m, d_exit);
         pos->ClosePosition(dx, exit);
         hist.addClosedPosition(pos);
     };
-
-    // Build the 12 months (single-bar per month → monthly return equals r_str exactly)
+ 
     add_long_1bar(2021, Jan,  5,  "0.02");
     add_long_1bar(2021, Feb,  8,  "0.02");
     add_long_1bar(2021, Mar,  5, "-0.02");
@@ -1228,47 +1244,60 @@ TEST_CASE("StatUtils: end-to-end monthly->ACF->block length", "[StatUtils][ACF][
     add_long_1bar(2021, Oct, 13,  "0.01");
     add_long_1bar(2021, Nov,  3, "-0.01");
     add_long_1bar(2021, Dec, 21, "-0.01");
-
+ 
     // 1) Build monthly returns
     auto monthly = mkc_timeseries::buildMonthlyReturnsFromClosedPositions<D>(hist);
     REQUIRE(monthly.size() == 12);
-
-    // Spot-check a few exact values (single-bar months)
-    REQUIRE(monthly.front() == createDecimal("0.02"));    // Jan
-    REQUIRE(monthly[1]      == createDecimal("0.02"));    // Feb
-    REQUIRE(monthly[2]      == createDecimal("-0.02"));   // Mar
-    REQUIRE(monthly.back()  == createDecimal("-0.01"));   // Dec
-
+ 
+    // Spot-check exact values
+    REQUIRE(monthly.front() == createDecimal("0.02"));
+    REQUIRE(monthly[1]      == createDecimal("0.02"));
+    REQUIRE(monthly[2]      == createDecimal("-0.02"));
+    REQUIRE(monthly.back()  == createDecimal("-0.01"));
+ 
     // 2) Compute ACF up to 6 lags
     const std::size_t maxLag = 6;
     auto acf = Stat::computeACF(monthly, maxLag);
-
-    // ACF shape: length = min(maxLag, n-1) + 1 = 7, and rho[0] == 1
+ 
     REQUIRE(acf.size() == 7);
     REQUIRE(num::to_double(acf[0]) == Catch::Approx(1.0));
-
-    // 3) Suggest stationary bootstrap block length using the heuristic
-    //    thresh = 2/sqrt(n) with n = 12 → ~0.577.
-    const double thresh = 2.0 / std::sqrt(12.0);
-
-    // Recompute k* like the production heuristic does (largest lag with |rho(k)| > thresh)
-    unsigned k_star = 1;
-    for (std::size_t k = 1; k < acf.size(); ++k) {
-        if (std::fabs(num::to_double(acf[k])) > thresh) {
-            k_star = static_cast<unsigned>(k);
-        }
-    }
-
-    // Production clamp is [2,6] by default
-    const unsigned expectedL = std::max<unsigned>(2, std::min<unsigned>(6, k_star));
-
-    const unsigned L = Stat::suggestStationaryBlockLengthFromACF(acf, monthly.size(),
-                                                                 /*minL=*/2, /*maxL=*/6);
-
-    // 4) The suggested L should match the heuristic’s clamped k*
-    REQUIRE(L == expectedL);
-
-    // 5) Sanity: L is within [2,6]
+ 
+    // 3) Verify ACF shape matches expectations from the paired-return structure.
+    //
+    // With n=12 the biased ACF (divides by n, not n-k) gives approximately:
+    //   rho[1] ≈  0.095  (small: adjacent pairs differ in sign)
+    //   rho[2] ≈ -0.810  (large negative: every other pair is opposite sign)
+    //   rho[3] ≈ -0.095
+    //   rho[4] ≈  0.621
+    //   rho[5] ≈  0.086
+    //   rho[6] ≈ -0.448
+    REQUIRE(std::fabs(num::to_double(acf[2])) > 0.75); // rho[2] dominates
+    REQUIRE(std::fabs(num::to_double(acf[4])) > 0.50); // rho[4] also notable
+ 
+    // 4) Suggest block length.
+    //
+    // With n=12 and M=6 lags the Bonferroni threshold is:
+    //   z = sqrt(2) * erfinv(1 - 0.05/6) ≈ 2.638
+    //   thresh = 2.638 / sqrt(12) ≈ 0.762
+    //
+    // Although rho[2] ≈ -0.810 exceeds this threshold on its own, the
+    // consecutive-lag rule requires *two adjacent* lags to both exceed it.
+    // Inspecting the ACF:
+    //   k=1: |rho[1]|≈0.095 (below), |rho[2]|≈0.810 (above) → pair fails
+    //   k=2: |rho[2]|≈0.810 (above), |rho[3]|≈0.095 (below) → pair fails
+    //   k=3..5: no lag reaches 0.762
+    // No consecutive pair exists, so the function returns minL=2.
+    //
+    // This is the correct answer for this data: the alternating ACF pattern
+    // (large at even lags, small at odd lags) is an artifact of the paired
+    // data structure, not genuine persistent autocorrelation that a larger
+    // block length should preserve.
+    const unsigned L = Stat::suggestStationaryBlockLengthFromACF(
+                           acf, monthly.size(), /*minL=*/2, /*maxL=*/6);
+ 
+    REQUIRE(L == 2);
+ 
+    // 5) Sanity: L is within [2, 6] regardless
     REQUIRE(L >= 2);
     REQUIRE(L <= 6);
 }
