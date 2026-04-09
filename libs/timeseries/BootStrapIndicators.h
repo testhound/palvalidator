@@ -352,8 +352,31 @@ namespace mkc_timeseries
       // Number of bootstrap resamples.  10 000 gives very stable CI estimates.
       constexpr unsigned int kNumResamples = 10000;
 
-      // Confidence level → 90 % CI uses the 5th and 95th percentiles of the
-      // bootstrapped width distributions.
+      /**
+       * @brief Bootstrap Confidence Level (0.90 Two-Sided)
+       *
+       * ARCHITECTURE NOTE:
+       * We use a 90% TWO-SIDED confidence interval here, which mathematically
+       * yields the exact same lower bound as a 95% ONE-SIDED interval.
+       *
+       * 1. The Math (Tail Equivalence):
+       * - A 90% Two-Sided CI excludes 10% of the distribution. This error is
+       * split evenly: 5% in the left tail, 5% in the right tail. The bounds
+       * sit exactly at the 5th and 95th percentiles.
+       * - A 95% One-Sided CI excludes 5% of the distribution, entirely in one
+       * tail. The bound sits exactly at the 5th (or 95th) percentile.
+       *
+       * 2. The Performance Justification (O(n^2) Avoidance):
+       * - The calling functions (Long and Short strategy generators) require
+       * both the 5th percentile (conservative target/stop) AND the 95th
+       * percentile (liberal target/stop) from the same distribution.
+       * - The BCa jackknife loop is computationally expensive.
+       * - By running a single 90% TWO-SIDED bootstrap, the engine calculates
+       * both the 5th and 95th percentiles simultaneously in one pass.
+       * - If we used ONE-SIDED intervals, we would have to invoke the BCa
+       * engine four separate times instead of two, doubling the runtime
+       * cost with zero mathematical benefit.
+       */
       constexpr double kConfidenceLevel = 0.90;
 
       // ACF lag range.  kMaxACFLag must match M used in the Bonferroni threshold.
@@ -498,15 +521,45 @@ namespace mkc_timeseries
       // -----------------------------------------------------------------------
       StationaryBlockResampler<Decimal> blockSampler(L);
 
+      // 1. Define the Executor type (<0> dynamically uses std::thread::hardware_concurrency)
+      using ThreadPool = concurrency::ThreadPoolExecutor<0>;
+
+      // 2. Instantiate a single shared pool to prevent thread allocation thrashing.
+      //    Both bca_up and bca_down are evaluated sequentially (lazy evaluation
+      //    triggers on the first getLowerBound() / getUpperBound() call), so the
+      //    pool is never accessed by both bootstraps concurrently.  Sharing the
+      //    pool eliminates the overhead of constructing and destroying a second
+      //    fixed-size thread pool for the downside bootstrap.
+      auto sharedExecutor = std::make_shared<ThreadPool>();
+
       try
       {
-        BCaBootStrap<Decimal, StationaryBlockResampler<Decimal>> bca_up(
-            rocVec, kNumResamples, kConfidenceLevel,
-            calc_upside_width, blockSampler);
+        // 3. Fully qualify the BCaBootStrap template to reach the 6th parameter.
+        //    Params 3–5 (Rng, Provider, SampleType) are spelled out explicitly
+        //    because C++ has no way to skip defaulted template parameters when
+        //    specifying a later one.
+        using ParallelBCa = BCaBootStrap<
+            Decimal,
+            StationaryBlockResampler<Decimal>,
+            randutils::mt19937_rng,              // Param 3: Rng  (default)
+            void,                                // Param 4: Provider (default)
+            Decimal,                             // Param 5: SampleType (default)
+            ThreadPool>;                         // Param 6: concurrent executor
 
-        BCaBootStrap<Decimal, StationaryBlockResampler<Decimal>> bca_down(
+        // 4. Instantiate with the interval type and the injected shared pool.
+        //    Constructor used: custom-statistic + custom-sampler overload
+        //    (BiasCorrectedBootstrap.h, lines 1062-1083).
+        ParallelBCa bca_up(
             rocVec, kNumResamples, kConfidenceLevel,
-            calc_downside_width, blockSampler);
+            calc_upside_width, blockSampler,
+            palvalidator::analysis::IntervalType::TWO_SIDED,
+            sharedExecutor);
+
+        ParallelBCa bca_down(
+            rocVec, kNumResamples, kConfidenceLevel,
+            calc_downside_width, blockSampler,
+            palvalidator::analysis::IntervalType::TWO_SIDED,
+            sharedExecutor);
 
         return {
           bca_up.getLowerBound(),
@@ -520,7 +573,6 @@ namespace mkc_timeseries
         return {eps, eps, eps, eps};
       }
     }
-    
   } // namespace detail
 
   /**
