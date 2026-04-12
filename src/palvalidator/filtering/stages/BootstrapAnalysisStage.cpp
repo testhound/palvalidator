@@ -1276,9 +1276,6 @@ namespace palvalidator::filtering::stages
     const std::vector<Decimal> logBars =
       Stat::makeLogGrowthSeries(ctx.highResReturns, Stat::DefaultRuinEps);
 
-    const StopLossAndProfitTargetPriors priors =
-      extractStopLossAndProfitTargetPriors<Decimal>(ctx);
-
     const BootstrapConfiguration cfg =
       makeBarLevelBootstrapConfiguration(
         mNumResamples, blockLength, confidenceLevel,
@@ -1287,14 +1284,9 @@ namespace palvalidator::filtering::stages
     const BootstrapAlgorithmsConfiguration algoConfig =
       makeBootstrapAlgorithmsConfiguration(/*tradeLevelBootstrapping=*/false);
 
-    os << "   [Bootstrap] AutoCI (PF): passing stop loss of "
-       << priors.getStopLossPct() << " to PFSampler\n";
-
     PFSampler stat(Stat::DefaultRuinEps,
                    Stat::DefaultDenomFloor,
-                   kPFBootstrapPriorStrength,
-                   priors.getStopLossPct(),
-                   priors.getProfitTargetPct());
+                   kPFBootstrapPriorStrength);
 
     StrategyAutoBootstrap<Decimal, PFSampler, Resampler> autoPF(
       mBootstrapFactory,
@@ -1303,10 +1295,6 @@ namespace palvalidator::filtering::stages
       algoConfig,
       stat,
       IntervalType::ONE_SIDED_LOWER);
-
-    os << "   [Bootstrap] AutoCI (PF): running composite bootstrap engines"
-       << " on precomputed log-bars"
-       << " (StopLoss assumption=" << (priors.getStopLossPct() * 100.0) << "%)...\n";
 
     try
       {
@@ -1355,9 +1343,6 @@ namespace palvalidator::filtering::stages
 	return std::nullopt;
       }
 
-    const StopLossAndProfitTargetPriors priors =
-      extractStopLossAndProfitTargetPriors<Decimal>(ctx);
-
     // Pre-compute log(max(1+r, ruin_eps)) for every bar in every trade.
     // LogProfitFactorFromLogBarsStat_LogPF_Custom's Trade overload assumes
     // getDailyReturns() holds pre-computed log-bars, not raw returns.
@@ -1372,14 +1357,9 @@ namespace palvalidator::filtering::stages
     const BootstrapAlgorithmsConfiguration algoConfig =
       makeBootstrapAlgorithmsConfiguration(/*tradeLevelBootstrapping=*/true);
 
-    os << "   [Bootstrap] AutoCI trade-level (PF): passing stop loss of "
-       << priors.getStopLossPct() << " to PFSampler\n";
-
     PFSampler stat(Stat::DefaultRuinEps,
                    Stat::DefaultDenomFloor,
-                   kPFBootstrapPriorStrength,
-                   priors.getStopLossPct(),
-                   priors.getProfitTargetPct());
+                   kPFBootstrapPriorStrength);
 
     StrategyAutoBootstrap<Decimal, PFSampler, Resampler, TradeType> autoPF(
       mBootstrapFactory,
@@ -1388,11 +1368,6 @@ namespace palvalidator::filtering::stages
       algoConfig,
       stat,
       IntervalType::ONE_SIDED_LOWER);
-
-    os << "   [Bootstrap] AutoCI trade-level (PF): running bootstrap engines"
-       << " on " << ctx.tradeLevelReturns.size()
-       << " trades (log-bars pre-computed)"
-       << " (StopLoss assumption=" << (priors.getStopLossPct() * 100.0) << "%)...\n";
 
     try
       {

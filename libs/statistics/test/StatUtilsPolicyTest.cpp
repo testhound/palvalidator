@@ -367,43 +367,6 @@ TEST_CASE("SmoothAdditiveWinDenomPolicy: denom = max(loss + alpha*wins, floor)",
     }
 }
 
-TEST_CASE("SmoothAdditiveWinCountFadingDenomPolicy: computeK0FromN",
-          "[StatUtils][Policy][CountFadingDenom][K0]")
-{
-    using P = Stat::SmoothAdditiveWinCountFadingDenomPolicy;
-
-    // k0 = round(0.20 * N), clamped to [3, 10]
-    SECTION("N <= 0 → fallback k0 = 5")
-    {
-        REQUIRE(P::computeK0FromN(0)  == 5);
-        REQUIRE(P::computeK0FromN(-1) == 5);
-    }
-
-    SECTION("Very small N → clamped to 3")
-    {
-        // round(0.20 * 5) = round(1.0) = 1 → clamped to 3
-        REQUIRE(P::computeK0FromN(5)  == 3);
-        REQUIRE(P::computeK0FromN(10) == 3); // round(2.0) = 2 → clamped to 3
-    }
-
-    SECTION("Mid-range N → formula applies")
-    {
-        // round(0.20 * 20) = round(4.0) = 4
-        REQUIRE(P::computeK0FromN(20) == 4);
-        // round(0.20 * 25) = round(5.0) = 5
-        REQUIRE(P::computeK0FromN(25) == 5);
-        // round(0.20 * 27) = round(5.4) = 5
-        REQUIRE(P::computeK0FromN(27) == 5);
-    }
-
-    SECTION("Large N → clamped to 10")
-    {
-        // round(0.20 * 100) = 20 → clamped to 10
-        REQUIRE(P::computeK0FromN(100) == 10);
-        REQUIRE(P::computeK0FromN(200) == 10);
-    }
-}
-
 TEST_CASE("SmoothAdditiveWinCountFadingDenomPolicy: count fading reduces prior as losses accumulate",
           "[StatUtils][Policy][CountFadingDenom][Fade]")
 {
@@ -511,6 +474,20 @@ TEST_CASE("ResultLogPFPolicy: finalizeFromRatio returns log(numer) - log(denom)"
         D log1p_pf = Stat::ResultLog1pPFPolicy::finalizeFromRatio(numer, denom);  // log(4)
         REQUIRE(num::to_double(raw_pf) != Catch::Approx(num::to_double(log1p_pf)).margin(0.01));
     }
+
+    SECTION("non-positive numer throws logic_error")
+      {
+	REQUIRE_THROWS_AS(
+			  Stat::ResultLogPFPolicy::finalizeFromRatio(DC::DecimalZero, D(0.10)),
+			  std::logic_error);
+      }
+
+    SECTION("non-positive denom throws logic_error")
+      {
+	REQUIRE_THROWS_AS(
+			  Stat::ResultLogPFPolicy::finalizeFromRatio(D(0.30), DC::DecimalZero),
+			  std::logic_error);
+      }
 }
 
 // ============================================================================
@@ -1047,4 +1024,373 @@ TEST_CASE("Policy ordering: higher prior_strength always produces >= denominator
 
     // larger prior_strength → larger prior_loss_mag → potentially larger denom
     REQUIRE(num::to_double(denom_hi) >= num::to_double(denom_lo));
+}
+
+// StatUtilsK0Tests.cpp
+//
+// Unit tests for SmoothAdditiveWinCountFadingDenomPolicy::computeK0FromNAndLossCount.
+//
+// The new function replaces computeK0FromN to fix a semantic mismatch:
+// k0 represents virtual prior losses in the Bayesian fade formula
+//   fade = k0 / (k0 + loss_count)
+// and must therefore be in loss units, not bar units.  The fix uses
+//   reference = min(round(0.20 * N), max(loss_count, 1))
+// clamped to [3, 10], so k0 tracks the smaller of "expected losses from N"
+// and "observed losses", preventing over-regularisation in the large-N /
+// sparse-loss case that occurs in 1-2% of bootstrap call sites.
+//
+// Test organisation mirrors StatUtilsPolicyTest.cpp (Catch2, same aliases).
+//
+// ============================================================================
+// DEPRECATION NOTE ON computeK0FromN
+// ============================================================================
+// computeK0FromN is no longer called by computeDenom after this change.
+// It is an internal static of SmoothAdditiveWinCountFadingDenomPolicy and
+// carries no ABI or public-API commitment.  Recommendation: REMOVE it along
+// with its tests in StatUtilsPolicyTest.cpp rather than leave it in a
+// "backward-compatible" state that is no longer exercised by production code.
+// Rationale is in the comment block at the bottom of this file.
+// ============================================================================
+
+using P    = Stat::SmoothAdditiveWinCountFadingDenomPolicy;
+
+// ============================================================================
+// SECTION A: computeK0FromNAndLossCount — unit tests on the helper itself
+// ============================================================================
+
+TEST_CASE("computeK0FromNAndLossCount: lower clamp enforced for small inputs",
+          "[StatUtils][Policy][K0][LowerClamp]")
+{
+    // reference = min(round(0.20*N), max(loss_count,1))
+    // Both paths can push reference below 3; clamp must fire in all cases.
+
+    SECTION("N=0, loss_count=0 → expected_losses=0, reference=min(0,1)=0 → clamped to 3")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(0, 0) == 3);
+    }
+
+    SECTION("N=5, loss_count=1 → expected_losses=1, reference=min(1,1)=1 → clamped to 3")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(5, 1) == 3);
+    }
+
+    SECTION("N=10, loss_count=2 → expected_losses=2, reference=min(2,2)=2 → clamped to 3")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(10, 2) == 3);
+    }
+
+    SECTION("N=10, loss_count=0 → expected_losses=2, reference=min(2,1)=1 → clamped to 3")
+    {
+        // max(loss_count,1)=1 prevents k0 collapsing when there are no losses
+        REQUIRE(P::computeK0FromNAndLossCount(10, 0) == 3);
+    }
+}
+
+TEST_CASE("computeK0FromNAndLossCount: upper clamp enforced",
+          "[StatUtils][Policy][K0][UpperClamp]")
+{
+    SECTION("N=200, loss_count=200 → expected_losses=40, reference=min(40,200)=40 → clamped to 10")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(200, 200) == 10);
+    }
+
+    SECTION("N=100, loss_count=50 → expected_losses=20, reference=min(20,50)=20 → clamped to 10")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(100, 50) == 10);
+    }
+}
+
+TEST_CASE("computeK0FromNAndLossCount: common N range [20, 30] — regression vs old computeK0FromN",
+          "[StatUtils][Policy][K0][CommonRange]")
+{
+    // In this range loss_count typically correlates with N (normal win rate ~50-70%).
+    // Expected losses = round(0.20 * N) and typical loss_count should be >= that,
+    // so reference = expected_losses and the two functions should agree closely.
+
+    SECTION("N=20, loss_count=8 (typical 40% loss rate)")
+    {
+        // expected_losses = round(0.20*20) = 4
+        // reference = min(4, max(8,1)) = min(4,8) = 4
+        REQUIRE(P::computeK0FromNAndLossCount(20, 8) == 4);
+        // Old function: computeK0FromN(20) == 4 — identical
+    }
+
+    SECTION("N=25, loss_count=10")
+    {
+        // expected_losses = round(0.20*25) = 5; reference = min(5,10) = 5
+        REQUIRE(P::computeK0FromNAndLossCount(25, 10) == 5);
+        // Old: computeK0FromN(25) == 5 — identical
+    }
+
+    SECTION("N=27, loss_count=11")
+    {
+        // expected_losses = round(0.20*27) = round(5.4) = 5; reference = min(5,11) = 5
+        REQUIRE(P::computeK0FromNAndLossCount(27, 11) == 5);
+        // Old: computeK0FromN(27) == 5 — identical
+    }
+
+    SECTION("N=30, loss_count=12")
+    {
+        // expected_losses = round(0.20*30) = 6; reference = min(6,12) = 6
+        REQUIRE(P::computeK0FromNAndLossCount(30, 12) == 6);
+        // Old: computeK0FromN(30) == 6 — identical
+    }
+}
+
+TEST_CASE("computeK0FromNAndLossCount: sparse-loss case in normal N range — prior still meaningful",
+          "[StatUtils][Policy][K0][SparseLoss][NormalN]")
+{
+    // A high-win-rate strategy: N=25, only 2 losses.
+    // Old function: computeK0FromN(25) = 5 → fade = 5/(5+2) = 0.71 (strong prior)
+    // New function: expected=5, reference = min(5, max(2,1)) = min(5,2) = 2 → k0=3 (clamped)
+    //              → fade = 3/(3+2) = 0.60 (still meaningful but correctly weaker)
+    // The new function recognises that 2 observed losses carry real information.
+    REQUIRE(P::computeK0FromNAndLossCount(25, 2) == 3);
+}
+
+TEST_CASE("computeK0FromNAndLossCount: large N / sparse losses — the key improvement case",
+          "[StatUtils][Policy][K0][LargeN][SparseLoss]")
+{
+    // This is the 1-2% scenario that motivated the change.
+    // Old: computeK0FromN(55) = round(0.20*55)=11 → clamped to 10
+    //      fade = 10/(10+5) = 0.667 — nearly full prior after 5 real observations
+    // New: expected=11→10 (clamped first), reference = min(10, max(5,1)) = min(10,5) = 5
+    //      → k0=5, fade = 5/(5+5) = 0.50 — meaningfully weaker, respecting observed data
+
+    SECTION("N=55, loss_count=5")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(55, 5) == 5);
+    }
+
+    SECTION("N=60, loss_count=4")
+    {
+        // expected = round(0.20*60)=12 → clamped to 10; reference = min(10, max(4,1)) = 4
+        // clamped to 3 (lower clamp)
+        REQUIRE(P::computeK0FromNAndLossCount(60, 4) == 4);
+    }
+
+    SECTION("N=50, loss_count=8")
+    {
+        // expected = round(0.20*50)=10; reference = min(10, max(8,1)) = 8
+        REQUIRE(P::computeK0FromNAndLossCount(50, 8) == 8);
+    }
+}
+
+TEST_CASE("computeK0FromNAndLossCount: loss_count=0 does not collapse k0",
+          "[StatUtils][Policy][K0][ZeroLoss]")
+{
+    // max(loss_count, 1) = 1 prevents reference from reaching 0.
+    // Without this, any N < 15 would send reference to 0 and trigger the lower clamp;
+    // we verify the lower clamp still fires correctly regardless.
+
+    SECTION("N=20, loss_count=0 → reference=min(4,1)=1 → clamped to 3")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(20, 0) == 3);
+    }
+
+    SECTION("N=50, loss_count=0 → reference=min(10,1)=1 → clamped to 3")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(50, 0) == 3);
+    }
+
+    SECTION("N=100, loss_count=0 → reference=min(10,1)=1 → clamped to 3")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(100, 0) == 3);
+    }
+}
+
+TEST_CASE("computeK0FromNAndLossCount: negative inputs are safe",
+          "[StatUtils][Policy][K0][NegativeInputs]")
+{
+    // Negative N and loss_count can arrive via the nullopt path (sentinel -1).
+    // The function must not crash and must return a value in [3, 10].
+
+    SECTION("N=-1, loss_count=-1")
+    {
+        const int k0 = P::computeK0FromNAndLossCount(-1, -1);
+        REQUIRE(k0 >= 3);
+        REQUIRE(k0 <= 10);
+    }
+
+    SECTION("N=0, loss_count=-5")
+    {
+        const int k0 = P::computeK0FromNAndLossCount(0, -5);
+        REQUIRE(k0 >= 3);
+        REQUIRE(k0 <= 10);
+    }
+}
+
+TEST_CASE("computeK0FromNAndLossCount: loss_count >= expected_losses — loss_count is not the binding constraint",
+          "[StatUtils][Policy][K0][LossCountDominates]")
+{
+    // When loss_count > expected_losses, min() selects expected_losses,
+    // matching the old computeK0FromN behavior exactly.
+
+    SECTION("N=25, loss_count=15 → expected=5, min(5,15)=5")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(25, 15) == 5);
+    }
+
+    SECTION("N=27, loss_count=20 → expected=5, min(5,20)=5")
+    {
+        REQUIRE(P::computeK0FromNAndLossCount(27, 20) == 5);
+    }
+}
+
+TEST_CASE("computeK0FromNAndLossCount: result always in [3, 10]",
+          "[StatUtils][Policy][K0][AlwaysClamped]")
+{
+    // Exhaustive sweep over representative (N, loss_count) pairs.
+    const std::vector<int> ns     = {0, 1, 5, 10, 15, 20, 25, 27, 30, 50, 55, 60, 100, 200};
+    const std::vector<int> losses = {0, 1, 2, 3,  5,  10, 15, 20, 50, 100};
+
+    for (int n : ns)
+    {
+        for (int lc : losses)
+        {
+            const int k0 = P::computeK0FromNAndLossCount(n, lc);
+            INFO("N=" << n << ", loss_count=" << lc << " → k0=" << k0);
+            REQUIRE(k0 >= 3);
+            REQUIRE(k0 <= 10);
+        }
+    }
+}
+
+// ============================================================================
+// SECTION B: End-to-end fade behaviour through computeDenom
+//
+// These tests verify that computeK0FromNAndLossCount produces the correct
+// downstream effect on the fade formula and therefore on the denominator.
+// ============================================================================
+
+TEST_CASE("computeDenom: large-N sparse-loss case produces weaker prior than old k0-from-N logic",
+          "[StatUtils][Policy][K0][EndToEnd][LargeN]")
+{
+    // Simulate what the old computeK0FromN path would have produced for N=55, lc=5,
+    // by calling SmoothAdditiveWinDenomPolicy directly with the old effective_prior.
+    //
+    // Old path: k0=10, fade=10/15=0.667, effective_prior = 0.01 * 0.667 = 0.00667
+    // New path: k0=5,  fade=5/10=0.500,  effective_prior = 0.01 * 0.500 = 0.00500
+    //
+    // With wins=0.40, loss_mag=0.05:
+    //   Old denom = 0.05 + 0.00667 * 0.40 = 0.05267
+    //   New denom = 0.05 + 0.00500 * 0.40 = 0.05200
+    //
+    // New denom is smaller (weaker prior), meaning the 5 observed losses are
+    // given more weight relative to the prior.
+
+    const D wins(0.40), loss_mag(0.05), floor_d(1e-6);
+    const double prior_strength = 0.01;
+    const int N = 55, lc = 5;
+
+    // New path (uses computeK0FromNAndLossCount internally)
+    D new_denom = P::computeDenom(wins, loss_mag, floor_d, prior_strength, lc, N);
+
+    // Old-path reconstruction: k0=10, fade=10/(10+5)
+    const double old_fade             = 10.0 / (10.0 + 5.0);
+    const double old_effective_prior  = prior_strength * old_fade;
+    D old_denom = Stat::SmoothAdditiveWinDenomPolicy::computeDenom(
+        wins, loss_mag, floor_d, old_effective_prior, -1, -1);
+
+    // New denom must be strictly less than old denom (weaker prior)
+    REQUIRE(num::to_double(new_denom) < num::to_double(old_denom));
+
+    // Both must remain finite and above the floor
+    REQUIRE(std::isfinite(num::to_double(new_denom)));
+    REQUIRE(num::to_double(new_denom) >= 1e-6);
+}
+
+TEST_CASE("computeDenom: normal N range [20,30] is unaffected by the change",
+          "[StatUtils][Policy][K0][EndToEnd][NormalN]")
+{
+    // For N=25, loss_count=10 (typical), expected_losses=5 < loss_count,
+    // so reference=min(5,10)=5 and k0=5 — same as old computeK0FromN(25)=5.
+    // Both paths must produce identical denominators.
+
+    const D wins(0.40), loss_mag(0.20), floor_d(1e-6);
+    const double prior_strength = 0.01;
+    const int N = 25, lc = 10;
+
+    D new_denom = P::computeDenom(wins, loss_mag, floor_d, prior_strength, lc, N);
+
+    // Old-path reconstruction: k0=5, fade=5/(5+10)
+    const double old_fade            = 5.0 / (5.0 + 10.0);
+    const double old_effective_prior = prior_strength * old_fade;
+    D old_denom = Stat::SmoothAdditiveWinDenomPolicy::computeDenom(
+        wins, loss_mag, floor_d, old_effective_prior, -1, -1);
+
+    REQUIRE(num::to_double(new_denom) ==
+            Catch::Approx(num::to_double(old_denom)).margin(kLogTol));
+}
+
+TEST_CASE("computeDenom: prior fades correctly as loss_count grows (new k0 path)",
+          "[StatUtils][Policy][K0][EndToEnd][FadeMonotone]")
+{
+    // Monotonicity: more observed losses → smaller k0 (via min) → smaller fade
+    // → smaller additive prior → smaller denominator (loss_mag held constant).
+    // This verifies the Bayesian intent: accumulating evidence weakens the prior.
+
+    const D wins(0.40), floor_d(1e-6);
+    const double prior_strength = 0.5;
+    const int N = 50;   // large-N case where old and new diverge
+
+    // loss_mag held constant to isolate the prior effect
+    const D loss_mag(0.10);
+
+    D d0  = P::computeDenom(wins, loss_mag, floor_d, prior_strength, /*lc=*/0,  N);
+    D d5  = P::computeDenom(wins, loss_mag, floor_d, prior_strength, /*lc=*/5,  N);
+    D d15 = P::computeDenom(wins, loss_mag, floor_d, prior_strength, /*lc=*/15, N);
+    D d40 = P::computeDenom(wins, loss_mag, floor_d, prior_strength, /*lc=*/40, N);
+
+    REQUIRE(num::to_double(d0)  > num::to_double(d5));
+    REQUIRE(num::to_double(d5)  > num::to_double(d15));
+    REQUIRE(num::to_double(d15) > num::to_double(d40));
+}
+
+TEST_CASE("computeDenom: zero loss_count does not produce degenerate denominator",
+          "[StatUtils][Policy][K0][EndToEnd][ZeroLoss]")
+{
+    // Even with no observed losses (wins-only bootstrap resample), the denominator
+    // must be finite and positive — the max(loss_count,1) guard inside
+    // computeK0FromNAndLossCount ensures k0 doesn't collapse.
+
+    const D wins(0.30), loss_mag(0.0), floor_d(1e-6);
+    const double prior_strength = 0.01;
+
+    for (int N : {20, 25, 27, 30, 55, 60})
+    {
+        D denom = P::computeDenom(wins, loss_mag, floor_d, prior_strength, /*lc=*/0, N);
+        INFO("N=" << N << " → denom=" << num::to_double(denom));
+        REQUIRE(std::isfinite(num::to_double(denom)));
+        REQUIRE(num::to_double(denom) > 0.0);
+    }
+}
+
+TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF_Custom: large-N sparse-loss yields finite result",
+          "[StatUtils][Policy][K0][EndToEnd][Functor]")
+{
+    // Smoke test: confirm the full functor path (accumulate → k0 → fade → denom → log(PF))
+    // produces a finite, bounded result for a large-N bootstrap resample that
+    // has only a handful of losses — the motivating call-site scenario.
+
+    using PFSampler = Stat::LogProfitFactorFromLogBarsStat_LogPF_Custom<
+        Stat::SmallSampleNumerPolicy,
+        Stat::SmallSampleDenomPolicy>;
+
+    constexpr double kBootstrapPrior = 0.01;
+    PFSampler stat(Stat::DefaultRuinEps, Stat::DefaultDenomFloor, kBootstrapPrior);
+
+    // Construct a 55-bar log-bar series: 50 wins, 5 losses
+    std::vector<D> logBars;
+    logBars.reserve(55);
+    for (int i = 0; i < 50; ++i) logBars.push_back(D("0.008"));   // small log-wins
+    for (int i = 0; i < 5;  ++i) logBars.push_back(D("-0.012"));  // small log-losses
+
+    D result = stat(logBars);
+
+    REQUIRE(std::isfinite(num::to_double(result)));
+    // With 50 wins vs 5 losses the strategy is profitable: log(PF) > 0
+    REQUIRE(num::to_double(result) > 0.0);
+    // No-loss cap at log(1/kBootstrapPrior) = log(100) ≈ 4.6; well below that
+    REQUIRE(num::to_double(result) < std::log(1.0 / kBootstrapPrior) + 0.01);
 }

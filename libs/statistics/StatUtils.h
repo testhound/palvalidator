@@ -923,14 +923,29 @@ namespace mkc_timeseries
     // Policy 3: smooth + count-fading with k0 computed from N (best small-sample)
     struct SmoothAdditiveWinCountFadingDenomPolicy
     {
-      static int computeK0FromN(int N)
+      // computeK0FromNAndLossCount: computes virtual prior-loss count for the fade formula.
+      //
+      // k0 represents imaginary prior losses in the Bayesian pseudo-count formula:
+      //   fade = k0 / (k0 + loss_count)
+      //
+      // expected_losses is estimated as round(0.20 * N), matching the original
+      // computeK0FromN scaling.  The factor 0.20 is not a loss-rate estimate; it
+      // is calibrated so that k0 lands in the mid-range of [3, 10] for the typical
+      // N window of [20, 30] (e.g., N=25 → expected_losses=5).
+      //
+      // k0 = min(expected_losses, max(loss_count, 1)), clamped to [3, 10].
+      // Taking the minimum ensures k0 never exceeds what either N or the observed
+      // loss count would suggest independently, preventing over-regularisation in
+      // the rare large-N / sparse-loss case (N~50-60, loss_count~4-8).
+      static int computeK0FromNAndLossCount(int N, int loss_count)
       {
-	// Your preference: k0 ~ 5 for N~20–27
-	// Use k0 = round(0.2*N), clamped.
-	if (N <= 0) return 5;
-
-	const xdouble raw = static_cast<xdouble>(N) * 0.20L;
-	int k0 = static_cast<int>(std::llround(raw));
+	// Use the smaller of N-based expected losses and actual loss_count
+	// to avoid over-estimating k0 when win rate is unusually high.
+	const int expected_losses = static_cast<int>(std::llround(0.20 * N));
+	const int reference       = std::min(expected_losses,
+					     std::max(loss_count, 1));
+	
+	int k0 = reference;
 	if (k0 < 3)  k0 = 3;
 	if (k0 > 10) k0 = 10;
 	return k0;
@@ -946,7 +961,7 @@ namespace mkc_timeseries
 	if (loss_count < 0) loss_count = 0;
 	if (N < 0) N = 0;
 
-	const int k0_int = computeK0FromN(N);
+	const int k0_int = computeK0FromNAndLossCount(N, loss_count);;
 
 	const xdouble k0   = static_cast<xdouble>(k0_int);
 	const xdouble lc   = static_cast<xdouble>(loss_count);
@@ -1009,12 +1024,22 @@ namespace mkc_timeseries
     struct ResultLogPFPolicy
     {
       // Returns log(PF) = log(numer) - log(denom).
-      // This matches the LogPF family behavior. :contentReference[oaicite:3]{index=3}
+    //
+    // Precondition: both numer and denom must be strictly positive.
+    // This is guaranteed by NumeratorFloorPolicy (numer >= floor_d > 0)
+    // and any compliant DenomPolicy (denom >= floor_d > 0).
+    // Throws std::logic_error if violated, since a non-positive value
+    // indicates a policy contract violation, not bad input data.
       static Decimal finalizeFromRatio(const Decimal& numer, const Decimal& denom)
       {
 	// Use long double logs to avoid relying on std::log(Decimal) overloads.
 	const long double n = num::to_long_double(numer);
 	const long double d = num::to_long_double(denom);
+
+	if (n <= 0.0L || d <= 0.0L)
+	  throw std::logic_error(
+				 "ResultLogPFPolicy: numer and denom must be strictly positive; "
+				 "check that NumerPolicy and DenomPolicy honour the floor contract");
 	return Decimal(std::log(n) - std::log(d));
       }
     };
