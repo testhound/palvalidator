@@ -162,96 +162,82 @@ namespace mkc_timeseries
   };
 
   /**
-   * @class BootStrappedLogProfitFactorPolicy
-   * @brief Permutation test policy using a robust log-profit-factor with stop-loss and profit-target priors.
+ * @class BootStrappedLogProfitFactorPolicy
+ * @brief Permutation test policy returning a symmetric log-profit-factor (log PF).
+ *
+ * Computes log(PF) from high-resolution bar returns using
+ * StatUtils::computeLogProfitFactorRobust_LogPF, which applies ruin-epsilon
+ * clipping, denominator flooring, and Bayesian prior strength via
+ * LegacyNumerPolicy and LegacyDenomPolicy.
+ *
+ * Stop-loss and profit-target are not forwarded because
+ * computeLogProfitFactorRobust_LogPF has no corresponding parameters;
+ * the overloads that previously accepted them are deprecated no-ops.
+ *
+ * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+ */
+template <class Decimal>
+class BootStrappedLogProfitFactorPolicy
+{
+public:
+  /**
+   * @brief Compute the symmetric log-profit-factor for a single permuted backtester.
    *
-   * Computes a robust log-profit-factor from high-resolution bar returns using
-   * StatUtils::computeLogProfitFactorRobust_LogPF, which incorporates automatic
-   * return-to-log conversion, ruin-epsilon clipping, denominator flooring, and
-   * Bayesian prior strength. The strategy's stop-loss and profit-target percentages
-   * are extracted from the PalPattern and passed through to the robust computation.
-   *
-   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   * @param bt Single-strategy backtester from which high-resolution returns are extracted.
+   * @return log(PF), or zero if trade/bar thresholds are not met.
+   * @throws BackTesterException If bt does not contain exactly one strategy, or if
+   *         the strategy cannot be downcast to PalStrategy.
    */
-  template <class Decimal>
-  class BootStrappedLogProfitFactorPolicy
+  static Decimal
+  getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
   {
-  public:
-    /**
-     * @brief Compute the robust log-profit-factor incorporating stop-loss and profit-target priors.
-     *
-     * @param bt Single-strategy backtester from which high-resolution returns are extracted.
-     * @return The robust log-profit-factor, or zero if trade/bar thresholds are not met.
-     * @throws BackTesterException If bt does not contain exactly one strategy.
-     */
-    static Decimal
-    getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
-    {
-      // Enforce single-strategy invariant
-      if (bt->getNumStrategies() != 1) {
-        throw BackTesterException(
-				  "BootStrappedLogProfitFactorPolicy::getPermutationTestStatistic - expected one strategy");
-      }
-
-      const unsigned int minTradesRequired = getMinStrategyTrades();
-      const unsigned int minBarsRequired   = getMinBarSeriesSize();
-      const uint32_t numTrades = bt->getNumTrades();
-      auto strat = *(bt->beginStrategies());
-
-      std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
-
-      if (numTrades < minTradesRequired || barSeries.size() < minBarsRequired) {
-        return getMinTradeFailureTestStatistic();
-      }
-
-      // -----------------------------------------------------------------------
-      // Retrieve Strategy Stop Loss and Profit Target (return space)
-      // -----------------------------------------------------------------------
-      double stopLossPct = 0.0;
-      double profitTargetPct = 0.0;
-
-      auto palStrategy = std::dynamic_pointer_cast<PalStrategy<Decimal>>(strat);
-      if (palStrategy)
-	{
-	  auto pattern = palStrategy->getPalPattern();
-	  if (pattern)
-	    {
-	      // Stop Loss
-	      Decimal stopDec = pattern->getStopLossAsDecimal();
-	      auto stopPn = mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(stopDec);
-	      stopLossPct = num::to_double(stopPn.getAsPercent());
-
-	      // Profit Target
-	      Decimal profitTargetDec = pattern->getProfitTargetAsDecimal();
-	      auto profitTargetPn =
-                mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(profitTargetDec);
-	      profitTargetPct = num::to_double(profitTargetPn.getAsPercent());
-	    }
-	}
-
-      // -----------------------------------------------------------------------
-      // Use newer _LogPF interface with automatic return→log conversion
-      // -----------------------------------------------------------------------
-
-      const double prior_strength = 0.01;
-      return StatUtils<Decimal>::computeLogProfitFactorRobust_LogPF(
-								    barSeries,
-								    StatUtils<Decimal>::DefaultRuinEps,
-								    StatUtils<Decimal>::DefaultDenomFloor,
-								    prior_strength,
-								    stopLossPct,
-								    profitTargetPct);
+    // Enforce single-strategy invariant.
+    if (bt->getNumStrategies() != 1) {
+      throw BackTesterException(
+        "BootStrappedLogProfitFactorPolicy::getPermutationTestStatistic - "
+        "expected exactly one strategy");
     }
 
-    /// Minimum number of trades required to attempt this test
-    static unsigned int getMinStrategyTrades() { return 9; }
+    auto strat = *(bt->beginStrategies());
 
-    /// Minimum bar-series length required for statistical stability.
-    static unsigned int getMinBarSeriesSize() { return 10; }
+    // This policy is inherently PalStrategy-specific; a failed cast is a
+    // programming contract violation, not a recoverable runtime condition.
+    if (!std::dynamic_pointer_cast<PalStrategy<Decimal>>(strat)) {
+      throw BackTesterException(
+        "BootStrappedLogProfitFactorPolicy::getPermutationTestStatistic - "
+        "strategy is not a PalStrategy");
+    }
 
-    /// Neutral value returned when minimum trade or bar thresholds are not met.
-    static Decimal getMinTradeFailureTestStatistic()
-    {
+    const uint32_t numTrades = bt->getNumTrades();
+    std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
+
+    if (numTrades < getMinStrategyTrades() ||
+        barSeries.size() < getMinBarSeriesSize()) {
+      return getMinTradeFailureTestStatistic();
+    }
+
+    // prior_strength = 0.01: intentionally weaker than DefaultPriorStrength (0.5)
+    // so the statistic remains sensitive to the permuted data rather than being
+    // pulled toward the prior. Bounds the effective PF ratio to [0.01, 100].
+    static constexpr double prior_strength = 0.01;
+
+    return StatUtils<Decimal>::computeLogProfitFactorRobust_LogPF(
+      barSeries,
+      StatUtils<Decimal>::DefaultRuinEps,
+      StatUtils<Decimal>::DefaultDenomFloor,
+      prior_strength);
+  }
+
+  /// Minimum number of completed trades required to attempt the test.
+  static unsigned int getMinStrategyTrades() { return 9; }
+
+  /// Minimum bar-series length required for statistical stability.
+  static unsigned int getMinBarSeriesSize() { return 10; }
+
+  /// Neutral value returned when minimum trade or bar thresholds are not met.
+  /// Zero is correct: log(PF = 1) = 0 means break-even / no edge.
+  static Decimal getMinTradeFailureTestStatistic()
+  {
     return DecimalConstants<Decimal>::DecimalZero;
   }
 };
@@ -402,113 +388,71 @@ namespace mkc_timeseries
   };
 
   /**
-   * @class BootStrappedSharpeRatioPolicy
-   * @brief Permutation test policy using a BCa-bootstrapped Sharpe ratio over log returns.
+ * @class BootStrappedSharpeRatioPolicy
+ * @brief Permutation test policy returning a Sharpe ratio computed over log returns.
+ *
+ * Converts bar-by-bar percent returns to log space via log(1 + r), then
+ * computes a Sharpe ratio using StatUtils::sharpeFromReturns. The result is
+ * used directly as the permutation test statistic — no bootstrapping is
+ * performed here; the permutation loop in the caller provides the null
+ * distribution.
+ *
+ * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+ */
+template <class Decimal>
+class BootStrappedSharpeRatioPolicy
+{
+public:
+  /**
+   * @brief Compute the Sharpe ratio over log returns for a single permuted backtester.
    *
-   * Converts bar-by-bar returns to log space, then computes a Sharpe ratio using
-   * stationary-block BCa bootstrap with a block length equal to the median holding
-   * period. Returns the lower BCa confidence bound as a conservative scalar for
-   * permutation testing, taming the right tail per Masters.
-   *
-   * @tparam Decimal Numeric type (e.g., num::DefaultNumber).
+   * @param bt Single-strategy backtester from which high-resolution returns are extracted.
+   * @return Sharpe ratio over log(1+r) bars, or zero if trade/bar thresholds are not met.
+   * @throws BackTesterException If bt does not contain exactly one strategy.
    */
-  template <class Decimal>
-  class BootStrappedSharpeRatioPolicy
+  static Decimal
+  getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
   {
-  public:
-    /**
-     * @brief Computes a Sharpe Ratio while taming the tails.
-     *
-     * The statistic is then bootstrapped to generate a p-value, providing a robust
-     * assessment of strategy viability.
-     */
-    static Decimal
-    getPermutationTestStatistic(std::shared_ptr<BackTester<Decimal>> bt)
-    {
-      if (bt->getNumStrategies() != 1) {
-	throw BackTesterException(
-				  "BootStrappedSharpeRatioPolicy::getPermutationTestStatistic - expected one strategy, got "
-				  + std::to_string(bt->getNumStrategies()));
-      }
-
-      // ---- Basic sanity thresholds (same spirit as existing policies)
-      const unsigned int minTradesRequired = getMinStrategyTrades();
-      const unsigned int minBarsRequired   = getMinBarSeriesSize();
-
-      const uint32_t numTrades = bt->getNumTrades();
-      auto strat = *(bt->beginStrategies());
-
-      // Pull every bar-by-bar return (entry→exit and any still-open)
-      std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
-
-      // Convert percent bars → log bars (r_log = log(1 + r_pct)):
-      std::vector<Decimal> logBars;
-      logBars.reserve(barSeries.size());
-      for (const auto& r : barSeries)
-	{
-	  // Use your Decimal math: Decimal one(DecimalConstants<Decimal>::DecimalOne);
-	  logBars.push_back(std::log(DecimalConstants<Decimal>::DecimalOne + r));
-	}
-
-      const uint32_t nBars = static_cast<uint32_t>(barSeries.size());
-
-      if (numTrades < minTradesRequired || nBars < minBarsRequired) {
-	return getMinTradeFailureTestStatistic();
-      }
-
-      const unsigned B     = 1000;   // Number of bootstrap replications
-      const double   alpha = 0.05;   // 95% Confidence interval
-      const double   eps   = 1e-8;   // ε-floor for Sharpe denominator
-
-      auto computeSharpeScore = [&](const std::vector<Decimal>& r) -> Decimal
-      {
-        return StatUtils<Decimal>::sharpeFromReturns(r, eps);
-      };
-
-      // ---- Stationary-block resampler with L = median holding period (min 2)
-      size_t L = 2;
-      {
-	auto& closedPositions = strat->getStrategyBroker().getClosedPositionHistory();
-	const unsigned medHold = closedPositions.getMedianHoldingPeriod();
-	L = std::max<size_t>(2, static_cast<size_t>(medHold));
-      }
-
-      // BCa over stationary blocks
-      mkc_timeseries::StationaryBlockResampler<Decimal> sampler(L);
-
-      struct CompositeScoreFn {
-	decltype(computeSharpeScore)& f;
-	Decimal operator()(const std::vector<Decimal>& v) const { return f(v); }
-      } score{computeSharpeScore};
-
-      using BlockBCA = mkc_timeseries::BCaBootStrap<Decimal, mkc_timeseries::StationaryBlockResampler<Decimal>>;
-      BlockBCA bca(logBars, B, /*confidence=*/1.0 - alpha, score, sampler);
-
-      // Conservative scalar for permutation testing (tames right tail per Masters)
-      const Decimal lowerBound = bca.getLowerBound();
-      return lowerBound;
+    if (bt->getNumStrategies() != 1) {
+      throw BackTesterException(
+        "BootStrappedSharpeRatioPolicy::getPermutationTestStatistic - "
+        "expected exactly one strategy, got "
+        + std::to_string(bt->getNumStrategies()));
     }
 
-    /// Minimum number of trades required to even attempt this test
-    static unsigned int getMinStrategyTrades()
-    {
-      return 5;
+    auto strat = *(bt->beginStrategies());
+    const uint32_t numTrades = bt->getNumTrades();
+    std::vector<Decimal> barSeries = bt->getAllHighResReturns(strat.get());
+
+    // Guard before any computation.
+    if (numTrades < getMinStrategyTrades() ||
+        barSeries.size() < getMinBarSeriesSize()) {
+      return getMinTradeFailureTestStatistic();
     }
 
-    /// Minimum bar-series length required for statistical stability of the Sharpe estimate.
-    static unsigned int getMinBarSeriesSize()
-    {
-      return 20;
-    }
+    // Convert percent bars → log bars: r_log = log(1 + r_pct).
+    std::vector<Decimal> logBars;
+    logBars.reserve(barSeries.size());
+    for (const auto& r : barSeries)
+      logBars.push_back(std::log(DecimalConstants<Decimal>::DecimalOne + r));
 
-    /// Neutral value returned when minimum trade or bar thresholds are not met.
-    static Decimal getMinTradeFailureTestStatistic()
-    {
-        return DecimalConstants<Decimal>::DecimalZero;
-    }
+    static constexpr double eps = 1e-8;  // ε-floor for the Sharpe denominator.
+    return StatUtils<Decimal>::sharpeFromReturns(logBars, eps);
+  }
 
-  private:
-  };
+  /// Minimum number of completed trades required to attempt the test.
+  static unsigned int getMinStrategyTrades() { return 9; }
+
+  /// Minimum bar-series length required for statistical stability of the Sharpe estimate.
+  static unsigned int getMinBarSeriesSize() { return 20; }
+
+  /// Neutral value returned when minimum trade or bar thresholds are not met.
+  /// Zero is correct: a Sharpe of zero means no risk-adjusted edge.
+  static Decimal getMinTradeFailureTestStatistic()
+  {
+    return DecimalConstants<Decimal>::DecimalZero;
+  }
+};
 
   /**
    * @class NonGranularProfitFactorPolicy
