@@ -506,7 +506,10 @@ namespace mkc_timeseries
           return;
 
         // --- Thread-local state (initialised once per worker thread) ---
-        static thread_local RandomMersenne                       tls_rng;
+        static thread_local RandomMersenne tls_rng = RandomMersenne::withStream(
+    static_cast<uint64_t>(
+        std::hash<std::thread::id>{}(std::this_thread::get_id()))
+);
         static thread_local std::unique_ptr<CacheType>           tls_cache;
         static thread_local std::shared_ptr<Portfolio<Decimal>>  tls_portfolio;
         static thread_local std::shared_ptr<BackTester<Decimal>> tls_bt;
