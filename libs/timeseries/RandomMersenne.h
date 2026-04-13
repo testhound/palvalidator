@@ -41,6 +41,27 @@ public:
     seed_u64(seed);
   }
 
+  // Entropy + stream ID: preferred for parallel Monte Carlo workers
+static RandomMersenne withStream(uint64_t stream_id)
+{
+    RandomMersenne r;  // default ctor: auto_seed_256, wasted but unavoidable
+    randutils::auto_seed_256 entropy{};
+    std::array<uint32_t, 2> state_data;
+    entropy.generate(state_data.begin(), state_data.end());
+    uint64_t state = (static_cast<uint64_t>(state_data[1]) << 32)
+                   |  static_cast<uint64_t>(state_data[0]);
+    r.mRandGen.engine().seed(state, stream_id | 1ULL);
+    return r;
+}
+
+// Deterministic: for reproducible testing/debugging only
+static RandomMersenne withSeed(uint64_t seed)
+{
+    RandomMersenne r;
+    r.seed_u64(seed);
+    return r;
+}
+
   // eseed with fresh entropy (already have something similar; keep it if you like)
   void reseed()
   {
@@ -102,6 +123,11 @@ public:
                                       static_cast<uint32_t>(exclusiveUpperBound));
     }
 
+    void seed_stream(uint64_t seed, uint64_t stream_id)
+{
+    // PCG32 stream is controlled by the increment (must be odd)
+    mRandGen.engine().seed(seed, stream_id | 1ULL);
+}
 private:
   randutils::random_generator<pcg32> mRandGen;
   };

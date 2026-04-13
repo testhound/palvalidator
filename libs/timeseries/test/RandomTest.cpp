@@ -50,3 +50,59 @@ TEST_CASE("DrawNumberExclusive(1) always returns zero", "[RandomMersenne]") {
     RandomMersenne rng;
     REQUIRE(rng.DrawNumberExclusive(1u) == 0u);
 }
+
+TEST_CASE("withStream: different stream IDs produce different sequences", "[RandomMersenne]") {
+    auto rng1 = RandomMersenne::withStream(1ULL);
+    auto rng2 = RandomMersenne::withStream(2ULL);
+
+    bool anyDifference = false;
+    for (int i = 0; i < 100; ++i) {
+        if (rng1.DrawNumberExclusive(1000000u) != rng2.DrawNumberExclusive(1000000u)) {
+            anyDifference = true;
+            break;
+        }
+    }
+    REQUIRE(anyDifference);
+}
+
+TEST_CASE("withStream: DrawNumberExclusive within bounds", "[RandomMersenne]") {
+    auto rng = RandomMersenne::withStream(42ULL);
+    for (int i = 0; i < 1000; ++i) {
+        uint32_t val = rng.DrawNumberExclusive(100u);
+        REQUIRE(val < 100u);
+    }
+}
+
+TEST_CASE("withStream: DrawNumber within inclusive bounds", "[RandomMersenne]") {
+    auto rng = RandomMersenne::withStream(42ULL);
+    for (int i = 0; i < 1000; ++i) {
+        uint32_t val = rng.DrawNumber(10u, 20u);
+        REQUIRE(val >= 10u);
+        REQUIRE(val <= 20u);
+    }
+}
+
+TEST_CASE("withStream: thread-id-derived streams differ across threads", "[RandomMersenne]") {
+    std::mutex m;
+    std::vector<uint32_t> firstDraws;
+
+    auto threadFunc = [&]() {
+        auto rng = RandomMersenne::withStream(
+            static_cast<uint64_t>(
+                std::hash<std::thread::id>{}(std::this_thread::get_id())));
+        std::lock_guard<std::mutex> lk(m);
+        firstDraws.push_back(rng.DrawNumberExclusive(
+            std::numeric_limits<uint32_t>::max()));
+    };
+
+    std::vector<std::thread> threads;
+    for (int i = 0; i < 8; ++i)
+        threads.emplace_back(threadFunc);
+    for (auto& t : threads) t.join();
+
+    // All first draws should be distinct (streams on different cycles)
+    std::sort(firstDraws.begin(), firstDraws.end());
+    auto it = std::adjacent_find(firstDraws.begin(), firstDraws.end());
+    REQUIRE(it == firstDraws.end());
+}
+
