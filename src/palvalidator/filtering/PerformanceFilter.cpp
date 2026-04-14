@@ -138,11 +138,12 @@ namespace palvalidator
        outputStream << "Warning: Failed to evaluate strategy '" << strategy->getStrategyName()
       << "' performance: " << e.what() << "\n";
        outputStream << "Excluding strategy from filtered results.\n";
+       mFilteringSummary.incrementFailBootstrapCount();
      }
  }
 
       // Output statistics about skipped strategies due to insufficient trades
-      unsigned int totalStrategies = survivingStrategies.size();
+      const size_t totalStrategies = survivingStrategies.size();
       outputStream << "Strategy processing summary:\n";
       outputStream << "  Total strategies evaluated: " << totalStrategies << "\n";
       outputStream << "  Strategies skipped due to insufficient trades (<9): " << skippedStrategiesCount << "\n";

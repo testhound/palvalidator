@@ -125,69 +125,6 @@ namespace palvalidator::filtering::stages
     }
 
     // -----------------------------------------------------------------------
-    // StopLossAndProfitTargetPriors
-    //
-    // Encapsulates the stop-loss and profit-target percentages extracted from
-    // a PalStrategy pattern and passed as prior information to the
-    // profit-factor statistic functor.
-    //
-    // Extracted once via extractStopLossAndProfitTargetPriors() and shared by
-    // both the bar-level and trade-level profit-factor bootstrap helpers.
-    // -----------------------------------------------------------------------
-    class StopLossAndProfitTargetPriors
-    {
-    public:
-      StopLossAndProfitTargetPriors(double stopLossPct, double profitTargetPct)
-        : mStopLossPct(stopLossPct)
-        , mProfitTargetPct(profitTargetPct)
-      {}
-
-      double getStopLossPct()     const { return mStopLossPct;     }
-      double getProfitTargetPct() const { return mProfitTargetPct; }
-
-    private:
-      double mStopLossPct;
-      double mProfitTargetPct;
-    };
-
-    // -----------------------------------------------------------------------
-    // extractStopLossAndProfitTargetPriors
-    //
-    // Attempts a dynamic_pointer_cast to PalStrategy<Decimal>. If successful
-    // and a pattern is available, reads the stop-loss and profit-target as
-    // decimal fractions (e.g. 0.0255 for 2.55%).
-    //
-    // Falls back to 0.0 / 0.0 if the strategy is not a PalStrategy, or if
-    // the pattern is unavailable.  Both PF bootstrap paths (bar-level and
-    // trade-level) call this helper to guarantee identical prior extraction.
-    // -----------------------------------------------------------------------
-    template <class Decimal>
-    StopLossAndProfitTargetPriors
-    extractStopLossAndProfitTargetPriors(const StrategyAnalysisContext& ctx)
-    {
-      double stopLossPct    = 0.0;
-      double profitTargetPct = 0.0;
-
-      auto palStrat =
-        std::dynamic_pointer_cast<mkc_timeseries::PalStrategy<Decimal>>(ctx.clonedStrategy);
-      if (palStrat)
-        {
-          auto pattern = palStrat->getPalPattern();
-          if (pattern)
-            {
-              stopLossPct =
-                num::to_double(mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(
-                    pattern->getStopLossAsDecimal()).getAsPercent());
-              profitTargetPct =
-                num::to_double(mkc_timeseries::PercentNumber<Decimal>::createPercentNumber(
-                    pattern->getProfitTargetAsDecimal()).getAsPercent());
-            }
-        }
-
-      return StopLossAndProfitTargetPriors(stopLossPct, profitTargetPct);
-    }
-
-    // -----------------------------------------------------------------------
     // requireClonedStrategy
     //
     // Guards the entry of each auto-bootstrap helper.  Throws
@@ -742,12 +679,12 @@ namespace palvalidator::filtering::stages
         return false;
       }
 
-    // Create a concrete backtester implementation instead of the abstract base class
-    ctx.backtester = std::make_shared<mkc_timeseries::DailyBackTester<Num>>();
-    ctx.backtester->addStrategy(ctx.clonedStrategy);
+    // Use BackTesterFactory to create the correct backtester for the timeframe
     try
       {
-        ctx.backtester->backtest();
+        ctx.backtester =
+          mkc_timeseries::BackTesterFactory<Num>::backTestStrategy(
+            ctx.clonedStrategy, ctx.timeFrame, ctx.oosDates);
       }
     catch (const std::exception& e)
       {
@@ -1388,10 +1325,10 @@ namespace palvalidator::filtering::stages
   // ---------------------------------------------------------------------------
 
   double
-  BootstrapAnalysisStage::getAdjusteConfidenceInterval(const Num& confidenceInterval, size_t returnsSize) const
+  BootstrapAnalysisStage::getAdjustedConfidenceInterval(const Num& confidenceInterval, size_t returnsSize) const
   {
-    static Num adjustedLowerInterval = num::fromString<Num>(std::string("0.90"));
-    static Num typicalLowerInterval = num::fromString<Num>(std::string("0.95"));
+    static const Num adjustedLowerInterval = num::fromString<Num>(std::string("0.90"));
+    static const Num typicalLowerInterval = num::fromString<Num>(std::string("0.95"));
     
     if (isTradeLevelBootStrapping())
       return num::to_double(confidenceInterval);
@@ -1422,10 +1359,21 @@ namespace palvalidator::filtering::stages
 
     os << "\n==================== Bootstrap Analysis Stage ====================\n";
 
-    if (ctx.highResReturns.size() < 2)
+    if (isTradeLevelBootStrapping())
       {
-        os << "   [Bootstrap] Skipping: insufficient highResReturns (n < 2).\n";
-        return result;
+        if (ctx.tradeLevelReturns.size() < 2)
+          {
+            os << "   [Bootstrap] Skipping: insufficient tradeLevelReturns (n < 2).\n";
+            return result;
+          }
+      }
+    else
+      {
+        if (ctx.highResReturns.size() < 2)
+          {
+            os << "   [Bootstrap] Skipping: insufficient highResReturns (n < 2).\n";
+            return result;
+          }
       }
 
     if (!initializeBacktester(ctx, os))
@@ -1450,17 +1398,24 @@ namespace palvalidator::filtering::stages
     double confLevel = 0.0;
     
     if (isTradeLevelBootStrapping())
-      confLevel = getAdjusteConfidenceInterval(mConfidenceLevel, ctx.tradeLevelReturns.size());
+      confLevel = getAdjustedConfidenceInterval(mConfidenceLevel, ctx.tradeLevelReturns.size());
     else
-      confLevel = getAdjusteConfidenceInterval(mConfidenceLevel, ctx.highResReturns.size());
+      confLevel = getAdjustedConfidenceInterval(mConfidenceLevel, ctx.highResReturns.size());
 
     os << "BootstrapAnalysisStage::execute actual confidence interval = " << confLevel << std::endl;
     
-    // 3) Arithmetic mean via BCa
-    const auto bcaMean =
-      runBCaMeanBootstrap(ctx, confLevel, annParams.barsPerYear, blockLength, os);
-    result.lbMeanPeriod             = bcaMean.getLowerBoundPeriod();
-    result.annualizedLowerBoundMean = bcaMean.getLowerBoundAnnualized();
+    // 3) Arithmetic mean via BCa (always uses bar-level highResReturns)
+    if (ctx.highResReturns.size() >= 2)
+      {
+        const auto bcaMean =
+          runBCaMeanBootstrap(ctx, confLevel, annParams.barsPerYear, blockLength, os);
+        result.lbMeanPeriod             = bcaMean.getLowerBoundPeriod();
+        result.annualizedLowerBoundMean = bcaMean.getLowerBoundAnnualized();
+      }
+    else
+      {
+        os << "   [Bootstrap] BCa (Mean): skipped (highResReturns n < 2).\n";
+      }
 
     // 4) Geometric mean (CAGR) via StrategyAutoBootstrap
     try
