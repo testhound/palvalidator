@@ -245,7 +245,7 @@ namespace palvalidator::filtering::stages
       Num mLowerBoundPeriod;
     };
 
-    double getAdjusteConfidenceInterval(const Num& confidenceInterval, size_t returnsSize) const;
+    double getAdjustedConfidenceInterval(const Num& confidenceInterval, size_t returnsSize) const;
     
     // Core computation methods
     /**

@@ -4,7 +4,7 @@
 // Written by Michael K. Collison <collison956@gmail.com>, July 2016
 //
 #ifndef __TRADING_POSITION_MANAGER_EXCEPTION_H
-#define __TRADING_POSITION_MANAGER EXCEPTION_H 1
+#define __TRADING_POSITION_MANAGER_EXCEPTION_H 1
 
 #include <exception>
 

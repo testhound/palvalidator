@@ -32,7 +32,7 @@ namespace palvalidator::filtering::stages
                                  std::ostream& os) const;
 
   private:
-    const TradingHurdleCalculator& mHurdleCalculator;
+    TradingHurdleCalculator mHurdleCalculator;
   };
 
 } // namespace palvalidator::filtering::stages
