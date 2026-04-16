@@ -602,10 +602,10 @@ namespace palvalidator
 	  m_bca_rejected_for_length(bcaRejectedForLength),
 	  m_bca_rejected_for_domain(bcaRejectedForDomain),
 	  m_bca_rejected_for_non_finite(bcaRejectedForNonFinite),
+	  m_bca_rejected_for_score(bcaRejectedForScore),
 	  m_num_candidates(numCandidates),
 	  m_score_breakdowns(std::move(scoreBreakdowns)),
-	  m_tie_epsilon(tie_epsilon),
-	  m_bca_rejected_for_score(bcaRejectedForScore)
+	  m_tie_epsilon(tie_epsilon)
 	{}
 
 	// -- Existing Getters (unchanged) --
