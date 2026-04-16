@@ -33,8 +33,14 @@ namespace palvalidator::diagnostics
       BcaAccelHardFail        = 1u << 5,  // |accel| exceeds hard limit
       PercentileTInnerFails   = 1u << 6,  // Percentile-T inner fail rate too high (diagnostic)
       PercentileTLowEffB      = 1u << 7,  // Percentile-T effective B fraction too low (diagnostic)
-      MOutOfNHardFailure      = (1 << 8)  // distribution_degenerate or insufficient_spread
-      // bits 8..31 reserved
+      MOutOfNHardFailure      = 1u << 8,  // distribution_degenerate or insufficient_spread
+      BcaSkewHardFail         = 1u << 9,  // |skew_boot| exceeds kBcaSkewHardLimit
+      BcaAccelUnreliable      = 1u << 10, // Jackknife acceleration dominated by single outlier
+      BcaTransformNonMonotone = 1u << 11, // BCa percentile-transform mapping inverted (α₁ > α₂)
+      BcaMinSampleSize        = 1u << 12, // n < kBcaMinSampleSize (jackknife unreliable)
+      PercentileTMinSampleSize = 1u << 13, // n < kPercentileTMinSampleSize (inner SE* unreliable)
+      BoundsNonFinite         = 1u << 14  // Interval lower or upper bound is NaN/Inf
+      // bits 15..31 reserved
     };
 
   enum class CandidateFlag : std::uint32_t
@@ -117,6 +123,13 @@ namespace palvalidator::diagnostics
     append(CandidateReject::BcaAccelHardFail,      "BCA_ACCEL_EXCEEDED");
     append(CandidateReject::PercentileTInnerFails, "PCTT_INNER_FAILURES");
     append(CandidateReject::PercentileTLowEffB,    "PCTT_LOW_EFFECTIVE_B");
+    append(CandidateReject::MOutOfNHardFailure,    "MOUTN_HARD_FAILURE");
+    append(CandidateReject::BcaSkewHardFail,       "BCA_SKEW_EXCEEDED");
+    append(CandidateReject::BcaAccelUnreliable,    "BCA_ACCEL_UNRELIABLE");
+    append(CandidateReject::BcaTransformNonMonotone, "BCA_TRANSFORM_NON_MONOTONE");
+    append(CandidateReject::BcaMinSampleSize,      "BCA_MIN_SAMPLE_SIZE");
+    append(CandidateReject::PercentileTMinSampleSize, "PCTT_MIN_SAMPLE_SIZE");
+    append(CandidateReject::BoundsNonFinite,       "BOUNDS_NON_FINITE");
 
     return oss.str();
   }

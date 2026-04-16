@@ -705,13 +705,20 @@ namespace mkc_timeseries
     static constexpr bool   DefaultCompress      = true;
     
     static inline std::vector<Decimal>
-    percentBarsToLogBars(const std::vector<Decimal>& pct)
+    percentBarsToLogBars(const std::vector<Decimal>& pct,
+			 double ruin_eps = StatUtils::DefaultRuinEps)
     {
       std::vector<Decimal> out;
       out.reserve(pct.size());
       const auto one = DecimalConstants<Decimal>::DecimalOne;
+      const Decimal d_ruin(ruin_eps);
       for (const auto& r : pct)
-	out.push_back(std::log(one + r));
+	{
+	  Decimal growth = one + r;
+	  if (growth <= d_ruin)
+	    growth = d_ruin;
+	  out.push_back(std::log(growth));
+	}
       return out;
     }
 
@@ -812,7 +819,7 @@ namespace mkc_timeseries
     static inline Decimal sharpeFromReturns(const std::vector<Decimal>& data, double eps = 1e-8)
     {
       auto [meanDec, varDec] = StatUtils<Decimal>::computeMeanAndVarianceFast(data);
-	
+
       const double var = num::to_double(varDec);
       const double sd  = std::sqrt(std::max(var + eps, eps));
       if (sd == 0.0)
@@ -961,7 +968,7 @@ namespace mkc_timeseries
 	if (loss_count < 0) loss_count = 0;
 	if (N < 0) N = 0;
 
-	const int k0_int = computeK0FromNAndLossCount(N, loss_count);;
+	const int k0_int = computeK0FromNAndLossCount(N, loss_count);
 
 	const xdouble k0   = static_cast<xdouble>(k0_int);
 	const xdouble lc   = static_cast<xdouble>(loss_count);
@@ -1643,14 +1650,14 @@ namespace mkc_timeseries
 	  double m = 1 + num::to_double(r);
 	  if (m <= 0)
 	    continue;
-	    
+
 	  Decimal lr(std::log(m));
 	  if (r > DecimalConstants<Decimal>::DecimalZero)
 	    lw += lr;
 	  else
 	    ll += lr;
 	}
-	
+
       return computeFactor(lw, ll, compressResult);
     }
 
@@ -2605,6 +2612,9 @@ namespace mkc_timeseries
         throw std::invalid_argument("quantileType7Sorted: input vector must not be empty");
       }
 
+      // Single-element vector: the only value is the quantile at every p.
+      if (sorted.size() == 1) return sorted.front();
+
       // Handle edge cases at boundaries
       if (p <= 0.0) return sorted.front();
       if (p >= 1.0) return sorted.back();
@@ -2661,6 +2671,9 @@ namespace mkc_timeseries
       if (data.empty()) {
         throw std::invalid_argument("quantileType7Unsorted: input vector must not be empty");
       }
+
+      // Single-element vector: the only value is the quantile at every p.
+      if (data.size() == 1) return data.front();
 
       // Handle edge cases at boundaries
       if (p <= 0.0) return *std::min_element(data.begin(), data.end());

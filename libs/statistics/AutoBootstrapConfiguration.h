@@ -60,6 +60,12 @@ namespace AutoBootstrapConfiguration
   /// Both sites must agree — a single constant here guarantees that.
   constexpr std::size_t kMinEffectiveBAbsolute = 200;
 
+  /// Minimum fraction of requested bootstrap replicates that must be effective
+  /// for BCa (and by default, all methods except PercentileT) to pass the
+  /// effective-B gate. Referenced by passesEffectiveBGate (AutoBootstrapScoring.h)
+  /// and the diagnostic mirror in analyzeBcaRejection (AutoBootstrapSelector.h).
+  constexpr double kBcaMinEffectiveFraction = 0.90;
+
   // ===========================================================================
   // PERCENTILE-T HARD REJECTION LIMITS
   // ===========================================================================
