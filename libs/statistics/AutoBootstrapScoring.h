@@ -238,58 +238,68 @@ namespace palvalidator
       {
       public:
         /**
-         * @brief Constructs a BCa rejection analysis with all parameters
+         * @brief Constructs a BCa rejection analysis with all parameters.
          *
-         * @param hasBcaCandidate True if a BCa candidate was present in the tournament
-         * @param bcaChosen True if BCa was ultimately selected as the winner
-         * @param rejectedForInstability True if BCa was rejected due to extreme z0/accel parameters
-         * @param rejectedForLength True if BCa was rejected due to excessive length penalty
-         * @param rejectedForDomain True if BCa was rejected due to domain/support violations
-         * @param rejectedForNonFinite True if BCa was rejected due to non-finite scores
+         * @param hasBcaCandidate True if a BCa candidate was present in the tournament.
+         * @param bcaChosen True if BCa was ultimately selected as the winner.
+         * @param rejectedForInstability True if BCa was rejected due to extreme z0/accel parameters.
+         * @param rejectedForLength True if BCa was rejected due to excessive length penalty.
+         * @param rejectedForDomain True if BCa was rejected due to domain/support violations.
+         * @param rejectedForNonFinite True if BCa was rejected due to non-finite scores.
+         * @param rejectedForScore True if BCa passed all hard gates but was outscored
+         *        by another method in the tournament. This disambiguates the "fairly
+         *        outscored" case from the "all flags false" diagnostic gap (BUG-4).
          */
         BcaRejectionAnalysis(bool hasBcaCandidate,
                            bool bcaChosen,
                            bool rejectedForInstability,
                            bool rejectedForLength,
                            bool rejectedForDomain,
-                           bool rejectedForNonFinite)
+                           bool rejectedForNonFinite,
+                           bool rejectedForScore = false)
           : m_has_bca_candidate(hasBcaCandidate),
             m_bca_chosen(bcaChosen),
             m_rejected_for_instability(rejectedForInstability),
             m_rejected_for_length(rejectedForLength),
             m_rejected_for_domain(rejectedForDomain),
-            m_rejected_for_non_finite(rejectedForNonFinite)
+            m_rejected_for_non_finite(rejectedForNonFinite),
+            m_rejected_for_score(rejectedForScore)
         {}
-        
+
         /**
-         * @brief Gets whether a BCa candidate was present in the tournament
+         * @brief Gets whether a BCa candidate was present in the tournament.
          */
         bool hasBcaCandidate() const { return m_has_bca_candidate; }
-        
+
         /**
-         * @brief Gets whether BCa was selected as the winner
+         * @brief Gets whether BCa was selected as the winner.
          */
         bool bcaChosen() const { return m_bca_chosen; }
-        
+
         /**
-         * @brief Gets whether BCa was rejected due to parameter instability
+         * @brief Gets whether BCa was rejected due to parameter instability.
          */
         bool rejectedForInstability() const { return m_rejected_for_instability; }
-        
+
         /**
-         * @brief Gets whether BCa was rejected due to excessive length penalty
+         * @brief Gets whether BCa was rejected due to excessive length penalty.
          */
         bool rejectedForLength() const { return m_rejected_for_length; }
-        
+
         /**
-         * @brief Gets whether BCa was rejected due to domain violations
+         * @brief Gets whether BCa was rejected due to domain violations.
          */
         bool rejectedForDomain() const { return m_rejected_for_domain; }
-        
+
         /**
-         * @brief Gets whether BCa was rejected due to non-finite scores
+         * @brief Gets whether BCa was rejected due to non-finite scores.
          */
         bool rejectedForNonFinite() const { return m_rejected_for_non_finite; }
+
+        /**
+         * @brief Gets whether BCa passed all hard gates but was outscored by another method.
+         */
+        bool rejectedForScore() const { return m_rejected_for_score; }
 
       private:
         bool m_has_bca_candidate;
@@ -298,6 +308,7 @@ namespace palvalidator
         bool m_rejected_for_length;
         bool m_rejected_for_domain;
         bool m_rejected_for_non_finite;
+        bool m_rejected_for_score;
       };
 
       /**
@@ -432,20 +443,15 @@ namespace palvalidator
 	    AutoBootstrapConfiguration::kMinEffectiveBAbsolute;
         
 	  // Method-specific minimum fraction requirements
-	  double min_frac = 0.90;
-	
+	  double min_frac = AutoBootstrapConfiguration::kBcaMinEffectiveFraction;
+
 	  switch (candidate.getMethod())
 	    {
 	    case MethodId::PercentileT:
 	      min_frac = AutoBootstrapConfiguration::kPercentileTMinEffectiveFraction;
 	      break;
 
-	    case MethodId::BCa:
-	      min_frac = 0.90;
-	      break;
-
 	    default:
-	      min_frac = 0.90;
 	      break;
 	    }
         
@@ -569,7 +575,7 @@ namespace palvalidator
         {
           const Candidate& candidate = m_candidates[index];
           const double score = candidate.getScore();
-          
+
           if (!m_found_any)
           {
             m_found_any = true;
@@ -578,14 +584,14 @@ namespace palvalidator
             m_tie_epsilon_used = relativeEpsilon(score, score);
             return;
           }
-          
+
           const double eps = relativeEpsilon(score, m_best_score);
-          m_tie_epsilon_used = eps;
-          
+
           if (score < m_best_score - eps)
           {
             m_best_score = score;
             m_winner_idx = index;
+            m_tie_epsilon_used = eps;
           }
           else if (std::fabs(score - m_best_score) <= eps)
           {
@@ -596,11 +602,12 @@ namespace palvalidator
               const Candidate& current_winner = m_candidates[m_winner_idx.value()];
               const int pBest = methodPreference(current_winner.getMethod());
               const int pCur  = methodPreference(candidate.getMethod());
-              
+
               if (pCur < pBest)
               {
                 m_best_score = score;
                 m_winner_idx = index;
+                m_tie_epsilon_used = eps;
               }
             }
           }

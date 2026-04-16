@@ -44,8 +44,8 @@
 //     - StdAsyncExecutor      : portable; good for small numbers of long tasks
 //     - BoostRunnerExecutor   : integrates with an existing Boost runner thread pool
 
-#ifndef __BCA_BOOTSTRAP_H
-#define __BCA_BOOTSTRAP_H
+#ifndef MKC_BCA_BOOTSTRAP_H
+#define MKC_BCA_BOOTSTRAP_H
 
 #include <vector>
 #include <numeric>
@@ -1330,7 +1330,9 @@ struct IIDResampler
     StatFn                         m_statistic;
     Sampler                        m_sampler;
 
-    // Provider storage: zero-size when Provider = void (no overhead).
+    // Provider storage: minimal (1 byte + padding) when Provider = void.
+    // char is not an empty class, so [[no_unique_address]] cannot elide it.
+    // The overhead is negligible; an empty struct could eliminate it entirely.
     [[no_unique_address]]
     std::conditional_t<std::is_void_v<Provider>, char, Provider> m_provider{};
 
@@ -1958,4 +1960,4 @@ struct IIDResampler
 
 } // namespace mkc_timeseries
 
-#endif // __BCA_BOOTSTRAP_H
+#endif // MKC_BCA_BOOTSTRAP_H

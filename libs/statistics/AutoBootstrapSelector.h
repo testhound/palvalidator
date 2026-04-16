@@ -774,6 +774,11 @@ namespace palvalidator
 	if (!passes_effective_b_gate)
 	  mask |= CandidateReject::EffectiveBLow;
 
+	// 4) Non-finite interval bounds (hard gate for all methods)
+	if (!std::isfinite(num::to_double(candidate.getLower())) ||
+	    !std::isfinite(num::to_double(candidate.getUpper())))
+	  mask |= CandidateReject::BoundsNonFinite;
+
 	if (candidate.getMethod() == MethodId::BCa)
 	  {
 	    const double z0    = candidate.getZ0();
@@ -787,6 +792,19 @@ namespace palvalidator
 
 	    if (std::isfinite(accel) && std::fabs(accel) > AutoBootstrapConfiguration::kBcaAHardLimit)
 	      mask |= CandidateReject::BcaAccelHardFail;
+
+	    if (candidate.getN() < AutoBootstrapConfiguration::kBcaMinSampleSize)
+	      mask |= CandidateReject::BcaMinSampleSize;
+
+	    if (!candidate.getAccelIsReliable())
+	      mask |= CandidateReject::BcaAccelUnreliable;
+
+	    if (!candidate.getBcaTransformMonotone())
+	      mask |= CandidateReject::BcaTransformNonMonotone;
+
+	    if (std::isfinite(candidate.getSkewBoot()) &&
+		std::fabs(candidate.getSkewBoot()) > AutoBootstrapConfiguration::kBcaSkewHardLimit)
+	      mask |= CandidateReject::BcaSkewHardFail;
 	  }
 
 	if (candidate.getMethod() == MethodId::MOutOfN)
@@ -805,6 +823,9 @@ namespace palvalidator
 
 	if (candidate.getMethod() == MethodId::PercentileT)
 	  {
+	    if (candidate.getN() < AutoBootstrapConfiguration::kPercentileTMinSampleSize)
+	      mask |= CandidateReject::PercentileTMinSampleSize;
+
 	    const double inner_fail_rate = candidate.getInnerFailureRate();
 	    if (std::isfinite(inner_fail_rate) &&
 		inner_fail_rate > AutoBootstrapConfiguration::kPercentileTInnerFailThreshold)
@@ -1728,20 +1749,13 @@ namespace palvalidator
           // Without this, a BCa candidate eliminated solely by low effective_B
           // would leave all four rejection flags false while bca_chosen=false,
           // silently misreporting in SelectionDiagnostics.
-          //
-          // BUG-5 NOTE: kMinEffectiveAbsolute (200) is also defined as a local
-          // constexpr inside CandidateGateKeeper::passesEffectiveBGate in
-          // AutoBootstrapScoring.h. Both values MUST remain in sync. The correct
-          // long-term fix is to promote this constant to
-          // AutoBootstrapConfiguration::kMinEffectiveBAbsolute and reference it
-          // from both sites.
           {
-
             const std::size_t requested_B = bca.getBOuter();
             if (requested_B >= 2)
             {
               const std::size_t required_by_frac = static_cast<std::size_t>(
-                std::ceil(0.90 * static_cast<double>(requested_B)));
+                std::ceil(AutoBootstrapConfiguration::kBcaMinEffectiveFraction
+                          * static_cast<double>(requested_B)));
               const std::size_t required =
                 std::max(AutoBootstrapConfiguration::kMinEffectiveBAbsolute, required_by_frac);
               if (bca.getEffectiveB() < required)
@@ -1758,22 +1772,18 @@ namespace palvalidator
           break; // Only one BCa candidate
         }
 
-        // BUG-4 NOTE: BcaRejectionAnalysis currently has no "rejected_for_score"
-        // field. When BCa passes all hard gates above but is simply outscored by
-        // another method, all four rejection flags remain false while bca_chosen is
-        // also false. Callers can detect this "fairly outscored" state by checking:
-        //   has_bca_candidate=true  &&  bca_chosen=false
-        //   &&  !rejected_for_instability  &&  !rejected_for_length
-        //   &&  !rejected_for_domain       &&  !rejected_for_non_finite
-        // The complete fix is to add a rejected_for_score field to BcaRejectionAnalysis
-        // in AutoBootstrapScoring.h so the tournament result is unambiguously reported.
-        
+        // If BCa passed all hard gates but was not chosen, it was fairly outscored.
+        const bool rejected_for_score =
+          !rejected_for_instability && !rejected_for_length &&
+          !rejected_for_domain && !rejected_for_non_finite;
+
         return detail::BcaRejectionAnalysis(true, // has_bca_candidate
 					    false, // bca_chosen (we already checked this)
 					    rejected_for_instability,
 					    rejected_for_length,
 					    rejected_for_domain,
-					    rejected_for_non_finite
+					    rejected_for_non_finite,
+					    rejected_for_score
 					    );
       }
       
@@ -2008,7 +2018,8 @@ namespace palvalidator
           bca_analysis.rejectedForNonFinite(),
           enriched.size(),
           std::move(breakdowns),
-          tie_epsilon_used);
+          tie_epsilon_used,
+          bca_analysis.rejectedForScore());
         
         return Result(winner.getMethod(), winner, enriched, diagnostics);
       }

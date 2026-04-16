@@ -572,6 +572,8 @@ namespace palvalidator
 	 * @param numCandidates Total number of candidates evaluated (default: 0)
 	 * @param scoreBreakdowns Detailed score decomposition for all candidates (default: empty)
 	 * @param tie_epsilon [V2] Relative tolerance used for tie detection (default: 1e-10)
+	 * @param bcaRejectedForScore True if BCa passed all hard gates but was fairly
+	 *        outscored by another method (default: false).
 	 */
 	SelectionDiagnostics(
 			     MethodId     chosenMethod,
@@ -587,8 +589,8 @@ namespace palvalidator
 			     bool         bcaRejectedForNonFinite   = false,
 			     std::size_t  numCandidates             = 0,
 			     std::vector<ScoreBreakdown> scoreBreakdowns = std::vector<ScoreBreakdown>(),
-			     // NEW V2 PARAMETER (default for backward compatibility)
-			     double       tie_epsilon = 1e-10)
+			     double       tie_epsilon = 1e-10,
+			     bool         bcaRejectedForScore = false)
 	: m_chosen_method(chosenMethod),
 	  m_chosen_method_name(std::move(chosenMethodName)),
 	  m_chosen_score(chosenScore),
@@ -602,7 +604,8 @@ namespace palvalidator
 	  m_bca_rejected_for_non_finite(bcaRejectedForNonFinite),
 	  m_num_candidates(numCandidates),
 	  m_score_breakdowns(std::move(scoreBreakdowns)),
-	  m_tie_epsilon(tie_epsilon)
+	  m_tie_epsilon(tie_epsilon),
+	  m_bca_rejected_for_score(bcaRejectedForScore)
 	{}
 
 	// -- Existing Getters (unchanged) --
@@ -617,6 +620,10 @@ namespace palvalidator
 	bool wasBCaRejectedForLength() const { return m_bca_rejected_for_length; }
 	bool wasBCaRejectedForDomain() const { return m_bca_rejected_for_domain; }
 	bool wasBCaRejectedForNonFiniteParameters() const { return m_bca_rejected_for_non_finite; }
+	/**
+	 * @brief Returns true if BCa passed all hard gates but was fairly outscored.
+	 */
+	bool wasBCaRejectedForScore() const { return m_bca_rejected_for_score; }
 	std::size_t getNumCandidates() const { return m_num_candidates; }
 	bool hasScoreBreakdowns() const { return !m_score_breakdowns.empty(); }
 	const std::vector<ScoreBreakdown>& getScoreBreakdowns() const { return m_score_breakdowns; }
@@ -640,10 +647,9 @@ namespace palvalidator
 	bool        m_bca_rejected_for_length;
 	bool        m_bca_rejected_for_domain;
 	bool        m_bca_rejected_for_non_finite;
+	bool        m_bca_rejected_for_score;
 	std::size_t m_num_candidates;
 	std::vector<ScoreBreakdown> m_score_breakdowns;
-    
-	// NEW V2 field
 	double m_tie_epsilon;
       };
 

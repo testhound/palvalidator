@@ -240,14 +240,14 @@ namespace palvalidator
        */
       MOutOfNPercentileBootstrap(std::size_t B,
                                  double      confidence_level,
-                                 double      m_ratio,
+                                 double      ratio,
                                  const Resampler& resampler,
                                  bool        rescale_to_n = false,
 				 IntervalType interval_type = IntervalType::TWO_SIDED,
                                  std::shared_ptr<Executor> exec = nullptr)
         : m_B(B)
         , m_CL(confidence_level)
-        , m_ratio(m_ratio)
+        , m_ratio(ratio)
         , m_resampler(resampler)
         , m_rescale_to_n(rescale_to_n)
         , m_exec(exec ? std::move(exec) : std::make_shared<Executor>())
@@ -400,13 +400,13 @@ namespace palvalidator
       static MOutOfNPercentileBootstrap
       createFixedRatio(std::size_t B,
                        double      confidence_level,
-                       double      m_ratio,
+                       double      ratio,
                        const Resampler& resampler,
                        bool        rescale_to_n = false,
 		       IntervalType interval_type = IntervalType::TWO_SIDED,
                        std::shared_ptr<Executor> exec = nullptr)
       {
-        return MOutOfNPercentileBootstrap(B, confidence_level, m_ratio, resampler,
+        return MOutOfNPercentileBootstrap(B, confidence_level, ratio, resampler,
 					  rescale_to_n, interval_type, std::move(exec));
       }
 
@@ -617,18 +617,8 @@ namespace palvalidator
         {
           auto policy = std::static_pointer_cast<
             IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>>(m_ratioPolicy);
-
-          if (policy)
-          {
-            actual_ratio = policy->computeRatioWithRefinement(
-              x, ctx, m_CL, m_B, probeMaker, diagnosticLog);
-          }
-          else
-          {
-            TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic> defaultPolicy;
-            actual_ratio = defaultPolicy.computeRatioWithRefinement(
-              x, ctx, m_CL, m_B, probeMaker, diagnosticLog);
-          }
+          actual_ratio = policy->computeRatioWithRefinement(
+            x, ctx, m_CL, m_B, probeMaker, diagnosticLog);
         }
 
         // 4. Compute m_sub and clamp to valid range
@@ -1416,16 +1406,15 @@ namespace palvalidator
           "MOutOfNPercentileBootstrap::computeAdaptiveRatio() is not supported for "
           "trade-level bootstrapping (SampleType != Decimal). "
           "Use the fixed-ratio run() overload with IIDResampler<Trade<Decimal>> instead.");
-        auto policy = std::static_pointer_cast<
-          IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>>(m_ratioPolicy);
-
-        if (policy)
+        if (!m_ratioPolicy)
         {
-          return policy->computeRatio(x, ctx, m_CL, m_B, diagnosticLog);
+          TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic> defaultPolicy;
+          return defaultPolicy.computeRatio(x, ctx, m_CL, m_B, diagnosticLog);
         }
 
-        TailVolatilityAdaptivePolicy<Decimal, BootstrapStatistic> defaultPolicy;
-        return defaultPolicy.computeRatio(x, ctx, m_CL, m_B, diagnosticLog);
+        auto policy = std::static_pointer_cast<
+          IAdaptiveRatioPolicy<Decimal, BootstrapStatistic>>(m_ratioPolicy);
+        return policy->computeRatio(x, ctx, m_CL, m_B, diagnosticLog);
       }
 
     private:
@@ -1436,7 +1425,11 @@ namespace palvalidator
       bool         m_rescale_to_n; /**< If true, rescale CI from m to n. */
       mutable std::shared_ptr<Executor> m_exec;   /**< Parallel executor. */
       mutable uint32_t           m_chunkHint{0};  /**< Chunk size hint for parallel_for. */
-      std::shared_ptr<void>      m_ratioPolicy;   /**< Type-erased adaptive ratio policy. */
+      // Type-erased adaptive ratio policy. Stored as shared_ptr<void> because
+      // IAdaptiveRatioPolicy is templated on BootstrapStatistic, but that parameter
+      // does not appear in any virtual method signature — the cast back via
+      // static_pointer_cast is safe regardless of the BootstrapStatistic used.
+      std::shared_ptr<void>      m_ratioPolicy;
 
       /** @name Diagnostics from most recent run (protected by m_diagMutex)
        *  @{ */
