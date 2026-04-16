@@ -2470,12 +2470,15 @@ namespace palvalidator
       // --- Aggregate (median/min) and compute hurdle ----------------------------
       auto lbs = r.sliceLBs;
       std::sort(lbs.begin(), lbs.end());
-      r.medianLB = lbs[lbs.size() / 2];
+      {
+        const std::size_t sz = lbs.size();
+        r.medianLB = (sz % 2 == 1)
+          ? lbs[sz / 2]
+          : (lbs[sz / 2 - 1] + lbs[sz / 2]) / Num(2);
+      }
       r.minLB    = lbs.front();
 
       const Num annualizedTrades = Num(bt->getEstimatedAnnualizedTrades());
-      //const auto hurdles = calculateCostHurdles(annualizedTrades, os);
-      //const Num required = hurdles.finalRequiredReturn;
 
       const auto H = makeCostStressHurdles<Num>(mHurdleCalculator,
 						oosSpreadStats,
@@ -2579,7 +2582,12 @@ namespace palvalidator
       // --- Aggregate (median/min) and compute hurdle ---
       auto lbs = r.sliceLBs;
       std::sort(lbs.begin(), lbs.end());
-      r.medianLB = lbs[lbs.size() / 2];
+      {
+        const std::size_t sz = lbs.size();
+        r.medianLB = (sz % 2 == 1)
+          ? lbs[sz / 2]
+          : (lbs[sz / 2 - 1] + lbs[sz / 2]) / Num(2);
+      }
       r.minLB    = lbs.front();
 
       const Num annualizedTrades = Num(bt->getEstimatedAnnualizedTrades());
@@ -2709,47 +2717,6 @@ namespace palvalidator
                                DecimalConstants<Num>::DecimalZero, DecimalConstants<Num>::DecimalZero,
                                std::string("Failed - ") + e.what());
         }
-    }
-
-    /**
-     * @brief Finalizes the analysis state and prints the verdict.
-     *
-     * Objective:
-     * Updates the member variables `mMetaStrategyPassed`, `mAnnualizedLowerBound`,
-     * and `mRequiredReturn` based on the results of the primary gate.
-     * Prints the final "PASS" or "FAIL" banner for the Unified Strategy.
-     *
-     * Arguments:
-     * bootstrapResults: Outcome of the primary bootstrap.
-     * costResults:      The calculated hurdles.
-     * strategyCount:    Number of components in the portfolio.
-     * outputStream:     Logging stream.
-     */
-    void MetaStrategyAnalyzer::reportFinalResults(
-        const BootstrapResults& bootstrapResults,
-        const CostHurdleResults& costResults,
-        size_t strategyCount,
-        std::ostream& outputStream)
-    {
-      // Store results
-      mAnnualizedLowerBound = bootstrapResults.lbGeoAnn;
-      mRequiredReturn = costResults.finalRequiredReturn;
-      mMetaStrategyPassed = (bootstrapResults.lbGeoAnn > costResults.finalRequiredReturn);
-
-      // Output results for unified meta-strategy
-      outputStream << "\n[Meta] Unified PalMetaStrategy with " << strategyCount << " patterns:\n";
-
-      outputStream << "      Annualized Lower Bound (GeoMean, compounded): " << (bootstrapResults.lbGeoAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-                   << "      Annualized Lower Bound (Mean, compounded):    " << (bootstrapResults.lbMeanAnn * DecimalConstants<Num>::DecimalOneHundred) << "%\n"
-                   << "      Required Return (max(cost,riskfree)): "
-                   << (costResults.finalRequiredReturn * DecimalConstants<Num>::DecimalOneHundred) << "%\n";
-
-      if (mMetaStrategyPassed)
-          outputStream << "      RESULT: ✓ Unified Metastrategy PASSES\n";
-      else
-          outputStream << "      RESULT: ✗ Unified Metastrategy FAILS\n";
-
-      outputStream << "      Costs: $0 commission; per-side slippage uses configured floor and may be calibrated by OOS spreads.\n";
     }
 
     /**
@@ -2909,19 +2876,24 @@ namespace palvalidator
       performanceFile.fill(original_fill);
       performanceFile.precision(original_precision);
 
-      // Find and report best performance
-      auto bestResult = std::max_element(allResults.begin(), allResults.end(),
-          [](const PyramidResults& a, const PyramidResults& b) {
-              return a.getAnnualizedLowerBound() < b.getAnnualizedLowerBound();
-          });
-      
-      if (bestResult != allResults.end())
+      // Find and report best performance (passers only)
+      const PyramidResults* bestPasser = nullptr;
+      for (const auto& r : allResults)
+      {
+        if (r.getPassed())
+        {
+          if (!bestPasser || r.getAnnualizedLowerBound() > bestPasser->getAnnualizedLowerBound())
+            bestPasser = &r;
+        }
+      }
+
+      if (bestPasser != nullptr)
         {
           performanceFile << std::endl;
-          performanceFile << "Best Performance: Pyramid Level " << bestResult->getPyramidLevel()
-                         << " (" << (bestResult->getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred)
+          performanceFile << "Best Performance: Pyramid Level " << bestPasser->getPyramidLevel()
+                         << " (" << (bestPasser->getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred)
                          << "% annualized lower bound)" << std::endl;
-          performanceFile << "Recommended Configuration: " << bestResult->getDescription() << std::endl;
+          performanceFile << "Recommended Configuration: " << bestPasser->getDescription() << std::endl;
         }
 
       performanceFile.close();
@@ -3126,50 +3098,65 @@ namespace palvalidator
       outputStream.fill(original_fill);
       outputStream.precision(original_precision);
 
-      // Find and report best performance based on MAR ratio
-      auto bestResult = std::max_element(allResults.begin(), allResults.end(),
-      [](const PyramidResults& a, const PyramidResults& b) {
-        // Compute MAR ratios for both
-        const auto& drawdownA = a.getDrawdownResults();
-        const auto& drawdownB = b.getDrawdownResults();
-        
-        // If either doesn't have valid drawdown results, deprioritize it
-        if (!drawdownA.hasResults() || drawdownA.getUpperBound() <= DecimalConstants<Num>::DecimalZero)
-          return true;  // a is worse
-        if (!drawdownB.hasResults() || drawdownB.getUpperBound() <= DecimalConstants<Num>::DecimalZero)
-          return false; // b is worse
-        
-        // Both have valid drawdowns, compare MAR ratios
-        const Num marA = a.getAnnualizedLowerBound() / drawdownA.getUpperBound();
-        const Num marB = b.getAnnualizedLowerBound() / drawdownB.getUpperBound();
-        return marA < marB;
-      });
+      // Find and report best performance based on MAR ratio (passers only)
+      std::vector<const PyramidResults*> passers;
+      for (const auto& r : allResults)
+        if (r.getPassed()) passers.push_back(&r);
 
-      if (bestResult != allResults.end())
+      const PyramidResults* bestPasser = nullptr;
+      if (!passers.empty())
+      {
+        bestPasser = *std::max_element(passers.begin(), passers.end(),
+          [](const PyramidResults* a, const PyramidResults* b) {
+            const auto& drawdownA = a->getDrawdownResults();
+            const auto& drawdownB = b->getDrawdownResults();
+
+            if (!drawdownA.hasResults() || drawdownA.getUpperBound() <= DecimalConstants<Num>::DecimalZero)
+              return true;
+            if (!drawdownB.hasResults() || drawdownB.getUpperBound() <= DecimalConstants<Num>::DecimalZero)
+              return false;
+
+            const Num marA = a->getAnnualizedLowerBound() / drawdownA.getUpperBound();
+            const Num marB = b->getAnnualizedLowerBound() / drawdownB.getUpperBound();
+            return marA < marB;
+          });
+      }
+
+      if (bestPasser != nullptr)
 	{
-	  const auto& bestDrawdown = bestResult->getDrawdownResults();
+	  const auto& bestDrawdown = bestPasser->getDrawdownResults();
 	  if (bestDrawdown.hasResults() && bestDrawdown.getUpperBound() > DecimalConstants<Num>::DecimalZero)
 	    {
-	      const Num bestMAR = bestResult->getAnnualizedLowerBound() / bestDrawdown.getUpperBound();
-	      outputStream << "\n      Best Performance: Pyramid Level " << bestResult->getPyramidLevel()
+	      const Num bestMAR = bestPasser->getAnnualizedLowerBound() / bestDrawdown.getUpperBound();
+	      outputStream << "\n      Best Performance: Pyramid Level " << bestPasser->getPyramidLevel()
 			   << " (MAR ratio: " << std::fixed << std::setprecision(2) << bestMAR.getAsDouble() << ")\n";
 	    }
 	  else
 	    {
-	      outputStream << "\n      Best Performance: Pyramid Level " << bestResult->getPyramidLevel()
-			   << " (" << std::fixed << std::setprecision(2) << (bestResult->getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble()
+	      outputStream << "\n      Best Performance: Pyramid Level " << bestPasser->getPyramidLevel()
+			   << " (" << std::fixed << std::setprecision(2) << (bestPasser->getAnnualizedLowerBound() * DecimalConstants<Num>::DecimalOneHundred).getAsDouble()
 			   << "% annualized lower bound)\n";
 	    }
-	  outputStream << "      Recommended Configuration: " << bestResult->getDescription() << "\n";
+	  outputStream << "      Recommended Configuration: " << bestPasser->getDescription() << "\n";
 
-	  palvalidator::filtering::PositionSizingCalculator<Num>::recommendSizing(baseSecurity, 
-										  *bestResult, 
+	  palvalidator::filtering::PositionSizingCalculator<Num>::recommendSizing(baseSecurity,
+										  *bestPasser,
 										  outputStream,
-										  0.20); // You can make this 0.20 configurable or a constant
-	  
+										  0.20);
+
 	}
 
-      outputStream << "      Costs assumed: $0 commission, 0.10% slippage/spread per side (≈0.20% round-trip).\n";
+      if (mEffectiveSlippageFloor.has_value())
+      {
+        const double floorPct = mEffectiveSlippageFloor->getAsDouble() * 100.0;
+        outputStream << "      Costs assumed: $0 commission, "
+                     << std::fixed << std::setprecision(2) << floorPct
+                     << "% slippage floor per side (may be calibrated by OOS spreads).\n";
+      }
+      else
+      {
+        outputStream << "      Costs assumed: $0 commission, slippage per side uses configured default.\n";
+      }
     }
   } // namespace filtering
 } // namespace palvalidator
