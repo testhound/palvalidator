@@ -209,7 +209,7 @@ namespace mkc_timeseries
         unsigned minBlock = 3,
         unsigned maxBlock = 20)
     {
-      // Step 1+2: close series → 1-period percentage returns (×100, scale-invariant for ACF)
+      // Step 1: close series -> 1-period percentage ROC (percent, e.g. 1.5 = +1.5%)
       auto rocSeries = RocSeries(series.CloseTimeSeries(),
                                  static_cast<uint32_t>(1));
       const size_t n = rocSeries.getNumEntries();
@@ -217,23 +217,34 @@ namespace mkc_timeseries
       if (n < 4)
         return static_cast<size_t>(minBlock);
 
-      // Step 3: square each return — volatility ACF, not mean-return ACF
-      std::vector<Decimal> squaredReturns;
-      squaredReturns.reserve(n);
+      // Step 2: convert percent ROC to decimal returns (0.015 = +1.5%).
+      // suggestStationaryBlockLength expects decimal fractions and applies
+      // log(1 + r) internally.  Passing percent values directly would produce
+      // log(1 + 1.5) instead of log(1 + 0.015), giving incorrect log-returns.
+      std::vector<Decimal> decimalReturns;
+      decimalReturns.reserve(n);
+      const Decimal hundred = DecimalConstants<Decimal>::createDecimal("100.0");
       for (auto it = rocSeries.beginRandomAccess();
            it != rocSeries.endRandomAccess(); ++it)
       {
-        const Decimal r = it->getValue();
-        squaredReturns.push_back(r * r);
+        decimalReturns.push_back(it->getValue() / hundred);
       }
 
-      // Step 4+5+6: ACF → block length suggestion with daily-appropriate bounds
-      const auto acf = StatUtils<Decimal>::computeACF(
-          squaredReturns, static_cast<size_t>(maxBlock));
-
+      // Step 3: estimate block length.
+      //
+      // suggestStationaryBlockLength computes two ACF channels internally:
+      //   - signed log-return ACF  (momentum / mean-reversion)
+      //   - absolute log-return ACF (volatility clustering, analogous to
+      //                              the squared-return ACF used previously)
+      // The final block length is max(L_raw, L_abs), so volatility clustering
+      // drives the result when it is the dominant dependence structure, which
+      // is the same intent as the old squared-return approach.
       return static_cast<size_t>(
-          StatUtils<Decimal>::suggestStationaryBlockLengthFromACF(
-              acf, n, minBlock, maxBlock));
+          StatUtils<Decimal>::suggestStationaryBlockLength(
+              decimalReturns,
+              static_cast<size_t>(maxBlock),   // maxLag
+              minBlock,                         // minL
+              maxBlock));                       // maxL
     }
 
   } // namespace shuffle_detail
