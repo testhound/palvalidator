@@ -6858,3 +6858,346 @@ TEST_CASE("StatUtils::suggestStationaryBlockLength decimal return format",
         REQUIRE(L <= 12);
     }
 }
+
+// =============================================================================
+// TEST_CASE A: computeSmallSampleBlockLength
+// =============================================================================
+//
+// All expected values are exact: L = max(minL, min(maxL, floor(cbrt(n)))).
+//
+// IMPORTANT: uses std::cbrt (not std::pow(..., 1.0/3.0)).
+// For perfect cubes (n=8, 27, 64) std::cbrt returns the exact integer root.
+// std::pow(64.0, 1.0/3.0) returns 3.9999... due to floating-point rounding
+// of the exponent 1/3, which floors to 3.  std::cbrt(64.0) returns 4.0
+// exactly (IEEE 754 correctly-rounded), so floor = 4.
+// =============================================================================
+TEST_CASE("StatUtils::computeSmallSampleBlockLength",
+          "[StatUtils][BlockLen][SmallSample][Helpers]")
+{
+    using Stat = StatUtils<DecimalType>;
+ 
+    // ---- Basic cube-root values (default clamps [2,12]) ----
+ 
+    SECTION("n=2: cbrt=1.260, floor=1, clamped up to minL=2")
+    {
+        // floor(cbrt(2)) = floor(1.260) = 1 < minL=2 -> L=2
+        REQUIRE(Stat::computeSmallSampleBlockLength(2, 2, 12) == 2);
+    }
+ 
+    SECTION("n=8: cbrt=2.0 exactly (perfect cube), floor=2, L=2")
+    {
+        // std::cbrt(8.0) == 2.0 exactly; floor=2; L=max(2,min(12,2))=2
+        REQUIRE(Stat::computeSmallSampleBlockLength(8, 2, 12) == 2);
+    }
+ 
+    SECTION("n=27: cbrt=3.0 exactly (perfect cube), floor=3, L=3")
+    {
+        REQUIRE(Stat::computeSmallSampleBlockLength(27, 2, 12) == 3);
+    }
+ 
+    SECTION("n=64: cbrt=4.0 exactly (perfect cube), floor=4, L=4")
+    {
+        // NOTE: std::pow(64.0, 1.0/3.0) gives 3.999... -> floor=3.
+        // std::cbrt(64.0) gives 4.0 exactly -> floor=4.
+        // The implementation uses std::cbrt, so L=4.
+        REQUIRE(Stat::computeSmallSampleBlockLength(64, 2, 12) == 4);
+    }
+ 
+    SECTION("n=99: cbrt=4.626, floor=4, L=4")
+    {
+        // Last value before ACF path; floor(cbrt(99)) = floor(4.626) = 4
+        REQUIRE(Stat::computeSmallSampleBlockLength(99, 2, 12) == 4);
+    }
+ 
+    // ---- minL clamping ----
+ 
+    SECTION("minL clamp: n=8 gives floor=2, but minL=4 raises it to 4")
+    {
+        // floor(cbrt(8)) = 2 < minL=4 -> clamped up to 4
+        REQUIRE(Stat::computeSmallSampleBlockLength(8, 4, 12) == 4);
+    }
+ 
+    SECTION("minL clamp: n=2 gives floor=1, minL=3 raises it to 3")
+    {
+        REQUIRE(Stat::computeSmallSampleBlockLength(2, 3, 12) == 3);
+    }
+ 
+    // ---- maxL clamping ----
+ 
+    SECTION("maxL clamp: n=1000 gives floor=10, but maxL=6 caps it to 6")
+    {
+        // floor(cbrt(1000)) = 10 > maxL=6 -> clamped down to 6
+        REQUIRE(Stat::computeSmallSampleBlockLength(1000, 2, 6) == 6);
+    }
+ 
+    SECTION("maxL clamp: n=512 gives floor=8, maxL=5 caps it to 5")
+    {
+        // floor(cbrt(512)) = floor(8.0) = 8 > maxL=5 -> 5
+        REQUIRE(Stat::computeSmallSampleBlockLength(512, 2, 5) == 5);
+    }
+ 
+    // ---- Result always in [minL, maxL] ----
+ 
+    SECTION("Result is always within [minL, maxL] for a range of n")
+    {
+        const unsigned minL = 3, maxL = 8;
+        for (std::size_t n : {1u, 5u, 20u, 50u, 99u, 200u, 999u})
+        {
+            const unsigned L = Stat::computeSmallSampleBlockLength(n, minL, maxL);
+            REQUIRE(L >= minL);
+            REQUIRE(L <= maxL);
+        }
+    }
+}
+ 
+ 
+// =============================================================================
+// TEST_CASE B: computeSignedTaperedMass
+// =============================================================================
+//
+// All expected values derived from: mass = Σ_{k=1}^{K} (1 - k/(K+1)) * rho[k]
+//
+// Key properties verified:
+//   - Zero ACF (K=0 or all zero lags) -> mass = 0
+//   - Positive ACF -> positive mass
+//   - Negative ACF -> NEGATIVE mass (mean reversion reduces tau)
+//   - Signed mass differs from abs mass when lags are negative
+//   - Taper reduces contribution of higher lags vs naive sum
+//   - Exact arithmetic verified for small K
+// =============================================================================
+TEST_CASE("StatUtils::computeSignedTaperedMass",
+          "[StatUtils][BlockLen][Helpers][TaperedMass]")
+{
+    using Stat = StatUtils<DecimalType>;
+ 
+    // Helper to build a DecimalType ACF vector from doubles
+    auto makeAcf = [](std::initializer_list<double> vals) {
+        std::vector<DecimalType> v;
+        for (double d : vals)
+            v.emplace_back(std::to_string(d));
+        return v;
+    };
+ 
+    constexpr double tol = 1e-9;   // tolerance for double comparison
+ 
+    // ---- Zero mass cases ----
+ 
+    SECTION("ACF of length 1 (only rho[0]=1, K=0): loop never runs, mass=0")
+    {
+        // With K=0 the loop body is never entered; mass stays at 0.0.
+        auto acf = makeAcf({1.0});
+        REQUIRE(Stat::computeSignedTaperedMass(acf) == Catch::Approx(0.0).margin(tol));
+    }
+ 
+    SECTION("All non-zero-lag values are zero: mass=0")
+    {
+        // rho[1]=rho[2]=rho[3]=0 -> each term w_k*0 = 0
+        auto acf = makeAcf({1.0, 0.0, 0.0, 0.0});
+        REQUIRE(Stat::computeSignedTaperedMass(acf) == Catch::Approx(0.0).margin(tol));
+    }
+ 
+    // ---- Single lag, exact arithmetic ----
+ 
+    SECTION("K=1, rho[1]=0.5: w_1 = 1-1/2 = 0.5, mass = 0.5*0.5 = 0.25")
+    {
+        // w_k = 1 - k/(K+1) = 1 - 1/2 = 0.5
+        // mass = 0.5 * 0.5 = 0.25
+        auto acf = makeAcf({1.0, 0.5});
+        REQUIRE(Stat::computeSignedTaperedMass(acf) == Catch::Approx(0.25).margin(tol));
+    }
+ 
+    SECTION("K=1, rho[1]=-0.5: mass = 0.5 * (-0.5) = -0.25 (NEGATIVE)")
+    {
+        // Mean-reverting: signed mass is negative.
+        // This is the key property that distinguishes signed from abs mass.
+        auto acf = makeAcf({1.0, -0.5});
+        REQUIRE(Stat::computeSignedTaperedMass(acf) == Catch::Approx(-0.25).margin(tol));
+    }
+ 
+    // ---- Three lags, fully worked example ----
+ 
+    SECTION("K=3, positive ACF: exact weight arithmetic")
+    {
+        // acf = [1.0, 0.6, 0.4, 0.2], K=3
+        // w_1 = 1 - 1/4 = 0.75;  contribution = 0.75 * 0.6 = 0.45
+        // w_2 = 1 - 2/4 = 0.50;  contribution = 0.50 * 0.4 = 0.20
+        // w_3 = 1 - 3/4 = 0.25;  contribution = 0.25 * 0.2 = 0.05
+        // mass = 0.45 + 0.20 + 0.05 = 0.70
+        auto acf = makeAcf({1.0, 0.6, 0.4, 0.2});
+        REQUIRE(Stat::computeSignedTaperedMass(acf) == Catch::Approx(0.70).margin(tol));
+    }
+ 
+    SECTION("K=3, mean-reverting ACF: mass is negative")
+    {
+        // acf = [1.0, -0.4, -0.3, -0.1], K=3
+        // w_1=0.75: contribution = 0.75 * (-0.4) = -0.300
+        // w_2=0.50: contribution = 0.50 * (-0.3) = -0.150
+        // w_3=0.25: contribution = 0.25 * (-0.1) = -0.025
+        // mass = -0.475
+        auto acf = makeAcf({1.0, -0.4, -0.3, -0.1});
+        REQUIRE(Stat::computeSignedTaperedMass(acf) == Catch::Approx(-0.475).margin(tol));
+    }
+ 
+    // ---- Signed vs abs diverges for negative lags ----
+ 
+    SECTION("Signed mass differs from abs mass when lags are negative")
+    {
+        // With all-negative lags, signed mass < 0 and abs mass > 0.
+        // This is the critical correctness property: using abs mass for the
+        // raw channel would wrongly inflate the block length for mean-reverting
+        // series to the same value as a momentum series of equal magnitude.
+        auto acf = makeAcf({1.0, -0.5, -0.3});
+        const double sm = Stat::computeSignedTaperedMass(acf);
+        const double am = Stat::computeAbsTaperedMass(acf);
+        REQUIRE(sm < 0.0);   // signed: mean reversion correctly reduces tau
+        REQUIRE(am > 0.0);   // abs: would wrongly inflate tau
+        REQUIRE(sm == Catch::Approx(-am).margin(tol));  // equal magnitude
+    }
+ 
+    // ---- Taper downweights higher lags ----
+ 
+    SECTION("Tapered mass is less than naive (untapered) sum for uniform ACF")
+    {
+        // acf = [1.0, 0.8, 0.8, 0.8], K=3, all lags equal 0.8
+        // naive sum = 3 * 0.8 = 2.4
+        // tapered:  w_1*0.8 + w_2*0.8 + w_3*0.8
+        //         = (0.75+0.50+0.25)*0.8 = 1.5*0.8 = 1.2
+        // Tapered (1.2) < naive (2.4): taper reduces high-lag contribution.
+        auto acf = makeAcf({1.0, 0.8, 0.8, 0.8});
+        const double tapered = Stat::computeSignedTaperedMass(acf);
+        const double naive   = 3.0 * 0.8;  // sum without weights
+        REQUIRE(tapered == Catch::Approx(1.2).margin(tol));
+        REQUIRE(tapered < naive);
+    }
+ 
+    // ---- Monotone: more lags increases mass ----
+ 
+    SECTION("Adding more positive lags increases mass (more dependence detected)")
+    {
+        // More lags in ACF -> more terms in sum -> larger mass
+        auto acf3 = makeAcf({1.0, 0.4, 0.4, 0.4});         // K=3
+        auto acf6 = makeAcf({1.0, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4});  // K=6
+        REQUIRE(Stat::computeSignedTaperedMass(acf6) >
+                Stat::computeSignedTaperedMass(acf3));
+    }
+}
+ 
+ 
+// =============================================================================
+// TEST_CASE C: computeAbsTaperedMass
+// =============================================================================
+//
+// computeAbsTaperedMass uses std::fabs(rho[k]) instead of signed rho[k].
+// For non-negative ACF values it is identical to computeSignedTaperedMass.
+// The key behavioural differences are:
+//   - Always returns >= 0 (never negative)
+//   - Treats positive and negative lags identically (same magnitude -> same mass)
+//   - fabs() guards against tiny negative finite-sample ACF estimates
+// =============================================================================
+TEST_CASE("StatUtils::computeAbsTaperedMass",
+          "[StatUtils][BlockLen][Helpers][TaperedMass]")
+{
+    using Stat = StatUtils<DecimalType>;
+ 
+    auto makeAcf = [](std::initializer_list<double> vals) {
+        std::vector<DecimalType> v;
+        for (double d : vals)
+            v.emplace_back(std::to_string(d));
+        return v;
+    };
+ 
+    constexpr double tol = 1e-9;
+ 
+    // ---- Zero mass cases ----
+ 
+    SECTION("ACF of length 1 (K=0): loop never runs, mass=0")
+    {
+        auto acf = makeAcf({1.0});
+        REQUIRE(Stat::computeAbsTaperedMass(acf) == Catch::Approx(0.0).margin(tol));
+    }
+ 
+    SECTION("All non-zero lags are zero: mass=0")
+    {
+        auto acf = makeAcf({1.0, 0.0, 0.0, 0.0});
+        REQUIRE(Stat::computeAbsTaperedMass(acf) == Catch::Approx(0.0).margin(tol));
+    }
+ 
+    // ---- Single lag, exact arithmetic ----
+ 
+    SECTION("K=1, rho[1]=0.5: w_1=0.5, mass=0.5*0.5=0.25")
+    {
+        auto acf = makeAcf({1.0, 0.5});
+        REQUIRE(Stat::computeAbsTaperedMass(acf) == Catch::Approx(0.25).margin(tol));
+    }
+ 
+    SECTION("K=1, rho[1]=-0.5: fabs applied, mass=0.5*0.5=0.25 (positive)")
+    {
+        // abs mass treats -0.5 same as +0.5: mass = 0.5 * 0.5 = 0.25
+        auto acf = makeAcf({1.0, -0.5});
+        REQUIRE(Stat::computeAbsTaperedMass(acf) == Catch::Approx(0.25).margin(tol));
+    }
+ 
+    // ---- Three lags, fully worked example ----
+ 
+    SECTION("K=3, positive ACF: identical to signed mass (all positive)")
+    {
+        // acf = [1.0, 0.6, 0.4, 0.2], all positive: abs same as signed = 0.70
+        auto acf = makeAcf({1.0, 0.6, 0.4, 0.2});
+        REQUIRE(Stat::computeAbsTaperedMass(acf) == Catch::Approx(0.70).margin(tol));
+    }
+ 
+    SECTION("K=3, negative ACF: abs mass is POSITIVE (same magnitude as positive case)")
+    {
+        // acf = [1.0, -0.6, -0.4, -0.2]: same magnitude as above but negative
+        // abs mass: same weights, |rho| same -> mass = 0.70 (not -0.70)
+        auto acf_neg = makeAcf({1.0, -0.6, -0.4, -0.2});
+        auto acf_pos = makeAcf({1.0,  0.6,  0.4,  0.2});
+        REQUIRE(Stat::computeAbsTaperedMass(acf_neg) ==
+                Catch::Approx(Stat::computeAbsTaperedMass(acf_pos)).margin(tol));
+    }
+ 
+    // ---- Always non-negative ----
+ 
+    SECTION("Result is always >= 0 regardless of ACF sign pattern")
+    {
+        // Mixed positive and negative lags: abs mass is always non-negative
+        auto acf_mixed = makeAcf({1.0, 0.5, -0.3, 0.4, -0.2, 0.1});
+        REQUIRE(Stat::computeAbsTaperedMass(acf_mixed) >= 0.0);
+    }
+ 
+    SECTION("Strongly negative ACF gives same abs mass as same-magnitude positive ACF")
+    {
+        // This is the key property: abs mass treats -phi the same as +phi.
+        // For the volatility channel (ACF of |r_t|) this is correct because
+        // volatility clustering is always positive dependence.
+        auto neg_acf = makeAcf({1.0, -0.4, -0.3, -0.1});
+        auto pos_acf = makeAcf({1.0,  0.4,  0.3,  0.1});
+        REQUIRE(Stat::computeAbsTaperedMass(neg_acf) ==
+                Catch::Approx(Stat::computeAbsTaperedMass(pos_acf)).margin(tol));
+        // Also: expected value = 0.75*0.4 + 0.50*0.3 + 0.25*0.1 = 0.475
+        REQUIRE(Stat::computeAbsTaperedMass(pos_acf) == Catch::Approx(0.475).margin(tol));
+    }
+ 
+    // ---- Taper downweights higher lags ----
+ 
+    SECTION("Tapered mass is less than naive untapered sum for uniform abs ACF")
+    {
+        // acf = [1.0, 0.8, 0.8, 0.8], K=3
+        // tapered = (0.75+0.50+0.25)*0.8 = 1.5*0.8 = 1.2
+        // naive   = 3 * 0.8 = 2.4
+        auto acf = makeAcf({1.0, 0.8, 0.8, 0.8});
+        REQUIRE(Stat::computeAbsTaperedMass(acf) == Catch::Approx(1.2).margin(tol));
+        REQUIRE(Stat::computeAbsTaperedMass(acf) < 3.0 * 0.8);
+    }
+ 
+    // ---- Fabs guards tiny negative finite-sample noise ----
+ 
+    SECTION("Tiny negative ACF value does not pull mass negative")
+    {
+        // A slightly negative ACF value (finite-sample noise) is treated as
+        // positive by fabs.  Mass must remain >= 0.
+        auto acf = makeAcf({1.0, 0.3, -0.001, 0.2});   // -0.001 is numerical noise
+        REQUIRE(Stat::computeAbsTaperedMass(acf) >= 0.0);
+    }
+}
+

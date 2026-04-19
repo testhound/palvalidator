@@ -1844,6 +1844,249 @@ namespace mkc_timeseries
     }
 
     /**
+     * @brief Small-sample block length heuristic: floor(n^(1/3)) clamped to
+     *        [minL, maxL].
+     *
+     * Used when n < 100, where ACF estimates are too noisy for the dependence-
+     * mass estimator to be reliable.  The cube-root rule is the standard
+     * small-sample heuristic from Politis & White (2004).
+     *
+     * ## Why cbrt, not pow(..., 1.0/3.0)?
+     *
+     * std::cbrt(n) is more readable and avoids floating-point edge cases from
+     * representing 1/3 as a double.  For the integer inputs used here the two
+     * expressions produce identical results in practice, but cbrt makes the
+     * intent unambiguous.
+     *
+     * ## Why floor, not round?
+     *
+     * The heuristic is a conservative lower bound on the optimal block length
+     * in small samples.  Flooring keeps the estimate conservative; rounding
+     * would inflate it by up to 0.5 relative to the cube root.
+     *
+     * @param n     Sample size.  Must be >= 1.
+     * @param minL  Minimum block length.
+     * @param maxL  Maximum block length.
+     * @return      max(minL, min(maxL, floor(n^(1/3))))
+     */
+    static unsigned
+    computeSmallSampleBlockLength(std::size_t n, unsigned minL, unsigned maxL)
+    {
+      // std::cbrt returns the real cube root; std::floor truncates toward zero.
+      // Cast order matters: floor first (stays double), then cast to size_t.
+      const std::size_t cubeRootFloor =
+          static_cast<std::size_t>(std::floor(std::cbrt(static_cast<double>(n))));
+ 
+      return static_cast<unsigned>(
+          std::max<std::size_t>(
+              minL,
+              std::min<std::size_t>(maxL, cubeRootFloor)));
+    }
+
+    // If you are not a statistician, this note explains the algorithm in the two
+    // computeXxxTaperedMass functions in plain terms before the formal details.
+    //
+    // -------------------------------------------------------------------------
+    // THE CORE PROBLEM: correlated observations are worth less than they look
+    // -------------------------------------------------------------------------
+    //
+    // Imagine you want to know the average daily return of a stock over the last
+    // 3000 days.  If each day's return were completely independent of every other
+    // day's, you would have 3000 truly independent data points and the average
+    // would be very precise.
+    //
+    // But financial returns are not independent.  Volatile days tend to cluster
+    // together: if today is a volatile day, tomorrow is more likely to be
+    // volatile too (this is called volatility clustering, or GARCH).  That means
+    // some of your 3000 observations are nearly redundant — they are saying
+    // roughly the same thing as their neighbours.  The "effective" number of
+    // independent data points might be only 500, not 3000.
+    //
+    // The bootstrap is affected by this.  If you naively resample 3000
+    // observations one-at-a-time (treating them as if they are independent), you
+    // will accidentally break up those volatility clusters, mixing calm days into
+    // a stormy period.  The bootstrap distribution will look artificially smooth
+    // — your confidence intervals will be too narrow.
+    //
+    // The block bootstrap fixes this by resampling contiguous BLOCKS of
+    // observations.  If the block length is L=8, each resample picks up an
+    // 8-day chunk, keeping the cluster structure intact within each chunk.
+    //
+    // THE QUESTION THEN BECOMES: how big should L be?
+    //
+    // -------------------------------------------------------------------------
+    // THE INTUITION: L should equal the "effective dependence horizon"
+    // -------------------------------------------------------------------------
+    //
+    // Think of it this way.  If two observations that are k days apart are
+    // essentially unrelated (autocorrelation ρ(k) ≈ 0), there is no point
+    // keeping them in the same block.  But if observations k days apart are
+    // still noticeably correlated, you want your blocks to be long enough to
+    // capture that.
+    //
+    // The "dependence horizon" is a summary of how far the autocorrelation
+    // reaches.  A series with strong autocorrelation out to lag 10 needs
+    // blocks of ~10; a series with weak autocorrelation that dies by lag 2
+    // only needs blocks of ~2.
+    //
+    // The standard formula for this horizon is:
+    //
+    //   τ  =  1  +  2 · Σ_{k=1}^{∞}  ρ(k)
+    //
+    // where ρ(k) is the autocorrelation at lag k.  The intuition:
+    //
+    //   - If the series is IID (all ρ(k)=0), then τ=1 and L=1 is optimal.
+    //   - If the series has strong positive autocorrelation, the sum is large,
+    //     τ is large, and a bigger block length is needed.
+    //   - If the series is mean-reverting (negative autocorrelation), the sum
+    //     is negative, τ is clamped to 1, and no blocking beyond minL is needed
+    //     because mean reversion actually makes nearby observations MORE
+    //     informative, not less.
+    //
+    // The factor 2 is not a tuning parameter — it comes from the mathematical
+    // fact that the sum runs over all lags k = -∞..+∞, and by symmetry
+    // (ρ(-k) = ρ(k)), the k>0 half contributes once more than the k=0 term.
+    //
+    // -------------------------------------------------------------------------
+    // THE PRACTICE: we can't sum to infinity, so we taper
+    // -------------------------------------------------------------------------
+    //
+    // We only have K lags from the sample ACF, not infinitely many.  The naive
+    // approach would be to just truncate:
+    //
+    //   mass  =  Σ_{k=1}^{K}  ρ(k)
+    //
+    // But this causes a problem.  ACF estimates at high lags are noisy (because
+    // fewer pairs of observations contribute to them), and abruptly cutting off
+    // the sum at lag K creates artificial ringing — the mass estimate jumps
+    // around depending on whether one noisy high-lag ACF value happens to be
+    // above or below zero.
+    //
+    // The fix is to give lower weight to higher lags (which are noisier) and
+    // higher weight to lower lags (which are estimated from more pairs and are
+    // more reliable).  This is called TAPERING.
+    //
+    // The specific taper used here — the Bartlett taper — linearly reduces
+    // weight from 1 at lag 1 to 0 at lag K:
+    //
+    //   w_k  =  1  -  k / (K + 1)
+    //
+    // So the final formula is:
+    //
+    //   mass  =  Σ_{k=1}^{K}  w_k · ρ(k)  =  Σ_{k=1}^{K}  (1 - k/(K+1)) · ρ(k)
+    //
+    // This is not a bespoke invention — it is the formula used by the famous
+    // Newey-West HAC (heteroscedasticity and autocorrelation consistent)
+    // estimator, which is one of the most widely used tools in econometrics.
+
+    /**
+     * @brief Signed tapered Bartlett dependence mass for the raw-return channel.
+     *
+     * Computes:
+     *
+     *   rawMass = sum_{k=1}^{K}  w_k * rho[k]
+     *
+     * where:
+     *
+     *   rho[k]  = acf[k]  (SIGNED — not absolute value)
+     *   w_k     = 1 - k / (K + 1)   (Bartlett linear taper)
+     *   K       = acf.size() - 1
+     *
+     * ## Why signed rho?
+     *
+     * The dependence mass feeds into the long-run variance (LRV) inflation
+     * formula tau = 1 + 2*mass, which is the standard LRV factor for a
+     * stationary process.  For a mean-reverting series (rho[1] < 0), the
+     * signed sum is negative, correctly reducing tau toward 1.  Using |rho|
+     * instead would assign the same tau to a mean-reverting series (phi < 0)
+     * and a momentum series (phi > 0) of equal magnitude, even though the two
+     * have opposite implications for bootstrap variance.
+     *
+     * ## Why Bartlett taper?
+     *
+     * The Bartlett linear taper w_k = 1 - k/(K+1) down-weights higher lags
+     * smoothly to zero at k=K.  This prevents isolated high-lag ACF values
+     * from dominating the mass estimate, which was the root cause of the
+     * discontinuous block length jumps observed with binary threshold tests.
+     *
+     * ## Why K from acf.size() - 1, not from the caller?
+     *
+     * The weight denominator K+1 must equal the number of lags actually
+     * present in acf.  If computeACF truncates the ACF earlier than the
+     * requested maxLag (which it does when n-1 < maxLag), using the original
+     * maxLag as K would produce weights that don't reach zero at the last lag,
+     * breaking the taper property.
+     *
+     * @param acf  ACF vector with acf[0] = 1.  Must have at least 1 element.
+     * @return     Signed tapered Bartlett sum over lags 1..K.
+     *             Can be negative for mean-reverting series.
+     */
+    static double
+    computeSignedTaperedMass(const std::vector<Decimal>& acf)
+    {
+      const std::size_t K = acf.size() - 1;
+      double mass = 0.0;
+      for (std::size_t k = 1; k <= K; ++k)
+      {
+        const double rho    = acf[k].getAsDouble();          // signed
+        const double weight = 1.0 - (static_cast<double>(k) /
+                              static_cast<double>(K + 1));
+        mass += weight * rho;
+      }
+      return mass;
+    }
+ 
+    /**
+     * @brief Unsigned tapered Bartlett dependence mass for the volatility
+     *        clustering channel.
+     *
+     * Computes:
+     *
+     *   absMass = sum_{k=1}^{K}  w_k * |rho[k]|
+     *
+     * where:
+     *
+     *   |rho[k]| = std::fabs(acf[k])   (absolute value)
+     *   w_k      = 1 - k / (K + 1)     (Bartlett linear taper)
+     *   K        = acf.size() - 1
+     *
+     * ## Why |rho| here, but signed rho for the raw channel?
+     *
+     * This function is called with the ACF of |r_t| (absolute log-returns),
+     * which captures GARCH-type volatility clustering.  Volatility clustering
+     * always manifests as positive ACF of |r_t|: large moves tend to cluster
+     * together regardless of sign.  There is no theoretical case where negative
+     * ACF of |r_t| would warrant a smaller block length, so signed and absolute
+     * interpretations coincide here.
+     *
+     * The absolute value in the formula is therefore redundant for a well-
+     * formed abs-return ACF (which is always non-negative in expectation), but
+     * it guards against small numerical negative values in finite-sample ACF
+     * estimates that would otherwise pull the mass slightly negative.
+     *
+     * See computeSignedTaperedMass for details on why the Bartlett taper and
+     * K-from-size design choices are correct.
+     *
+     * @param acf  ACF vector with acf[0] = 1.  Must have at least 1 element.
+     * @return     Non-negative tapered Bartlett sum over lags 1..K.
+     *             Always >= 0.
+     */
+    static double
+    computeAbsTaperedMass(const std::vector<Decimal>& acf)
+    {
+      const std::size_t K = acf.size() - 1;
+      double mass = 0.0;
+      for (std::size_t k = 1; k <= K; ++k)
+      {
+        const double rhoAbs = std::fabs(acf[k].getAsDouble());
+        const double weight = 1.0 - (static_cast<double>(k) /
+                              static_cast<double>(K + 1));
+        mass += weight * rhoAbs;
+      }
+      return mass;
+    }
+
+    /**
      * @brief Suggest a stationary-bootstrap block length from a decimal return
      *        series.
      *
@@ -1891,6 +2134,106 @@ namespace mkc_timeseries
      * responsibility is to supply decimal returns in the correct format.
      *
      * ---------------------------------------------------------------------------
+     * WHY BLOCK LENGTH MATTERS: THE CORE PROBLEM
+     * ---------------------------------------------------------------------------
+     *
+     * When observations in a time series are correlated with each other, the
+     * effective sample size is smaller than the actual sample size n.  Volatile
+     * days in equity returns tend to cluster together (a large move today
+     * predicts a large move tomorrow), so some of the n observations are
+     * nearly redundant — they are telling you roughly the same thing as their
+     * neighbours.
+     *
+     * A naive IID bootstrap (resample one observation at a time) breaks up
+     * these clusters, mixing calm days into stormy periods.  The bootstrap
+     * distribution looks artificially smooth — confidence intervals are too
+     * narrow.  The block bootstrap fixes this by resampling contiguous blocks
+     * of L observations, keeping the local dependence structure intact within
+     * each block.
+     *
+     * The question is: how large should L be?
+     *
+     * ---------------------------------------------------------------------------
+     * HOW BLOCK LENGTH IS CHOSEN: THE DEPENDENCE HORIZON
+     * ---------------------------------------------------------------------------
+     *
+     * The block length L should approximately match the "dependence horizon" —
+     * how many lags out the autocorrelation stays meaningfully non-zero.  The
+     * standard formula for this horizon is the long-run variance (LRV) inflation
+     * factor:
+     *
+     *   τ  =  1  +  2 · Σ_{k=1}^{∞}  ρ(k)
+     *
+     * where ρ(k) is the autocorrelation at lag k.  Intuition:
+     *
+     *   - IID series (all ρ(k)=0):      τ=1  →  L=1 is optimal.
+     *   - Momentum (positive ρ):         τ>1  →  a larger block is needed.
+     *   - Mean-reverting (negative ρ):   τ<1  →  no extra blocking needed;
+     *                                           the IID bootstrap is already
+     *                                           conservative.  Clamped to τ=1.
+     *
+     * The factor 2 is not a tuning parameter.  It comes from the symmetry of
+     * autocovariances: ρ(-k) = ρ(k), so summing over all integer lags
+     * k = -∞..+∞ equals 1 + 2·(sum over k = 1..∞).
+     *
+     * In practice we only have K sample ACF lags, not infinitely many.
+     * Abruptly truncating the sum at lag K causes instability: one noisy
+     * high-lag ACF value can dominate the estimate.  The fix is to apply a
+     * taper — a set of decreasing weights that give more importance to lower
+     * lags (estimated from many observation pairs, thus reliable) and less to
+     * higher lags (estimated from fewer pairs, thus noisy).
+     *
+     * The Bartlett linear taper used here is:
+     *
+     *   w_k = 1 − k / (K + 1)
+     *
+     * giving the dependence mass:
+     *
+     *   mass = Σ_{k=1}^{K}  w_k · ρ(k)
+     *
+     * This is mathematically the Newey-West HAC estimator — one of the most
+     * widely validated estimators in econometrics.  Rounding τ = 1 + 2·mass
+     * to the nearest integer then gives the block length L.
+     *
+     * ---------------------------------------------------------------------------
+     * TWO CHANNELS: DIRECTION AND MAGNITUDE
+     * ---------------------------------------------------------------------------
+     *
+     * Financial returns exhibit two distinct dependence structures that require
+     * separate treatment:
+     *
+     * Channel 1 — Raw log-return ACF (signed mass, computeSignedTaperedMass):
+     *   Measures whether tomorrow's DIRECTION is predictable from today's.
+     *   For most daily equity returns this is near zero; for mean-reverting
+     *   series it is negative.  Uses SIGNED ρ(k) so that mean reversion
+     *   correctly reduces the required block length rather than inflating it.
+     *
+     * Channel 2 — Absolute log-return ACF (abs mass, computeAbsTaperedMass):
+     *   Measures whether tomorrow's MAGNITUDE is predictable from today's.
+     *   This is almost always strongly positive for daily returns — a big
+     *   move today (in either direction) predicts a big move tomorrow.  This
+     *   is volatility clustering (GARCH), and it is the dominant reason why
+     *   the block bootstrap needs L > 1 for financial data.  Uses |ρ(k)|
+     *   because volatility clustering is inherently a positive-dependence
+     *   phenomenon.
+     *
+     * A numerical example (FXI ETF, n=3449 daily observations):
+     *
+     *   raw ACF:  ρ(1) ≈ -0.137  (slight mean reversion in direction)
+     *   abs ACF:  ρ(1) ≈  0.346, ρ(2) ≈ 0.364, ..., ρ(20) ≈ 0.281
+     *             (strong, persistent volatility clustering)
+     *
+     *   rawMass ≈ -0.40   →  tauRaw = max(1, 0.20) = 1.00  →  L_raw = 2
+     *   absMass ≈  3.39   →  tauAbs = 7.78                 →  L_abs = 8
+     *
+     *   L = max(2, 8) = 8
+     *
+     * In plain terms: direction is mildly mean-reverting (no extra blocking
+     * needed) but volatility clusters for ~8 trading days on average, so
+     * blocks of 8 are used to preserve that local volatility environment
+     * in the bootstrap resamples.
+     *
+     * ---------------------------------------------------------------------------
      * ALGORITHM
      * ---------------------------------------------------------------------------
      *
@@ -1903,22 +2246,17 @@ namespace mkc_timeseries
      *            acfRaw = ACF(r_log)
      *            acfAbs = ACF(r_abs)
      *
-     * Step 4.  Compute tapered Bartlett dependence masses:
+     * Step 4.  Compute tapered Bartlett dependence masses via helpers:
      *
-     *            rawMass = sum_{k=1}^{K}  w_k * rho_raw[k]     (SIGNED)
-     *            absMass = sum_{k=1}^{K}  w_k * |rho_abs[k]|   (unsigned)
+     *            rawMass = computeSignedTaperedMass(acfRaw)   (SIGNED)
+     *            absMass = computeAbsTaperedMass(acfAbs)       (unsigned)
      *
-     *            w_k = 1 - k / (K + 1)
+     *            See those functions for the taper formula and rationale.
      *
      * Step 5.  Compute effective dependence horizons:
      *
      *            tauRaw = max(1,  1 + 2 * rawMass)
      *            tauAbs =         1 + 2 * absMass    (always >= 1)
-     *
-     *          The formula tau = 1 + 2*sum(rho_k) is the standard long-run
-     *          variance inflation factor.  The factor 2 is derived from the
-     *          symmetry of the autocovariance sum (k = -inf..+inf); it is not
-     *          a tuning parameter.
      *
      *          tauRaw is clamped to >= 1 because mean-reverting series produce
      *          negative rawMass.  For such series the IID bootstrap already
@@ -1935,25 +2273,12 @@ namespace mkc_timeseries
      *          absolute channel (GARCH volatility clustering) typically dominates.
      *
      * ---------------------------------------------------------------------------
-     * SIGNED vs ABSOLUTE rho
-     * ---------------------------------------------------------------------------
-     *
-     * The raw channel uses SIGNED rho.  A mean-reverting series (e.g. SPY daily,
-     * rho[1] ~ -0.03) produces negative rawMass, correctly reducing tauRaw toward
-     * 1.  Using |rho| for this channel would incorrectly inflate the block length
-     * to the same value as a momentum series of equal ACF magnitude even though
-     * mean reversion and momentum have opposite implications for bootstrap variance.
-     *
-     * The abs channel uses |rho|.  Volatility clustering always manifests as
-     * positive ACF of |r_t|; signed and absolute interpretations coincide there.
-     *
-     * ---------------------------------------------------------------------------
      * SMALL-SAMPLE FALLBACK (n < 100)
      * ---------------------------------------------------------------------------
      *
      * Below n = 100 the ACF estimates are too noisy for the dependence-mass
-     * estimator.  The function returns the n^(1/3) heuristic (Politis & White,
-     * 2004) clamped to [minL, maxL].
+     * estimator.  The function delegates to computeSmallSampleBlockLength which
+     * returns floor(cbrt(n)) clamped to [minL, maxL].
      *
      * ---------------------------------------------------------------------------
      * WHY minL = 2 AND NOT 1
@@ -1962,13 +2287,24 @@ namespace mkc_timeseries
      * Failing to detect autocorrelation is not the same as proving independence.
      * Two practical reasons to keep L >= 2 even for apparently white-noise data:
      *
-     * 1. Test power: at n = 3000 the Bonferroni threshold is ~0.055.
+     * 1. Test power: at n = 3000 the detection threshold is ~0.055.
      *    Autocorrelations below that level are real but undetectable.  Daily
      *    returns routinely carry 0.01-0.04 from microstructure effects.
      *
      * 2. Volatility clustering: near-zero raw ACF is consistent with significant
      *    ACF of |r_t|.  L = 2 preserves adjacent observation pairs and partially
      *    captures this structure; L = 1 (IID) destroys it entirely.
+     *
+     * ---------------------------------------------------------------------------
+     * DEBUG OUTPUT
+     * ---------------------------------------------------------------------------
+     *
+     * Pass a non-null ostream pointer to @p debugOs to print the ACF values,
+     * dependence masses, tau values, and suggested block lengths.  The default
+     * is nullptr (no output).  The caller can pass std::cout, a log file stream,
+     * or a std::ostringstream for testing.  Output is produced only for the
+     * ACF path (n >= 100); the small-sample fallback does not print because
+     * there is nothing ACF-related to show.
      *
      * ---------------------------------------------------------------------------
      *
@@ -1979,14 +2315,18 @@ namespace mkc_timeseries
      *                        Default 20 is appropriate for daily financial data.
      * @param minL            Minimum block length.  Default 2.
      * @param maxL            Maximum block length.  Default 12.
+     * @param debugOs         Optional output stream for diagnostic printing.
+     *                        Pass nullptr (default) for no output.
+     *                        Pass &std::cout for console output.
      * @return                Suggested block length in [minL, maxL].
      * @throws std::invalid_argument if decimalReturns has fewer than 2 elements.
      */
     static unsigned
     suggestStationaryBlockLength(const std::vector<Decimal>& decimalReturns,
-                                 std::size_t maxLag = 20,
-                                 unsigned    minL   = 2,
-                                 unsigned    maxL   = 12)
+                                 std::size_t   maxLag  = 20,
+                                 unsigned      minL    = 2,
+                                 unsigned      maxL    = 12,
+                                 std::ostream* debugOs = nullptr)
     {
       const std::size_t n = decimalReturns.size();
  
@@ -1995,19 +2335,10 @@ namespace mkc_timeseries
             "suggestStationaryBlockLength: need at least 2 observations.");
  
       // -----------------------------------------------------------------------
-      // Small-sample fallback
+      // Small-sample fallback: ACF too noisy below n=100
       // -----------------------------------------------------------------------
       if (n < 100)
-      {
-        const unsigned L = static_cast<unsigned>(
-            std::max<std::size_t>(
-                minL,
-                std::min<std::size_t>(
-                    maxL,
-                    static_cast<std::size_t>(
-                        std::pow(static_cast<double>(n), 1.0 / 3.0)))));
-        return L;
-      }
+        return computeSmallSampleBlockLength(n, minL, maxL);
  
       // -----------------------------------------------------------------------
       // Step 1 & 2: log-returns and absolute log-returns
@@ -2028,36 +2359,15 @@ namespace mkc_timeseries
       // -----------------------------------------------------------------------
       // Step 3: compute both ACFs
       // -----------------------------------------------------------------------
-      const std::size_t K    = std::min<std::size_t>(maxLag, n - 1);
+      const std::size_t K      = std::min<std::size_t>(maxLag, n - 1);
       const auto        acfRaw = computeACF(logReturns, K);
       const auto        acfAbs = computeACF(absReturns,  K);
  
       // -----------------------------------------------------------------------
       // Step 4: tapered Bartlett dependence masses
-      //
-      // K_raw / K_abs derived from the ACF vector sizes so the weight
-      // denominator is always consistent with the lags actually present,
-      // even when computeACF truncates earlier than K.
       // -----------------------------------------------------------------------
-      const std::size_t K_raw = acfRaw.size() - 1;
-      double rawMass = 0.0;
-      for (std::size_t k = 1; k <= K_raw; ++k)
-      {
-        const double rho    = acfRaw[k].getAsDouble();          // signed
-        const double weight = 1.0 - (static_cast<double>(k) /
-                              static_cast<double>(K_raw + 1));
-        rawMass += weight * rho;
-      }
- 
-      const std::size_t K_abs = acfAbs.size() - 1;
-      double absMass = 0.0;
-      for (std::size_t k = 1; k <= K_abs; ++k)
-      {
-        const double rhoAbs = std::fabs(acfAbs[k].getAsDouble());
-        const double weight = 1.0 - (static_cast<double>(k) /
-                              static_cast<double>(K_abs + 1));
-        absMass += weight * rhoAbs;
-      }
+      const double rawMass = computeSignedTaperedMass(acfRaw);
+      const double absMass = computeAbsTaperedMass(acfAbs);
  
       // -----------------------------------------------------------------------
       // Step 5 & 6: tau -> block lengths -> combine
@@ -2071,7 +2381,35 @@ namespace mkc_timeseries
       const unsigned L_abs = std::max(
           minL, std::min(maxL, static_cast<unsigned>(std::llround(tauAbs))));
  
-      return std::max(L_raw, L_abs);
+      const unsigned L = std::max(L_raw, L_abs);
+ 
+      // -----------------------------------------------------------------------
+      // Debug output (only when caller requests it)
+      // -----------------------------------------------------------------------
+      if (debugOs)
+      {
+        *debugOs << "[suggestStationaryBlockLength] n=" << n
+                 << ", maxLag=" << K << "\n";
+ 
+        *debugOs << "  Raw log-return ACF:\n";
+        for (std::size_t i = 0; i < acfRaw.size(); ++i)
+          *debugOs << "    rho_raw[" << i << "] = " << acfRaw[i] << "\n";
+ 
+        *debugOs << "  Absolute log-return ACF:\n";
+        for (std::size_t i = 0; i < acfAbs.size(); ++i)
+          *debugOs << "    rho_abs[" << i << "] = " << acfAbs[i] << "\n";
+ 
+        *debugOs << "  Raw dependence mass (signed) = " << rawMass << "\n";
+        *debugOs << "  Abs dependence mass (|rho|)  = " << absMass << "\n";
+        *debugOs << "  tau_raw = max(1, 1 + 2*" << rawMass << ") = "
+                 << tauRaw << "  ->  L_raw = " << L_raw << "\n";
+        *debugOs << "  tau_abs = 1 + 2*" << absMass << " = "
+                 << tauAbs << "  ->  L_abs = " << L_abs << "\n";
+        *debugOs << "  Final L = max(" << L_raw << ", " << L_abs
+                 << ") = " << L << "\n";
+      }
+ 
+      return L;
     }
 
     static std::tuple<Decimal, Decimal> getBootStrappedProfitability(const std::vector<Decimal>& barReturns,
