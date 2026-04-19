@@ -542,11 +542,11 @@ namespace mkc_timeseries
           for (const auto& roc_pct : rocVec)
             decimalReturns.push_back(roc_pct / hundred);
  
-          L = StatUtils<Decimal>::suggestStationaryBlockLength(
-                  decimalReturns,
-                  kMaxACFLag,
-                  kMinBlockL,
-                  kMaxBlockL);
+          L = StatUtils<Decimal>::suggestStationaryBlockLength(decimalReturns,
+							       kMaxACFLag,
+							       kMinBlockL,
+							       kMaxBlockL,
+							       &std::cout);
  
           std::cout << "  ACF-suggested block length: L=" << L << "\n";
         }
