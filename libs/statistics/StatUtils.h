@@ -2074,57 +2074,6 @@ namespace mkc_timeseries
       return std::max(L_raw, L_abs);
     }
 
-    /**
-     * @brief Suggest a stationary-bootstrap mean block length from an ACF curve.
-     *
-     * Heuristic:
-     * - Noise band ≈ 2/sqrt(nSamples).
-     * - Let k* be the largest lag with |ρ(k)| > band, clamp to [minL, maxL].
-     *
-     * Works with ACF stored as Decimal or double.
-     */
-    static unsigned
-    suggestStationaryBlockLengthFromACF(const std::vector<Decimal>& acf,
-                                        std::size_t nSamples,
-                                        unsigned minL = 2,
-                                        unsigned maxL = 6)
-    {
-      if (acf.empty() || nSamples == 0)
-        throw std::invalid_argument(
-            "suggestStationaryBlockLengthFromACF: empty ACF or nSamples=0.");
- 
-      // Number of lags being tested (acf[0] is always 1, not a test).
-      const std::size_t M = acf.size() - 1;
-      if (M == 0)
-        return minL;   // only rho[0] present — no lags to test
- 
-      // Bonferroni-corrected threshold.
-      // z = sqrt(2) * erfinv(1 - alpha/M)  where alpha = 0.05.
-      // This is equivalent to qnorm(1 - alpha/(2*M)), the (1 - alpha/(2M))
-      // quantile of the standard normal, derived from the identity:
-      //   erf(z/sqrt(2)) = 1 - alpha/M  ⟺  z = sqrt(2)*erfinv(1-alpha/M)
-      constexpr double alpha  = 0.05;
-      const double z_bonf = std::sqrt(2.0) *
-                      boost::math::erf_inv(1.0 - alpha / static_cast<double>(M));
-      const double thresh     = z_bonf / std::sqrt(static_cast<double>(nSamples));
- 
-      // Consecutive-lag rule: update k_star only when both lag k and lag k+1
-      // exceed the Bonferroni band.
-      unsigned k_star = minL;
-      for (std::size_t k = 1; k + 1 < acf.size(); ++k)
-      {
-        const double rk  = std::fabs(acf[k    ].getAsDouble());
-        const double rk1 = std::fabs(acf[k + 1].getAsDouble());
-        if (rk > thresh && rk1 > thresh)
-          k_star = static_cast<unsigned>(k + 1);
-      }
- 
-      if (k_star < minL) k_star = minL;
-      if (k_star > maxL) k_star = maxL;
- 
-      return k_star;
-    }
-    
     static std::tuple<Decimal, Decimal> getBootStrappedProfitability(const std::vector<Decimal>& barReturns,
 								     std::function<std::tuple<Decimal, Decimal>(const std::vector<Decimal>&)> statisticFunc,
 								     size_t numBootstraps = 100)
