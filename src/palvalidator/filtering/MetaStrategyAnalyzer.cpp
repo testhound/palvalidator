@@ -59,70 +59,67 @@ namespace palvalidator
                                                 std::size_t minSizeForACF = 100,
                                                 std::size_t maxACFLag = 20,
                                                 unsigned int minACFL = 2,
-                                                unsigned int maxACFL = 12) // Default max L for meta
+                                                unsigned int maxACFL = 12)
     {
       if (returns.size() < minSizeForACF)
         {
-	  std::size_t n = returns.size();
-	  std::size_t L = 0;
-
-	  if (n < 50)
-	    {
-	      // Very short: trust the median hold
-	      L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHold));
-	    }
-	  else
-	    {
-	      // Medium-length: heuristic n^(1/3)
-	      L = static_cast<std::size_t>(std::floor(std::pow(static_cast<double>(n), 1.0/3.0)));
-	      
-	      // Blend with median hold if that’s materially higher
-	      L = std::max<std::size_t>(L, static_cast<std::size_t>(medianHold));
-	    }
-
-	  // Safety caps
-	  L = std::min(L, n / 2);
-	  L = std::max<std::size_t>(2, L);
-
-	  outputStream << "      (Using block length L=" << L
-		       << " based on "
-		       << (n < 50 ? "median hold period" : "n^(1/3) heuristic")
-		       << ", n=" << n << " < " << minSizeForACF << ")\n";
-	  return L;
-        }
-        else
-        {
-            // --- Method 2: ACF-based (for longer series) ---
-            try
+          // --- Small-sample path: medianHold blending ---
+          // Kept unchanged: suggestStationaryBlockLength does not know about
+          // medianHold, so this custom blending logic must remain here.
+          std::size_t n = returns.size();
+          std::size_t L = 0;
+          if (n < 50)
             {
-                // Ensure maxACFLag is reasonable given series size
-                std::size_t effectiveMaxLag = std::min(maxACFLag, returns.size() - 1);
-                if (effectiveMaxLag < 1) {
-                  throw std::runtime_error("Cannot compute ACF with effective max lag < 1");
-                }
-
-		auto logReturns = StatUtils<Num>::percentBarsToLogBars(returns);
-		
-                const auto acf = mkc_timeseries::StatUtils<Num>::computeACF(logReturns, effectiveMaxLag);
-                unsigned int L_acf = mkc_timeseries::StatUtils<Num>::suggestStationaryBlockLengthFromACF(
-                    acf, returns.size(), minACFL, maxACFL); // Use passed-in min/max L
-
-                outputStream << "      (Using block length L=" << L_acf
-                             << " based on ACF [maxLag=" << effectiveMaxLag << ", maxL=" << maxACFL
-                             << "], n=" << returns.size() << " >= " << minSizeForACF << ")\n";
-                return static_cast<std::size_t>(L_acf);
+              // Very short: trust the median hold
+              L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHold));
             }
-            catch (const std::exception& e)
+          else
             {
-                // Fallback to median holding period if ACF fails
-                std::size_t L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHold));
-                // Add safety cap here too
-                L = std::min(L, returns.size() / 2);
-                L = std::max<std::size_t>(2, L);
+              // Medium-length: heuristic n^(1/3)
+              L = static_cast<std::size_t>(std::floor(std::pow(static_cast<double>(n), 1.0/3.0)));
+              // Blend with median hold if that's materially higher
+              L = std::max<std::size_t>(L, static_cast<std::size_t>(medianHold));
+            }
+          // Safety caps
+          L = std::min(L, n / 2);
+          L = std::max<std::size_t>(2, L);
+          outputStream << "      (Using block length L=" << L
+                       << " based on "
+                       << (n < 50 ? "median hold period" : "n^(1/3) heuristic")
+                       << ", n=" << n << " < " << minSizeForACF << ")\n";
+          return L;
+        }
+      else
+        {
+          // --- ACF-based path (n >= minSizeForACF) ---
+          // suggestStationaryBlockLength handles the log-return transformation,
+          // both ACF computations (signed raw + absolute), and the dependence-
+          // mass estimation internally.  returns[] contains decimal fractions
+          // (0.015 = +1.5%), which is the format the function expects.
+          // maxACFLag is capped to n-1 inside the function if necessary.
+          try
+            {
+              const unsigned int L_acf =
+                mkc_timeseries::StatUtils<Num>::suggestStationaryBlockLength(
+                  returns, maxACFLag, minACFL, maxACFL);
 
-                outputStream << "      Warning: ACF block length calculation failed ('" << e.what()
-                             << "'). Falling back to L=" << L << " based on median hold period.\n";
-                return L;
+              outputStream << "      (Using block length L=" << L_acf
+                           << " based on ACF dependence-mass estimator"
+                           << " [maxLag=" << maxACFLag << ", maxL=" << maxACFL
+                           << "], n=" << returns.size() << " >= " << minSizeForACF << ")\n";
+              return static_cast<std::size_t>(L_acf);
+            }
+          catch (const std::exception& e)
+            {
+              // Fallback to median holding period if ACF computation fails
+              std::size_t L = std::max<std::size_t>(2, static_cast<std::size_t>(medianHold));
+              L = std::min(L, returns.size() / 2);
+              L = std::max<std::size_t>(2, L);
+              outputStream << "      Warning: ACF block length calculation failed ('"
+                           << e.what()
+                           << "'). Falling back to L=" << L
+                           << " based on median hold period.\n";
+              return L;
             }
         }
     }

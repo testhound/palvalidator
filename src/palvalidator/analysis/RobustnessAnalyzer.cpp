@@ -638,46 +638,73 @@ namespace palvalidator
     {
       const size_t n = rHalf.size();
       if (n == 0)
-	return std::max<size_t>(1, minL);
+        return std::max<size_t>(1, minL);
 
-      // ---- Small-sample guard: skip ACF if half is too short
-      // Rationale: with n≈10–17 the ACF estimate is high-variance and can be misleading.
-      // Threshold 30 is conservative; you can raise to 40 if you like.
-
+      // ---- Small-sample guard: skip ACF if half is too short.
+      // Rationale: with n < 30 the ACF estimate is high-variance and
+      // misleading.  suggestStationaryBlockLength has its own internal
+      // threshold at n < 100, but we keep this outer guard so the
+      // n^(1/3) heuristic here can incorporate minL rather than relying
+      // on the function's fixed minL=2 default.
       constexpr size_t kMinNForACF = 30;
       if (n < kMinNForACF)
 	{
-	  // fallback heuristic: n^(1/3), then clamp
-	  const size_t h = std::max<size_t>(minL, static_cast<size_t>(std::llround(std::cbrt(static_cast<double>(n)))));
-	  return std::min(h, (hardMaxL == 0 ? h : hardMaxL));
+	  const size_t h = std::max<size_t>(
+					    minL,
+					    static_cast<size_t>(std::llround(std::cbrt(static_cast<double>(n)))));
+	  return (hardMaxL == 0) ? h : std::min(h, hardMaxL);
 	}
 
-      // ---- Try ACF-based suggestion; fall back to cube-root if it fails/returns 0
+      // ---- ACF-based suggestion via suggestStationaryBlockLength.
+      //
+      // suggestStationaryBlockLength handles the log-return transformation,
+      // both ACF computations (signed raw + absolute), and the dependence-
+      // mass estimation internally.
+      //
+      // rHalf must contain decimal-fraction returns (0.015 = +1.5%).
+      // Do NOT pass pre-computed log-returns: the function applies
+      // log(1 + r) internally and would double-transform.
+      //
+      // hardMaxL == 0 is the "no cap" sentinel from the old interface.
+      // suggestStationaryBlockLength requires a concrete maxL, so we
+      // substitute a large practical value that will never bind in
+      // normal use.
+      constexpr size_t kUnboundedMaxL = 100;
+      const size_t effectiveMaxL = (hardMaxL == 0) ? kUnboundedMaxL : hardMaxL;
+
+      // maxLag: cap at n-1 (the function also does this internally, but
+      // keeping it explicit preserves the original intent of using
+      // hardMaxL as a lag horizon as well as a block length cap).
+      const size_t maxLag = std::min<size_t>(effectiveMaxL, n - 1);
+
       size_t L_suggest = 0;
       try
 	{
-	  const size_t n = rHalf.size();
-	  const size_t maxLag = std::min<size_t>(hardMaxL, (n > 1) ? (n - 1) : 1);
-	  std::vector<Num> acf = StatUtils<Num>::computeACF(rHalf, maxLag);
-	  L_suggest = StatUtils<Num>::suggestStationaryBlockLengthFromACF(acf, n, minL, hardMaxL);
+	  L_suggest = static_cast<size_t>(
+					  StatUtils<Num>::suggestStationaryBlockLength(
+										       rHalf,
+										       maxLag,
+										       static_cast<unsigned>(minL),
+										       static_cast<unsigned>(effectiveMaxL)));
 	}
       catch (...)
 	{
 	  L_suggest = 0;
 	}
 
-      if (L_suggest == 0)
-        L_suggest = std::max<size_t>(minL, static_cast<size_t>(std::llround(std::cbrt(static_cast<double>(n)))));
+      // Fallback if the call failed or returned below minL
+      if (L_suggest < minL)
+        L_suggest = std::max<size_t>(
+				     minL,
+				     static_cast<size_t>(std::llround(std::cbrt(static_cast<double>(n)))));
 
       // Final clamps
       L_suggest = std::max(L_suggest, minL);
-      
       if (hardMaxL > 0)
-	L_suggest = std::min(L_suggest, hardMaxL);
+        L_suggest = std::min(L_suggest, hardMaxL);
 
       return L_suggest;
     }
-
 
     size_t RobustnessAnalyzer::adjustBforHalf_(size_t B, size_t nHalf)
     {
