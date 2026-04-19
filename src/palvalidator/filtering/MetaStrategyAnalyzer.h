@@ -653,12 +653,6 @@ namespace palvalidator
           const Num& annualizedTrades,
           std::ostream& outputStream) const;
       
-      void reportFinalResults(
-          const BootstrapResults& bootstrapResults,
-          const CostHurdleResults& costResults,
-          size_t strategyCount,
-          std::ostream& outputStream);
-
     private:
       palvalidator::filtering::meta::MetaTradingHurdleCalculator mHurdleCalculator; ///< Calculator for trading hurdles
       Num mConfidenceLevel;                      ///< Confidence level for BCa bootstrap
