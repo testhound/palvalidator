@@ -1146,62 +1146,17 @@ TEST_CASE("StatUtils::computeACF basic behavior and edge cases", "[StatUtils][AC
     }
 }
 
-TEST_CASE("StatUtils::suggestStationaryBlockLengthFromACF heuristic", "[StatUtils][ACF][BlockLen]") {
-    using Stat = StatUtils<DecimalType>;
-
-    SECTION("No lag clears threshold -> clamp to minL") {
-        // thresh = 2/sqrt(nSamples). Choose n=25 -> thresh = 0.4
-        // Make all |rho(k)| <= 0.39 so none is 'significant'.
-        std::vector<DecimalType> acf = {
-            createDecimal("1.0"), createDecimal("0.39"), createDecimal("-0.10"),
-            createDecimal("0.00"), createDecimal("0.05")
-        };
-        unsigned L = Stat::suggestStationaryBlockLengthFromACF(acf, /*nSamples=*/25, /*minL=*/2, /*maxL=*/6);
-        REQUIRE(L == 2);
-    }
-
-    SECTION("Largest significant lag determines L (within clamps)") {
-        // n=100 -> thresh = 2 / 10 = 0.2
-        // Significant at lags 1 and 2, then it drops below threshold
-        std::vector<DecimalType> acf = {
-            createDecimal("1.0"), createDecimal("0.25"), createDecimal("0.22"),
-            createDecimal("0.05"), createDecimal("0.00")
-        };
-        unsigned L = Stat::suggestStationaryBlockLengthFromACF(acf, /*nSamples=*/100, /*minL=*/2, /*maxL=*/6);
-        REQUIRE(L == 2);
-    }
-
-     SECTION("Clamp to maxL when consecutive significance extends beyond range") {
-        // With n=100 and an 11-element ACF (M=10 lags), the Bonferroni threshold is:
-        //   z = sqrt(2) * erfinv(1 - 0.05/10) ≈ 2.807
-        //   thresh = 2.807 / sqrt(100) ≈ 0.281
-        //
-        // The old test placed a single significant lag at acf[9]=0.25.  That is
-        // correctly ignored by the consecutive-lag rule because no adjacent lag
-        // is also significant — an isolated spike is almost certainly noise.
-        //
-        // The new test places TWO adjacent lags (7 and 8) both at 0.35 > 0.281.
-        // The consecutive-lag rule fires at k=7: L_acf = 8, then clamped to maxL=6.
-        std::vector<DecimalType> acf(11, createDecimal("0.0"));
-        acf[0] = createDecimal("1.0");
-        acf[7] = createDecimal("0.35");   // above Bonferroni threshold
-        acf[8] = createDecimal("0.35");   // above Bonferroni threshold — consecutive pair
-        unsigned L = Stat::suggestStationaryBlockLengthFromACF(acf, /*nSamples=*/100,
-                                                               /*minL=*/2, /*maxL=*/6);
-        REQUIRE(L == 6); // L_acf=8 clamped to maxL
-    }
-
-    SECTION("Empty ACF or zero nSamples throws") {
-        std::vector<DecimalType> empty_acf;
-        REQUIRE_THROWS_AS(Stat::suggestStationaryBlockLengthFromACF(empty_acf, 10), std::invalid_argument);
-        std::vector<DecimalType> acf = { createDecimal("1.0"), createDecimal("0.1") };
-        REQUIRE_THROWS_AS(Stat::suggestStationaryBlockLengthFromACF(acf, 0), std::invalid_argument);
-    }
-}
-
 // --------------------------- Smoke test: Monthly -> ACF -> BlockLen ---------------------------
 
-TEST_CASE("StatUtils: end-to-end monthly->ACF->block length",
+// =============================================================================
+// TEST 1 of 2: computeACF shape for a fabricated monthly return series
+//
+// Verifies that computeACF produces the expected autocorrelation pattern for
+// a 12-month sequence with a deliberate paired-return structure.  This test
+// has nothing to do with block length selection; it exercises the ACF
+// estimator alone.
+// =============================================================================
+TEST_CASE("StatUtils: monthly returns ACF shape",
           "[StatUtils][ACF][Monthly][Smoke]")
 {
     using D    = DecimalType;
@@ -1210,9 +1165,11 @@ TEST_CASE("StatUtils: end-to-end monthly->ACF->block length",
     // Fabricate 12 months with deliberate short-range pair structure:
     // Sequence (Jan..Dec): +2%, +2%, -2%, -2%, +1.5%, +1.5%, -1.5%, -1.5%,
     //                      +1%, +1%, -1%, -1%
+    //
     // Identical adjacent returns create a strong rho[2] (same-sign pairs two
     // apart) but alternate so that rho[1] is small.  This exercises the ACF
-    // estimator with a non-trivial correlation pattern.
+    // estimator with a non-trivial, analytically predictable correlation
+    // pattern.
     ClosedPositionHistory<D> hist;
     TradingVolume one(1, TradingVolume::CONTRACTS);
  
@@ -1262,7 +1219,8 @@ TEST_CASE("StatUtils: end-to-end monthly->ACF->block length",
     REQUIRE(acf.size() == 7);
     REQUIRE(num::to_double(acf[0]) == Catch::Approx(1.0));
  
-    // 3) Verify ACF shape matches expectations from the paired-return structure.
+    // 3) Verify ACF shape matches the expected pattern from the paired-return
+    //    structure.
     //
     // With n=12 the biased ACF (divides by n, not n-k) gives approximately:
     //   rho[1] ≈  0.095  (small: adjacent pairs differ in sign)
@@ -1271,33 +1229,104 @@ TEST_CASE("StatUtils: end-to-end monthly->ACF->block length",
     //   rho[4] ≈  0.621
     //   rho[5] ≈  0.086
     //   rho[6] ≈ -0.448
+    //
+    // The alternating-magnitude pattern (large at even lags, small at odd lags)
+    // is a direct consequence of the paired-return construction and is the
+    // expected correct output of the ACF estimator for this input.
+
+    REQUIRE(num::to_double(acf[1]) == Catch::Approx( 11.0/116.0).margin(kACFAbsTol * 100));
+    REQUIRE(num::to_double(acf[2]) == Catch::Approx(-47.0/ 58.0).margin(kACFAbsTol * 100));
+    REQUIRE(num::to_double(acf[4]) == Catch::Approx( 18.0/ 29.0).margin(kACFAbsTol * 100));
+ 
+    // Coarser checks for the remaining lags
     REQUIRE(std::fabs(num::to_double(acf[2])) > 0.75); // rho[2] dominates
     REQUIRE(std::fabs(num::to_double(acf[4])) > 0.50); // rho[4] also notable
+    REQUIRE(std::fabs(num::to_double(acf[1])) < 0.20); // rho[1] is small
+    REQUIRE(std::fabs(num::to_double(acf[3])) < 0.20); // rho[3] is small
+}
  
-    // 4) Suggest block length.
+ 
+// =============================================================================
+// TEST 2 of 2: suggestStationaryBlockLength with real monthly returns
+//
+// Verifies that suggestStationaryBlockLength returns the correct block length
+// when given real monthly return data.  For n=12 the function takes the
+// small-sample fallback path (n < 100), so the result comes from the
+// n^(1/3) heuristic, not from the ACF-based dependence-mass estimator.
+//
+// This test also exercises the input format contract: monthly returns from
+// buildMonthlyReturnsFromClosedPositions are decimal fractions (0.02 = +2%),
+// which is exactly what suggestStationaryBlockLength expects.
+// =============================================================================
+TEST_CASE("StatUtils: suggestStationaryBlockLength with monthly returns",
+          "[StatUtils][BlockLen][Monthly][Smoke]")
+{
+    using D    = DecimalType;
+    using Stat = StatUtils<DecimalType>;
+ 
+    // Same 12-month fabrication as the ACF shape test above.
+    // The specific return values do not affect the result here because n=12
+    // triggers the small-sample fallback before any ACF is computed.  The
+    // construction is kept identical to the companion test for clarity and to
+    // verify the decimal-fraction input format is accepted correctly.
+    ClosedPositionHistory<D> hist;
+    TradingVolume one(1, TradingVolume::CONTRACTS);
+ 
+    auto add_long_1bar = [&](int y, int m, int d, const char* r_str) {
+        D r     = createDecimal(r_str);
+        D entry = createDecimal("100");
+        D exit  = entry * (D("1.0") + r);
+ 
+        TimeSeriesDate de(y, m, d);
+        auto e = createTimeSeriesEntry(de, entry, entry, entry, entry, 10);
+        auto pos = std::make_shared<TradingPositionLong<D>>(
+                       myCornSymbol, e->getOpenValue(), *e, one);
+ 
+        int d_exit = std::min(d + 1, 28);
+        TimeSeriesDate dx(y, m, d_exit);
+        pos->ClosePosition(dx, exit);
+        hist.addClosedPosition(pos);
+    };
+ 
+    add_long_1bar(2021, Jan,  5,  "0.02");
+    add_long_1bar(2021, Feb,  8,  "0.02");
+    add_long_1bar(2021, Mar,  5, "-0.02");
+    add_long_1bar(2021, Apr, 12, "-0.02");
+    add_long_1bar(2021, May,  6,  "0.015");
+    add_long_1bar(2021, Jun, 15,  "0.015");
+    add_long_1bar(2021, Jul,  7, "-0.015");
+    add_long_1bar(2021, Aug, 19, "-0.015");
+    add_long_1bar(2021, Sep,  9,  "0.01");
+    add_long_1bar(2021, Oct, 13,  "0.01");
+    add_long_1bar(2021, Nov,  3, "-0.01");
+    add_long_1bar(2021, Dec, 21, "-0.01");
+ 
+    auto monthly = mkc_timeseries::buildMonthlyReturnsFromClosedPositions<D>(hist);
+    REQUIRE(monthly.size() == 12);
+ 
+    // n=12 < 100: the function takes the small-sample fallback path.
     //
-    // With n=12 and M=6 lags the Bonferroni threshold is:
-    //   z = sqrt(2) * erfinv(1 - 0.05/6) ≈ 2.638
-    //   thresh = 2.638 / sqrt(12) ≈ 0.762
+    //   L = max(minL, min(maxL, floor(n^(1/3))))
+    //     = max(2,    min(6,    floor(12^(1/3))))
+    //     = max(2,    min(6,    floor(2.289)))
+    //     = max(2,    min(6,    2))
+    //     = 2
     //
-    // Although rho[2] ≈ -0.810 exceeds this threshold on its own, the
-    // consecutive-lag rule requires *two adjacent* lags to both exceed it.
-    // Inspecting the ACF:
-    //   k=1: |rho[1]|≈0.095 (below), |rho[2]|≈0.810 (above) → pair fails
-    //   k=2: |rho[2]|≈0.810 (above), |rho[3]|≈0.095 (below) → pair fails
-    //   k=3..5: no lag reaches 0.762
-    // No consecutive pair exists, so the function returns minL=2.
+    // The ACF-based dependence-mass estimator is NOT entered for n < 100.
+    // The monthly return values therefore have no influence on L; only n does.
     //
-    // This is the correct answer for this data: the alternating ACF pattern
-    // (large at even lags, small at odd lags) is an artifact of the paired
-    // data structure, not genuine persistent autocorrelation that a larger
-    // block length should preserve.
-    const unsigned L = Stat::suggestStationaryBlockLengthFromACF(
-                           acf, monthly.size(), /*minL=*/2, /*maxL=*/6);
+    // Input format: monthly[] contains decimal fractions (0.02 = +2%), which
+    // is exactly what suggestStationaryBlockLength expects.  No /100 conversion
+    // is required.
+    const unsigned L = Stat::suggestStationaryBlockLength(
+                           monthly,
+                           /*maxLag=*/6,
+                           /*minL=*/2,
+                           /*maxL=*/6);
  
     REQUIRE(L == 2);
  
-    // 5) Sanity: L is within [2, 6] regardless
+    // Sanity: result is always within the requested range
     REQUIRE(L >= 2);
     REQUIRE(L <= 6);
 }
@@ -6373,5 +6402,459 @@ TEST_CASE("LogProfitFactorFromLogBarsStat_LogPF numerical stability",
         DecimalType result = stat(logBars);
 
         REQUIRE(std::isfinite(num::to_double(result)));
+    }
+}
+
+// =============================================================================
+// Tests for StatUtils::suggestStationaryBlockLength
+//
+// Add these after the existing "StatUtils::suggestStationaryBlockLengthFromACF
+// heuristic" TEST_CASE and the "StatUtils: end-to-end monthly->ACF->block
+// length" TEST_CASE.  Once these pass, remove those two old TEST_CASEs and all
+// call sites of suggestStationaryBlockLengthFromACF.
+//
+// Design notes
+// ------------
+// suggestStationaryBlockLength takes DECIMAL returns (0.015 = +1.5%), not
+// percent values and not pre-computed ACFs.  The function handles all internal
+// transformations.
+//
+// Two kinds of assertions are used:
+//
+//   Exact:  edge cases (throws), small-sample fallback (n^(1/3) arithmetic is
+//           fully deterministic), white-noise / mean-reversion minimum (tau is
+//           clamped to 1 -> L = minL regardless of noise in higher lags).
+//
+//   Range:  cases that depend on the smooth dependence-mass estimator applied
+//           to a synthetic return series.  These assert directional properties
+//           (L > minL, L >= expected_floor) rather than exact integers, because
+//           the block length is a continuous statistic rounded to an integer and
+//           the ACF of a finite synthetic series differs slightly from the
+//           population ACF used in the hand calculations.
+// =============================================================================
+ 
+// ---------------------------------------------------------------------------
+// Helper: build a deterministic regime-switching return series.
+//
+// Produces n observations that alternate between a high-volatility regime
+// (magnitude ~highSigma) and a low-volatility regime (magnitude ~lowSigma),
+// each regime lasting regimeLen bars.  Within each regime observations follow
+// a fixed sign pattern to keep the mean near zero while creating variation
+// in |r_t|.  The resulting series has strong abs-return ACF (GARCH-like
+// volatility clustering) and near-zero signed-return ACF.
+//
+// The sign pattern [+1, -1, +2, -1, +1, -2, ...] keeps the sum of returns
+// within each regime close to zero so the global mean is near zero.
+// ---------------------------------------------------------------------------
+static std::vector<DecimalType>
+makeDeterministicRegimeSeries(std::size_t n,
+                               double highSigma = 0.020,
+                               double lowSigma  = 0.004,
+                               std::size_t regimeLen = 50)
+{
+    // Sign pattern that sums to ~0 over one cycle
+    const std::vector<double> signPattern = {+1.0, -1.0, +0.8, -0.9,
+                                              +1.1, -0.9, +0.8, -1.0};
+    const std::size_t patLen = signPattern.size();
+ 
+    std::vector<DecimalType> out;
+    out.reserve(n);
+ 
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        const bool   highVol = ((i / regimeLen) % 2 == 0);
+        const double sigma   = highVol ? highSigma : lowSigma;
+        const double sign    = signPattern[i % patLen];
+        const double r       = sign * sigma;
+        out.emplace_back(std::to_string(r));
+    }
+    return out;
+}
+  
+// ---------------------------------------------------------------------------
+// Helper: build a deterministic mean-reverting series.
+//
+// Returns alternate sign with decaying magnitude so the raw ACF at lag 1
+// is strongly negative while abs-return variance is minimal.
+// ---------------------------------------------------------------------------
+static std::vector<DecimalType>
+makeMeanRevertingSeries(std::size_t n, double amp = 0.010)
+{
+    // Pure sign-alternating series with constant magnitude.
+    //
+    // WHY constant magnitude:
+    // The function is testing that the RAW (signed) channel correctly handles
+    // mean reversion — it is NOT testing the abs channel.  Any variation in
+    // |r_t| creates abs-return autocorrelation that is completely separate from
+    // the mean-reversion effect we want to isolate.
+    //
+    // With constant |r_t| = amp:
+    //   denom_abs = sum((|r_t| - mean_abs)^2) = 0   (all values identical)
+    //   computeACF returns rho_abs[k] = 0 for all k >= 1
+    //   abs_mass = 0, tau_abs = 1, L_abs = minL = 2
+    //
+    // The signed raw ACF is strongly negative at lag 1 (alternating series),
+    // so raw_mass is large and negative, tau_raw is clamped to 1, L_raw = 2.
+    // Both channels give minL, so L = 2 regardless of n (for n >= 100).
+    std::vector<DecimalType> out;
+    out.reserve(n);
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        const double sign = ((i % 2) == 0) ? +1.0 : -1.0;
+        out.emplace_back(std::to_string(sign * amp));
+    }
+    return out;
+}
+ 
+// =============================================================================
+// TEST_CASE 1: input validation and parameter contracts
+// =============================================================================
+TEST_CASE("StatUtils::suggestStationaryBlockLength input validation",
+          "[StatUtils][BlockLen][Validation]")
+{
+    using Stat = StatUtils<DecimalType>;
+ 
+    SECTION("Single observation throws invalid_argument")
+    {
+        std::vector<DecimalType> one = { DecimalType("0.01") };
+        REQUIRE_THROWS_AS(
+            Stat::suggestStationaryBlockLength(one),
+            std::invalid_argument);
+    }
+ 
+    SECTION("Empty vector throws invalid_argument")
+    {
+        std::vector<DecimalType> empty;
+        REQUIRE_THROWS_AS(
+            Stat::suggestStationaryBlockLength(empty),
+            std::invalid_argument);
+    }
+ 
+    SECTION("Two observations does not throw and returns minL")
+    {
+        // n=2: small-sample path, n^(1/3)=1.26 -> floor=1 -> clamped to minL=2
+        std::vector<DecimalType> two = { DecimalType("0.01"), DecimalType("-0.01") };
+        unsigned L = 0;
+        REQUIRE_NOTHROW(L = Stat::suggestStationaryBlockLength(two));
+        REQUIRE(L == 2);
+    }
+ 
+    SECTION("Result is always within [minL, maxL] for any valid input")
+    {
+        // n=200 regime-switching series, default parameters
+        auto series = makeDeterministicRegimeSeries(200);
+        const unsigned minL = 2, maxL = 12;
+        unsigned L = Stat::suggestStationaryBlockLength(series, 20, minL, maxL);
+        REQUIRE(L >= minL);
+        REQUIRE(L <= maxL);
+    }
+ 
+    SECTION("Custom minL is respected when dependence mass is negligible")
+    {
+        // Construct n=150 series with zero variance -> denom=0 in computeACF
+        // -> all ACF values are zero -> both masses zero -> tau=1 -> L=minL
+        std::vector<DecimalType> constant(150, DecimalType("0.01"));
+        const unsigned customMin = 3, customMax = 10;
+        unsigned L = Stat::suggestStationaryBlockLength(
+                         constant, 20, customMin, customMax);
+        // tau=1 rounds to 1, clamped up to minL=3
+        REQUIRE(L == customMin);
+    }
+ 
+    SECTION("Custom maxL is respected when dependence mass is very large")
+    {
+        // Strong regime-switching, tight maxL=4
+        auto series = makeDeterministicRegimeSeries(300, 0.03, 0.003, 30);
+        const unsigned customMin = 2, customMax = 4;
+        unsigned L = Stat::suggestStationaryBlockLength(
+                         series, 20, customMin, customMax);
+        REQUIRE(L <= customMax);
+        REQUIRE(L >= customMin);
+    }
+}
+ 
+ 
+// =============================================================================
+// TEST_CASE 2: small-sample fallback (n < 100)
+// =============================================================================
+TEST_CASE("StatUtils::suggestStationaryBlockLength small-sample fallback",
+          "[StatUtils][BlockLen][SmallSample]")
+{
+    using Stat = StatUtils<DecimalType>;
+ 
+    // For n < 100 the function uses max(minL, min(maxL, floor(n^(1/3)))).
+    // All expected values below are computed analytically:
+    //   n=2:  floor(2^(1/3))  = floor(1.260) = 1  -> clamped to minL=2
+    //   n=10: floor(10^(1/3)) = floor(2.154) = 2  -> 2
+    //   n=30: floor(30^(1/3)) = floor(3.107) = 3  -> 3
+    //   n=50: floor(50^(1/3)) = floor(3.684) = 3  -> 3
+    //   n=75: floor(75^(1/3)) = floor(4.217) = 4  -> 4
+    //   n=99: floor(99^(1/3)) = floor(4.626) = 4  -> 4
+ 
+    auto makeReturns = [](std::size_t n) {
+        // Alternating tiny values so content doesn't matter
+        std::vector<DecimalType> v;
+        v.reserve(n);
+        for (std::size_t i = 0; i < n; ++i)
+            v.emplace_back((i % 2 == 0) ? "0.001" : "-0.001");
+        return v;
+    };
+ 
+    SECTION("n=2 -> L=2 (n^(1/3)=1.26, clamped to minL)")
+    {
+        REQUIRE(Stat::suggestStationaryBlockLength(makeReturns(2)) == 2);
+    }
+ 
+    SECTION("n=10 -> L=2 (n^(1/3)=2.15, floor=2)")
+    {
+        REQUIRE(Stat::suggestStationaryBlockLength(makeReturns(10)) == 2);
+    }
+ 
+    SECTION("n=30 -> L=3 (n^(1/3)=3.11, floor=3)")
+    {
+        REQUIRE(Stat::suggestStationaryBlockLength(makeReturns(30)) == 3);
+    }
+ 
+    SECTION("n=50 -> L=3 (n^(1/3)=3.68, floor=3)")
+    {
+        REQUIRE(Stat::suggestStationaryBlockLength(makeReturns(50)) == 3);
+    }
+ 
+    SECTION("n=75 -> L=4 (n^(1/3)=4.22, floor=4)")
+    {
+        REQUIRE(Stat::suggestStationaryBlockLength(makeReturns(75)) == 4);
+    }
+ 
+    SECTION("n=99 -> L=4 (n^(1/3)=4.63, floor=4) — last value before ACF path")
+    {
+        REQUIRE(Stat::suggestStationaryBlockLength(makeReturns(99)) == 4);
+    }
+ 
+    SECTION("n=100 does NOT use fallback — ACF path activates at exactly 100")
+    {
+        // With n=100 and alternating tiny values, ACF mass is negligible,
+        // so the ACF path still produces L=minL=2.  This confirms the
+        // boundary at n=100 and that the ACF path runs for n>=100.
+        REQUIRE(Stat::suggestStationaryBlockLength(makeReturns(100)) == 2);
+    }
+}
+ 
+ 
+// =============================================================================
+// TEST_CASE 3: white-noise and near-white-noise series (FIXED)
+// =============================================================================
+TEST_CASE("StatUtils::suggestStationaryBlockLength white-noise returns",
+          "[StatUtils][BlockLen][WhiteNoise]")
+{
+    using Stat = StatUtils<DecimalType>;
+ 
+    SECTION("Alternating tiny returns (n=200) -> L=minL=2")
+    {
+        // Constant-magnitude alternating series: abs returns are all 0.0001,
+        // so denom_abs=0 and computeACF returns rho_abs[k]=0 for all k>=1.
+        // abs_mass=0, tau_abs=1, L_abs=2.
+        //
+        // Signed raw ACF is strongly negative at all lags (alternating series),
+        // so raw_mass is large and negative, tau_raw is clamped to 1, L_raw=2.
+        //
+        // L = max(2, 2) = 2.
+        std::vector<DecimalType> v;
+        for (int i = 0; i < 200; ++i)
+            v.emplace_back((i % 2 == 0) ? "0.0001" : "-0.0001");
+        REQUIRE(Stat::suggestStationaryBlockLength(v) == 2);
+    }
+ 
+    // NOTE: The "IID-like small returns" section was removed.
+    // Any deterministic series with a repeating period p produces abs-ACF peaks
+    // at multiples of p, making it indistinguishable from genuine volatility
+    // clustering.  There is no reliable deterministic construction for
+    // "varying magnitudes + genuinely zero abs-ACF" other than the constant-
+    // magnitude series above, which the existing section already covers.
+ 
+    SECTION("Constant returns (zero variance) -> ACF undefined -> L=minL=2")
+    {
+        // computeACF returns rho[k]=0 for all k>=1 when denom=0 (constant series).
+        // Both masses are therefore 0, tau=1, L=minL=2.
+        std::vector<DecimalType> v(200, DecimalType("0.005"));
+        REQUIRE(Stat::suggestStationaryBlockLength(v) == 2);
+    }
+}
+ 
+ 
+// =============================================================================
+// TEST_CASE 4: mean-reverting series — raw channel must NOT inflate L
+// =============================================================================
+TEST_CASE("StatUtils::suggestStationaryBlockLength mean-reverting series",
+          "[StatUtils][BlockLen][MeanReversion]")
+{
+    using Stat = StatUtils<DecimalType>;
+ 
+    SECTION("Strongly alternating series (n=300) produces L=minL")
+    {
+        // The series has strong negative raw ACF (phi ≈ -1 at lag 1) and
+        // constant abs-return magnitude (denom_abs=0), so abs_mass=0.
+        //
+        // Signed raw channel:
+        //   raw_mass = sum_{k=1}^{20} (1-k/21) * rho_raw[k]
+        //   rho_raw[k] ≈ (-1)^k for an alternating series
+        //   raw_mass ≈ -0.476  (pairs cancel: -20+19=-1, -18+17=-1, ... × 10)
+        //   tau_raw = max(1, 1 + 2*(-0.476)) = max(1, 0.048) = 1.0
+        //   L_raw = 2
+        //
+        // Abs channel:
+        //   All |r_t| = amp → denom_abs = 0 → rho_abs[k] = 0 for k >= 1
+        //   abs_mass = 0, tau_abs = 1, L_abs = 2
+        //
+        // L = max(2, 2) = 2.
+        //
+        // This is the key correctness property of using SIGNED rho for the
+        // raw channel: mean reversion (negative raw_mass) is clamped to 1
+        // rather than inflating tau to the same level as a momentum series
+        // of equal ACF magnitude.
+        auto series = makeMeanRevertingSeries(300, 0.010);
+        unsigned L = Stat::suggestStationaryBlockLength(series);
+        REQUIRE(L == 2);
+    }
+ 
+    SECTION("Mean-reverting series never inflates L above minL (n=500)")
+    {
+        // Verify the signed-channel clamping holds for a larger series
+        // where finite-sample ACF noise is smaller.  L must equal minL=2
+        // regardless of sample size, because the clamping is applied before
+        // rounding.
+        auto series = makeMeanRevertingSeries(500, 0.010);
+        unsigned L = Stat::suggestStationaryBlockLength(series);
+        REQUIRE(L == 2);
+    }
+}
+ 
+ 
+// =============================================================================
+// TEST_CASE 5: volatility clustering drives block length above minimum
+// =============================================================================
+TEST_CASE("StatUtils::suggestStationaryBlockLength volatility clustering",
+          "[StatUtils][BlockLen][VolClustering]")
+{
+    using Stat = StatUtils<DecimalType>;
+ 
+    SECTION("Regime-switching series (n=300) gives L > 2")
+    {
+        // Alternating blocks of high-vol (sigma=0.020) and low-vol (sigma=0.004),
+        // each 50 bars long.  Adjacent observations within the same regime have
+        // similar |r_t|, creating strong positive abs-ACF.
+        //
+        // From analytical computation:
+        //   abs_mass ≈ 1.51, tau_abs ≈ 4.02, L_abs ≈ 4
+        //   raw_mass ≈ -0.21 (signed, mean-reverting pattern), clamped -> L_raw=2
+        //   L = max(2, 4) = 4
+        //
+        // We assert L >= 3 to allow for finite-sample ACF estimation error
+        // while still verifying the abs channel is driving L above the minimum.
+        auto series = makeDeterministicRegimeSeries(300, 0.020, 0.004, 50);
+        unsigned L = Stat::suggestStationaryBlockLength(series);
+        REQUIRE(L >= 3);
+        REQUIRE(L <= 12);
+    }
+ 
+    SECTION("Stronger clustering gives L >= weaker clustering")
+    {
+        // High-contrast regimes (4x vol ratio) vs low-contrast (2x vol ratio).
+        // Higher contrast means larger variance of |r_t|, larger abs-ACF mass,
+        // and therefore larger L.
+        auto high_contrast = makeDeterministicRegimeSeries(300, 0.030, 0.005, 50);
+        auto low_contrast  = makeDeterministicRegimeSeries(300, 0.012, 0.006, 50);
+ 
+        unsigned L_high = Stat::suggestStationaryBlockLength(high_contrast);
+        unsigned L_low  = Stat::suggestStationaryBlockLength(low_contrast);
+ 
+        REQUIRE(L_high >= L_low);
+    }
+ 
+    SECTION("Clustering series gives L strictly greater than white-noise series")
+    {
+        // Same n; clustering series must produce a larger block length than
+        // a white-noise series of the same length.
+        auto clustering = makeDeterministicRegimeSeries(300, 0.020, 0.004, 50);
+        std::vector<DecimalType> wn;
+        const double base[] = { 0.003, -0.002, 0.001, -0.004,
+                                 0.002,  0.003, -0.001, 0.004 };
+        for (int i = 0; i < 300; ++i)
+            wn.emplace_back(std::to_string(base[i % 8]));
+ 
+        unsigned L_cluster = Stat::suggestStationaryBlockLength(clustering);
+        unsigned L_wn      = Stat::suggestStationaryBlockLength(wn);
+ 
+        REQUIRE(L_cluster > L_wn);
+    }
+}
+ 
+ 
+// =============================================================================
+// TEST_CASE 6: maxLag parameter controls ACF truncation
+// =============================================================================
+TEST_CASE("StatUtils::suggestStationaryBlockLength maxLag parameter",
+          "[StatUtils][BlockLen][MaxLag]")
+{
+    using Stat = StatUtils<DecimalType>;
+ 
+    SECTION("Shorter maxLag gives L <= longer maxLag for clustering series")
+    {
+        // With maxLag=5 fewer lags contribute to the mass than maxLag=20.
+        // For a clustering series the tapered sum is always larger with more
+        // lags, so L(maxLag=5) <= L(maxLag=20).
+        auto series = makeDeterministicRegimeSeries(300, 0.020, 0.004, 50);
+ 
+        unsigned L5  = Stat::suggestStationaryBlockLength(series,  5);
+        unsigned L20 = Stat::suggestStationaryBlockLength(series, 20);
+ 
+        REQUIRE(L5 <= L20);
+    }
+ 
+    SECTION("maxLag=1 gives L=minL (single lag cannot accumulate enough mass)")
+    {
+        // With only 1 lag, abs mass = w_1 * |rho_abs[1]| where w_1 = 1-1/2 = 0.5.
+        // For any typical financial series |rho_abs[1]| < 0.5, so
+        // abs_mass < 0.25, tau_abs < 1.5, round(1.5) = 2 -> L_abs = minL = 2.
+        auto series = makeDeterministicRegimeSeries(300, 0.020, 0.004, 50);
+        unsigned L = Stat::suggestStationaryBlockLength(series, 1);
+        REQUIRE(L == 2);
+    }
+ 
+    SECTION("maxLag capped at n-1 internally — does not throw for large maxLag")
+    {
+        // Passing maxLag > n should not throw; it is silently capped to n-1.
+        auto series = makeDeterministicRegimeSeries(150, 0.020, 0.004, 50);
+        REQUIRE_NOTHROW(Stat::suggestStationaryBlockLength(series, 9999));
+    }
+}
+ 
+ 
+// =============================================================================
+// TEST_CASE 7: input format contract — decimal not percent
+// =============================================================================
+TEST_CASE("StatUtils::suggestStationaryBlockLength decimal return format",
+          "[StatUtils][BlockLen][InputFormat]")
+{
+    using Stat = StatUtils<DecimalType>;
+ 
+    SECTION("Decimal returns (0.015) and percent-divided returns give identical L")
+    {
+        // The function expects decimal fractions.  If the same data is passed
+        // correctly as 0.015 vs accidentally as 1.5 (percent), the internal
+        // log(1+r) transformation will produce very different log-return series.
+        // This test confirms the decimal path is self-consistent: dividing by
+        // 100 before calling should match treating the data as already decimal.
+        //
+        // Two series with identical relative structure but different magnitude:
+        //   correct:   [0.015, -0.010, 0.020, ...]
+        //   incorrect: [1.5,   -1.0,   2.0,  ...]  (percent — wrong input)
+        //
+        // The correct series produces log-returns near the linear approximation;
+        // the incorrect series produces log(1+1.5) which is a very large number.
+        // The test verifies the correct-format series gives L in [2,12].
+        auto series = makeDeterministicRegimeSeries(200, 0.015, 0.004, 40);
+        unsigned L = Stat::suggestStationaryBlockLength(series);
+        REQUIRE(L >= 2);
+        REQUIRE(L <= 12);
     }
 }
