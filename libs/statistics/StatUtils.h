@@ -1844,56 +1844,236 @@ namespace mkc_timeseries
     }
 
     /**
-     * @brief Suggest a stationary-bootstrap mean block length from an ACF curve.
+     * @brief Suggest a stationary-bootstrap block length from a decimal return
+     *        series.
      *
-     * Heuristic:
-     * - Noise band ≈ 2/sqrt(nSamples).
-     * - Let k* be the largest lag with |ρ(k)| > band, clamp to [minL, maxL].
+     * This is the single entry point for block length selection.  The caller
+     * provides a series of decimal returns; all internal transformations
+     * (log-return conversion, ACF computation, absolute-return ACF, dependence-
+     * mass estimation) are implementation details hidden from the caller.
      *
-     * Works with ACF stored as Decimal or double.
+     * ---------------------------------------------------------------------------
+     * INPUT FORMAT
+     * ---------------------------------------------------------------------------
+     *
+     * @p decimalReturns must contain returns expressed as decimal fractions:
+     *
+     *   0.015  means +1.5%
+     *  -0.023  means -2.3%
+     *
+     * Do NOT pass percent values (1.5, -2.3) or pre-computed log-returns.
+     * The function applies log(1 + r) internally; passing already-transformed
+     * values will silently produce incorrect results.
+     *
+     * If your data is in percent-ROC format, divide by 100 before calling:
+     *
+     *   decimalReturn = rocPercent / 100
+     *
+     * ---------------------------------------------------------------------------
+     * WHY ONE FUNCTION, ONE ALGORITHM
+     * ---------------------------------------------------------------------------
+     *
+     * Two previous designs were retired:
+     *
+     * Design 1 — single ACF + Bonferroni threshold + consecutive-lag rule.
+     *   Fragile: block length jumped from 2 to 12 when a single ACF value
+     *   moved 0.002 across a significance boundary.  The family-wise error rate
+     *   was ~22% across 20 lags even after corrections, because binary
+     *   significance testing is inherently discontinuous.
+     *
+     * Design 2 — two pre-computed ACFs + dependence-mass estimator (overloaded).
+     *   Better algorithm but leaked implementation detail to callers: they had to
+     *   compute log-returns, compute abs log-returns, compute both ACFs, and then
+     *   call the function.  Any caller omitting the log transformation would get
+     *   a wrong but plausible-looking result.
+     *
+     * This design internalises every transformation.  The caller's only
+     * responsibility is to supply decimal returns in the correct format.
+     *
+     * ---------------------------------------------------------------------------
+     * ALGORITHM
+     * ---------------------------------------------------------------------------
+     *
+     * Step 1.  Compute log-returns:  r_log[t] = log(1 + r[t]).
+     *
+     * Step 2.  Compute abs log-returns: r_abs[t] = |r_log[t]|.
+     *
+     * Step 3.  Compute both ACFs up to K = min(maxLag, n-1) lags:
+     *
+     *            acfRaw = ACF(r_log)
+     *            acfAbs = ACF(r_abs)
+     *
+     * Step 4.  Compute tapered Bartlett dependence masses:
+     *
+     *            rawMass = sum_{k=1}^{K}  w_k * rho_raw[k]     (SIGNED)
+     *            absMass = sum_{k=1}^{K}  w_k * |rho_abs[k]|   (unsigned)
+     *
+     *            w_k = 1 - k / (K + 1)
+     *
+     * Step 5.  Compute effective dependence horizons:
+     *
+     *            tauRaw = max(1,  1 + 2 * rawMass)
+     *            tauAbs =         1 + 2 * absMass    (always >= 1)
+     *
+     *          The formula tau = 1 + 2*sum(rho_k) is the standard long-run
+     *          variance inflation factor.  The factor 2 is derived from the
+     *          symmetry of the autocovariance sum (k = -inf..+inf); it is not
+     *          a tuning parameter.
+     *
+     *          tauRaw is clamped to >= 1 because mean-reverting series produce
+     *          negative rawMass.  For such series the IID bootstrap already
+     *          over-estimates variance; a block of minL is appropriate.
+     *
+     * Step 6.  Convert each tau to an integer block length and combine:
+     *
+     *            L_raw = clamp(round(tauRaw), minL, maxL)
+     *            L_abs = clamp(round(tauAbs), minL, maxL)
+     *            L     = max(L_raw, L_abs)
+     *
+     *          max(L_raw, L_abs) ensures the bootstrap preserves whichever
+     *          dependence channel is stronger.  For daily equity series the
+     *          absolute channel (GARCH volatility clustering) typically dominates.
+     *
+     * ---------------------------------------------------------------------------
+     * SIGNED vs ABSOLUTE rho
+     * ---------------------------------------------------------------------------
+     *
+     * The raw channel uses SIGNED rho.  A mean-reverting series (e.g. SPY daily,
+     * rho[1] ~ -0.03) produces negative rawMass, correctly reducing tauRaw toward
+     * 1.  Using |rho| for this channel would incorrectly inflate the block length
+     * to the same value as a momentum series of equal ACF magnitude even though
+     * mean reversion and momentum have opposite implications for bootstrap variance.
+     *
+     * The abs channel uses |rho|.  Volatility clustering always manifests as
+     * positive ACF of |r_t|; signed and absolute interpretations coincide there.
+     *
+     * ---------------------------------------------------------------------------
+     * SMALL-SAMPLE FALLBACK (n < 100)
+     * ---------------------------------------------------------------------------
+     *
+     * Below n = 100 the ACF estimates are too noisy for the dependence-mass
+     * estimator.  The function returns the n^(1/3) heuristic (Politis & White,
+     * 2004) clamped to [minL, maxL].
+     *
+     * ---------------------------------------------------------------------------
+     * WHY minL = 2 AND NOT 1
+     * ---------------------------------------------------------------------------
+     *
+     * Failing to detect autocorrelation is not the same as proving independence.
+     * Two practical reasons to keep L >= 2 even for apparently white-noise data:
+     *
+     * 1. Test power: at n = 3000 the Bonferroni threshold is ~0.055.
+     *    Autocorrelations below that level are real but undetectable.  Daily
+     *    returns routinely carry 0.01-0.04 from microstructure effects.
+     *
+     * 2. Volatility clustering: near-zero raw ACF is consistent with significant
+     *    ACF of |r_t|.  L = 2 preserves adjacent observation pairs and partially
+     *    captures this structure; L = 1 (IID) destroys it entirely.
+     *
+     * ---------------------------------------------------------------------------
+     *
+     * @param decimalReturns  Return series as decimal fractions (0.015 = +1.5%).
+     *                        Must contain at least 2 observations.
+     *                        Do NOT pass percent values or log-returns.
+     * @param maxLag          Maximum ACF lag.  Capped at n-1 internally.
+     *                        Default 20 is appropriate for daily financial data.
+     * @param minL            Minimum block length.  Default 2.
+     * @param maxL            Maximum block length.  Default 12.
+     * @return                Suggested block length in [minL, maxL].
+     * @throws std::invalid_argument if decimalReturns has fewer than 2 elements.
      */
     static unsigned
-    suggestStationaryBlockLengthFromACF(const std::vector<Decimal>& acf,
-                                        std::size_t nSamples,
-                                        unsigned minL = 2,
-                                        unsigned maxL = 6)
+    suggestStationaryBlockLength(const std::vector<Decimal>& decimalReturns,
+                                 std::size_t maxLag = 20,
+                                 unsigned    minL   = 2,
+                                 unsigned    maxL   = 12)
     {
-      if (acf.empty() || nSamples == 0)
+      const std::size_t n = decimalReturns.size();
+ 
+      if (n < 2)
         throw std::invalid_argument(
-            "suggestStationaryBlockLengthFromACF: empty ACF or nSamples=0.");
+            "suggestStationaryBlockLength: need at least 2 observations.");
  
-      // Number of lags being tested (acf[0] is always 1, not a test).
-      const std::size_t M = acf.size() - 1;
-      if (M == 0)
-        return minL;   // only rho[0] present — no lags to test
- 
-      // Bonferroni-corrected threshold.
-      // z = sqrt(2) * erfinv(1 - alpha/M)  where alpha = 0.05.
-      // This is equivalent to qnorm(1 - alpha/(2*M)), the (1 - alpha/(2M))
-      // quantile of the standard normal, derived from the identity:
-      //   erf(z/sqrt(2)) = 1 - alpha/M  ⟺  z = sqrt(2)*erfinv(1-alpha/M)
-      constexpr double alpha  = 0.05;
-      const double z_bonf = std::sqrt(2.0) *
-                      boost::math::erf_inv(1.0 - alpha / static_cast<double>(M));
-      const double thresh     = z_bonf / std::sqrt(static_cast<double>(nSamples));
- 
-      // Consecutive-lag rule: update k_star only when both lag k and lag k+1
-      // exceed the Bonferroni band.
-      unsigned k_star = minL;
-      for (std::size_t k = 1; k + 1 < acf.size(); ++k)
+      // -----------------------------------------------------------------------
+      // Small-sample fallback
+      // -----------------------------------------------------------------------
+      if (n < 100)
       {
-        const double rk  = std::fabs(acf[k    ].getAsDouble());
-        const double rk1 = std::fabs(acf[k + 1].getAsDouble());
-        if (rk > thresh && rk1 > thresh)
-          k_star = static_cast<unsigned>(k + 1);
+        const unsigned L = static_cast<unsigned>(
+            std::max<std::size_t>(
+                minL,
+                std::min<std::size_t>(
+                    maxL,
+                    static_cast<std::size_t>(
+                        std::pow(static_cast<double>(n), 1.0 / 3.0)))));
+        return L;
       }
  
-      if (k_star < minL) k_star = minL;
-      if (k_star > maxL) k_star = maxL;
+      // -----------------------------------------------------------------------
+      // Step 1 & 2: log-returns and absolute log-returns
+      //
+      // percentBarsToLogBars computes log(1 + r) for each decimal return r.
+      // This is an internal implementation choice; callers are not required to
+      // know that log-returns are used for the ACF.
+      // -----------------------------------------------------------------------
+      const std::vector<Decimal> logReturns =
+          percentBarsToLogBars(decimalReturns);
  
-      return k_star;
+      std::vector<Decimal> absReturns;
+      absReturns.reserve(n);
+      for (const auto& v : logReturns)
+        absReturns.push_back(
+            v < DecimalConstants<Decimal>::DecimalZero ? -v : v);
+ 
+      // -----------------------------------------------------------------------
+      // Step 3: compute both ACFs
+      // -----------------------------------------------------------------------
+      const std::size_t K    = std::min<std::size_t>(maxLag, n - 1);
+      const auto        acfRaw = computeACF(logReturns, K);
+      const auto        acfAbs = computeACF(absReturns,  K);
+ 
+      // -----------------------------------------------------------------------
+      // Step 4: tapered Bartlett dependence masses
+      //
+      // K_raw / K_abs derived from the ACF vector sizes so the weight
+      // denominator is always consistent with the lags actually present,
+      // even when computeACF truncates earlier than K.
+      // -----------------------------------------------------------------------
+      const std::size_t K_raw = acfRaw.size() - 1;
+      double rawMass = 0.0;
+      for (std::size_t k = 1; k <= K_raw; ++k)
+      {
+        const double rho    = acfRaw[k].getAsDouble();          // signed
+        const double weight = 1.0 - (static_cast<double>(k) /
+                              static_cast<double>(K_raw + 1));
+        rawMass += weight * rho;
+      }
+ 
+      const std::size_t K_abs = acfAbs.size() - 1;
+      double absMass = 0.0;
+      for (std::size_t k = 1; k <= K_abs; ++k)
+      {
+        const double rhoAbs = std::fabs(acfAbs[k].getAsDouble());
+        const double weight = 1.0 - (static_cast<double>(k) /
+                              static_cast<double>(K_abs + 1));
+        absMass += weight * rhoAbs;
+      }
+ 
+      // -----------------------------------------------------------------------
+      // Step 5 & 6: tau -> block lengths -> combine
+      // -----------------------------------------------------------------------
+      const double tauRaw = std::max(1.0, 1.0 + 2.0 * rawMass);
+      const double tauAbs =               1.0 + 2.0 * absMass;
+ 
+      const unsigned L_raw = std::max(
+          minL, std::min(maxL, static_cast<unsigned>(std::llround(tauRaw))));
+ 
+      const unsigned L_abs = std::max(
+          minL, std::min(maxL, static_cast<unsigned>(std::llround(tauAbs))));
+ 
+      return std::max(L_raw, L_abs);
     }
-    
+
     static std::tuple<Decimal, Decimal> getBootStrappedProfitability(const std::vector<Decimal>& barReturns,
 								     std::function<std::tuple<Decimal, Decimal>(const std::vector<Decimal>&)> statisticFunc,
 								     size_t numBootstraps = 100)

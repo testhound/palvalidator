@@ -153,23 +153,30 @@ namespace mkc_timeseries
       // 2a) Optionally estimate stationary-block length from ACF of LOSS INDICATOR
       //     L is the “expected” block length in trades for our stationary sampler.
       std::optional<unsigned> L_auto;
-      if (m_opts.useACFBlockLen && n >= 2) {
-	std::vector<Decimal> loss01; loss01.reserve(n);
-	for (const auto& x : pnl) {
-	  const bool loss = (x < Decimal(0)) || (m_opts.treatZeroAsLoss && x == Decimal(0));
-	  loss01.push_back(loss ? Decimal(1) : Decimal(0));
+      if (m_opts.useACFBlockLen && n >= 2)
+	{
+	  std::vector<Decimal> loss01; loss01.reserve(n);
+	  for (const auto& x : pnl)
+	    {
+	      const bool loss = (x < Decimal(0)) || (m_opts.treatZeroAsLoss && x == Decimal(0));
+	      loss01.push_back(loss ? Decimal(1) : Decimal(0));
+	    }
+
+	  try
+	    {
+	      const unsigned Ls =
+		StatUtils<Decimal>::suggestStationaryBlockLength(loss01,
+								 m_opts.acfMaxLag,
+								 m_opts.acfMinL,
+								 m_opts.acfMaxL);
+	      L_auto = Ls;
+	    }
+	  catch (...)
+	    {
+	      // Degenerate cases (constant series, too-short n): just skip auto-L.
+	      L_auto.reset();
+	    }
 	}
-	try {
-	  const auto acf = StatUtils<Decimal>::computeACF(loss01, m_opts.acfMaxLag);
-	  const unsigned Ls =
-	    StatUtils<Decimal>::suggestStationaryBlockLengthFromACF(
-								    acf, n, m_opts.acfMinL, m_opts.acfMaxL);
-	  L_auto = Ls;
-	} catch (...) {
-	  // Degenerate cases (constant series, too-short n): just skip auto-L.
-	  L_auto.reset();
-	}
-      }
 
       // 3) Precompute per-replicate seeds to avoid sharing RNG across threads
       std::vector<uint64_t> seeds(m_opts.B);
