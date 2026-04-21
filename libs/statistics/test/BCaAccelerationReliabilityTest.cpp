@@ -2,17 +2,30 @@
 //
 // Unit tests for:
 //   - AccelerationReliability  (construction, accessors, thresholds)
-//   - JackknifeInfluence::compute()  (all logical branches)
-//   - BCaBootStrap::getAccelerationReliability()  (integration with BCa pipeline)
+//   - JackknifeInfluence::compute()  (all logical branches under the
+//         Tier-1 materiality short-circuit + Tier-2 leave-one-out
+//         sensitivity test)
+//   - BCaBootStrap::getAccelerationReliability()  (integration with BCa)
 //
-// All JackknifeInfluence tests use analytically computed expected values to
-// ensure determinism. Expected values were verified independently in Python.
+// RELIABILITY RULE UNDER TEST
+// ---------------------------
+// JackknifeInfluence::compute() now returns
+//       reliable = (|â| < kAccelMaterialThreshold)  OR  sensitivityOk
+// where
+//       â              = Σd³ / (6·(Σd²)^1.5)
+//       â_without_top  = (Σd³ − top_d³) / (6·(Σd² − top_d²)^1.5)
+//       relChange      = |â − â_without_top| / max(|â|, ε)
+//       sensitivityOk  = (relChange ≤ kSensitivityThreshold)
 //
-// The denominator for dominance fractions is Σ|d³| (total absolute cubic
-// influence), NOT |Σd³| (absolute value of the net signed sum). This means:
-//   - All fractions are always in [0, 1]
-//   - Near-cancellation of signed cubic terms does NOT inflate fractions
-//   - Near-cancellation is separately measured by the cancellation ratio
+// The legacy "single-point dominance" statistic
+//       maxInfluenceFraction = max_i(|d_i³|) / Σ|d_j³|
+// is still computed and exposed but no longer gates reliability.
+//
+// COMPUTE() INPUT CHANGE
+// ----------------------
+// JackknifeInfluence::compute() now takes the raw jackknife deviations
+// d_i = jk_avg − jk_i, NOT the pre-cubed values. All test inputs below
+// are raw d-vectors. Expected values were verified independently.
 //
 // Uses Catch2.
 
@@ -32,41 +45,68 @@ using namespace mkc_timeseries;
 // AccelerationReliability: construction and accessors
 // ============================================================================
 
-TEST_CASE("AccelerationReliability: constructor stores all values correctly",
+TEST_CASE("AccelerationReliability: constructor stores all 10 values correctly",
           "[AccelerationReliability]")
 {
+    // Exercise every stored field so an accidental member-order swap would
+    // fail to compile or fail the round-trip check.
     const bool        reliable          = false;
     const double      maxFrac           = 0.7143;
     const std::size_t maxIdx            = 2;
     const std::size_t nDominant         = 1;
     const double      cancellationRatio = 0.75;
+    const double      accel             = 0.185;
+    const double      accelWithoutTop   = -0.042;
+    const double      accelRelChange    = 1.227;
+    const bool        accelMaterial     = true;
+    const bool        sensitivityOk     = false;
 
-    AccelerationReliability ar(reliable, maxFrac, maxIdx, nDominant, cancellationRatio);
+    AccelerationReliability ar(reliable, maxFrac, maxIdx, nDominant,
+                               cancellationRatio, accel, accelWithoutTop,
+                               accelRelChange, accelMaterial, sensitivityOk);
 
-    REQUIRE(ar.isReliable()              == reliable);
-    REQUIRE(ar.getMaxInfluenceFraction() == Catch::Approx(maxFrac).epsilon(1e-12));
-    REQUIRE(ar.getMaxInfluenceIndex()    == maxIdx);
-    REQUIRE(ar.getNDominant()            == nDominant);
-    REQUIRE(ar.getCancellationRatio()    == Catch::Approx(cancellationRatio).epsilon(1e-12));
+    REQUIRE(ar.isReliable()               == reliable);
+    REQUIRE(ar.getMaxInfluenceFraction()  == Catch::Approx(maxFrac).epsilon(1e-12));
+    REQUIRE(ar.getMaxInfluenceIndex()     == maxIdx);
+    REQUIRE(ar.getNDominant()             == nDominant);
+    REQUIRE(ar.getCancellationRatio()     == Catch::Approx(cancellationRatio).epsilon(1e-12));
+    REQUIRE(ar.getAccel()                 == Catch::Approx(accel).epsilon(1e-12));
+    REQUIRE(ar.getAccelWithoutTop()       == Catch::Approx(accelWithoutTop).epsilon(1e-12));
+    REQUIRE(ar.getAccelRelativeChange()   == Catch::Approx(accelRelChange).epsilon(1e-12));
+    REQUIRE(ar.isAccelMaterial()          == accelMaterial);
+    REQUIRE(ar.isSensitivityOk()          == sensitivityOk);
 }
 
 TEST_CASE("AccelerationReliability: reliable=true variant stores correctly",
           "[AccelerationReliability]")
 {
-    // cancellationRatio=1.0 means cubic terms fully agree in sign (well-conditioned)
-    AccelerationReliability ar(true, 0.25, 0, 0, 1.0);
+    // Typical "everything fine" shape: small |â|, dominance not fired,
+    // cancellation = 1 (cubic terms all same sign).
+    AccelerationReliability ar(true,       // reliable
+                               0.25,       // maxInfluenceFraction
+                               0,          // maxInfluenceIndex
+                               0,          // nDominant
+                               1.0,        // cancellationRatio
+                               0.04,       // accel
+                               0.045,      // accelWithoutTop
+                               0.125,      // accelRelativeChange
+                               false,      // accelMaterial
+                               true);      // sensitivityOk
 
-    REQUIRE(ar.isReliable()              == true);
-    REQUIRE(ar.getMaxInfluenceFraction() == Catch::Approx(0.25).epsilon(1e-12));
-    REQUIRE(ar.getMaxInfluenceIndex()    == 0);
-    REQUIRE(ar.getNDominant()            == 0);
-    REQUIRE(ar.getCancellationRatio()    == Catch::Approx(1.0).epsilon(1e-12));
+    REQUIRE(ar.isReliable()             == true);
+    REQUIRE(ar.isAccelMaterial()        == false);
+    REQUIRE(ar.isSensitivityOk()        == true);
+    REQUIRE(ar.getAccel()               == Catch::Approx(0.04).epsilon(1e-12));
+    REQUIRE(ar.getAccelWithoutTop()     == Catch::Approx(0.045).epsilon(1e-12));
+    REQUIRE(ar.getAccelRelativeChange() == Catch::Approx(0.125).epsilon(1e-12));
 }
 
-TEST_CASE("AccelerationReliability: kDominanceThreshold is 0.5",
+TEST_CASE("AccelerationReliability: kDominanceThreshold is 0.5 (diagnostic only)",
           "[AccelerationReliability]")
 {
-    // Verifying the value here documents and guards against inadvertent changes.
+    // Retained for observability and nDominant counting. No longer gates
+    // reliability: that is determined by the materiality short-circuit
+    // plus the sensitivity test.
     REQUIRE(AccelerationReliability::kDominanceThreshold ==
             Catch::Approx(0.5).epsilon(1e-15));
 }
@@ -74,394 +114,368 @@ TEST_CASE("AccelerationReliability: kDominanceThreshold is 0.5",
 TEST_CASE("AccelerationReliability: kCancellationThreshold is 0.1",
           "[AccelerationReliability]")
 {
-    // Verifying the value here documents and guards against inadvertent changes.
     REQUIRE(AccelerationReliability::kCancellationThreshold ==
             Catch::Approx(0.1).epsilon(1e-15));
+}
+
+TEST_CASE("AccelerationReliability: kAccelMaterialThreshold is 0.10",
+          "[AccelerationReliability]")
+{
+    // Below this |â|, BCa's non-linear correction is numerically
+    // negligible (denominator 1 − â·(z₀+zα) stays within [0.84, 1.16]
+    // at 95% CI), so reliability is vacuously true regardless of any
+    // dominance or sensitivity finding.
+    REQUIRE(AccelerationReliability::kAccelMaterialThreshold ==
+            Catch::Approx(0.10).epsilon(1e-15));
+}
+
+TEST_CASE("AccelerationReliability: kSensitivityThreshold is 0.30",
+          "[AccelerationReliability]")
+{
+    // Maximum allowed relative change in â under single-observation
+    // removal before â is considered unstable. Applies only when â is
+    // material.
+    REQUIRE(AccelerationReliability::kSensitivityThreshold ==
+            Catch::Approx(0.30).epsilon(1e-15));
 }
 
 TEST_CASE("AccelerationReliability: isCancellationHeavy respects kCancellationThreshold",
           "[AccelerationReliability]")
 {
-    // Exactly at threshold: 0.1 is NOT < 0.1, so NOT heavy
-    AccelerationReliability at_threshold(true, 0.1, 0, 0, 0.1);
-    REQUIRE(at_threshold.isCancellationHeavy() == false);
+    auto make = [](double cancel) {
+        return AccelerationReliability(true, 0.1, 0, 0, cancel,
+                                       0.0, 0.0, 0.0, false, true);
+    };
 
-    // Just below threshold: heavy cancellation
-    AccelerationReliability just_below(true, 0.1, 0, 0, 0.099);
-    REQUIRE(just_below.isCancellationHeavy() == true);
+    REQUIRE(make(0.1  ).isCancellationHeavy() == false);  // strict <
+    REQUIRE(make(0.099).isCancellationHeavy() == true);
+    REQUIRE(make(0.9  ).isCancellationHeavy() == false);
+    REQUIRE(make(0.0  ).isCancellationHeavy() == true);
+    REQUIRE(make(1.0  ).isCancellationHeavy() == false);
+}
 
-    // Well above threshold: not heavy
-    AccelerationReliability high_ratio(true, 0.1, 0, 0, 0.9);
-    REQUIRE(high_ratio.isCancellationHeavy() == false);
+TEST_CASE("AccelerationReliability: accessors are independent of derived flags",
+          "[AccelerationReliability]")
+{
+    // The constructor stores flags directly; nothing is re-derived from
+    // the numeric fields. Verified here by constructing an intentionally
+    // inconsistent object — accessors must faithfully report what was
+    // stored, even if "reliable=true" would not be derivable from the
+    // numeric payload. Guards against a future refactor that accidentally
+    // recomputes reliability inside the class.
+    AccelerationReliability ar(true,   // reliable   (stored as-is)
+                               0.90,   // maxFrac    (would trip old rule)
+                               7,      // maxIdx
+                               3,      // nDominant  (would also trip)
+                               1.0,    // cancellationRatio
+                               0.50,   // accel      (material)
+                               0.00,   // accelWithoutTop
+                               1.00,   // accelRelativeChange (would fail sens)
+                               true,   // accelMaterial
+                               false); // sensitivityOk
 
-    // Zero ratio: maximum cancellation
-    AccelerationReliability zero_ratio(true, 0.0, 0, 0, 0.0);
-    REQUIRE(zero_ratio.isCancellationHeavy() == true);
-
-    // Ratio of 1.0: no cancellation at all
-    AccelerationReliability full_ratio(true, 0.1, 0, 0, 1.0);
-    REQUIRE(full_ratio.isCancellationHeavy() == false);
+    REQUIRE(ar.isReliable()            == true);   // as stored
+    REQUIRE(ar.isAccelMaterial()       == true);
+    REQUIRE(ar.isSensitivityOk()       == false);
+    REQUIRE(ar.getAccelRelativeChange() == Catch::Approx(1.0).epsilon(1e-12));
+    REQUIRE(ar.getMaxInfluenceFraction() == Catch::Approx(0.90).epsilon(1e-12));
 }
 
 // ============================================================================
 // JackknifeInfluence::compute() — analytical branch coverage
+//
+// All inputs below are raw jackknife deviations d_i = jk_avg − jk_i.
+// Expected values for â, â_without_top, relChange, maxFrac, and
+// cancellationRatio were computed independently and are hard-coded.
 // ============================================================================
 
-TEST_CASE("JackknifeInfluence: empty input returns reliable with no signal",
+TEST_CASE("JackknifeInfluence: empty input returns a trivially-reliable result",
           "[JackknifeInfluence]")
 {
-    // Empty dCubed: no jackknife information. No dominance possible.
-    // cancellationRatio=1.0 by convention.
-    const std::vector<double> dCubed;
-
-    auto result = JackknifeInfluence::compute(dCubed);
+    auto result = JackknifeInfluence::compute(std::vector<double>{});
 
     REQUIRE(result.isReliable()              == true);
+    REQUIRE(result.isAccelMaterial()         == false);
+    REQUIRE(result.isSensitivityOk()         == true);
+    REQUIRE(result.getAccel()                == Catch::Approx(0.0).margin(1e-15));
+    REQUIRE(result.getAccelWithoutTop()      == Catch::Approx(0.0).margin(1e-15));
     REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(0.0).margin(1e-15));
     REQUIRE(result.getNDominant()            == 0);
     REQUIRE(result.getCancellationRatio()    == Catch::Approx(1.0).epsilon(1e-12));
     REQUIRE(result.isCancellationHeavy()     == false);
 }
 
-TEST_CASE("JackknifeInfluence: negligible sumAbsCubic (all zeros) returns reliable",
+TEST_CASE("JackknifeInfluence: all-zero d vector returns trivially reliable",
           "[JackknifeInfluence]")
 {
-    // All dCubed values zero: sumAbsCubic ≤ 1e-100.
-    // â ≈ 0 → BCa degenerates to plain BC. No dominance possible.
-    // cancellationRatio=1.0 by convention (no signal to cancel).
-    const std::vector<double> dCubed = {0.0, 0.0, 0.0, 0.0};
+    // Σ|d³| ≈ 0 branch: â undefined → treated as 0 → not material → reliable.
+    const std::vector<double> d = {0.0, 0.0, 0.0, 0.0};
 
-    auto result = JackknifeInfluence::compute(dCubed);
+    auto result = JackknifeInfluence::compute(d);
 
     REQUIRE(result.isReliable()              == true);
+    REQUIRE(result.isAccelMaterial()         == false);
+    REQUIRE(result.getAccel()                == Catch::Approx(0.0).margin(1e-15));
     REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(0.0).margin(1e-15));
-    REQUIRE(result.getMaxInfluenceIndex()    == 0);
-    REQUIRE(result.getNDominant()            == 0);
     REQUIRE(result.getCancellationRatio()    == Catch::Approx(1.0).epsilon(1e-12));
 }
 
-TEST_CASE("JackknifeInfluence: single near-zero value returns reliable",
+TEST_CASE("JackknifeInfluence: single near-zero d value hits Σ|d³|≈0 path",
           "[JackknifeInfluence]")
 {
-    // Single element that is effectively zero — hits the negligible sumAbsCubic path.
-    const std::vector<double> dCubed = {1e-200};
+    const std::vector<double> d = {1e-200};
 
-    auto result = JackknifeInfluence::compute(dCubed);
+    auto result = JackknifeInfluence::compute(d);
 
     REQUIRE(result.isReliable()              == true);
+    REQUIRE(result.isAccelMaterial()         == false);
     REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(0.0).margin(1e-15));
-    REQUIRE(result.getNDominant()            == 0);
     REQUIRE(result.getCancellationRatio()    == Catch::Approx(1.0).epsilon(1e-12));
 }
 
-TEST_CASE("JackknifeInfluence: uniform positive influence is reliable",
+TEST_CASE("JackknifeInfluence: uniform positive d gives non-material â=1/(6√n)",
           "[JackknifeInfluence]")
 {
-    // dCubed = {1, 1, 1, 1}: sumAbsCubic=4, each frac=1/4=0.25 < 0.5
-    // All same sign → cancellationRatio = |4| / 4 = 1.0 (no cancellation)
-    const std::vector<double> dCubed = {1.0, 1.0, 1.0, 1.0};
+    // Analytic result: for d = c·1_n, â = 1/(6·√n) regardless of c.
+    // n=4 → â = 1/12 ≈ 0.0833, below kAccelMaterialThreshold=0.10 → reliable.
+    const std::vector<double> d = {1.0, 1.0, 1.0, 1.0};
 
-    auto result = JackknifeInfluence::compute(dCubed);
+    auto result = JackknifeInfluence::compute(d);
 
-    REQUIRE(result.isReliable()              == true);
-    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(0.25).epsilon(1e-12));
-    REQUIRE(result.getMaxInfluenceIndex()    == 0);
-    REQUIRE(result.getNDominant()            == 0);
-    REQUIRE(result.getCancellationRatio()    == Catch::Approx(1.0).epsilon(1e-12));
-    REQUIRE(result.isCancellationHeavy()     == false);
-}
-
-TEST_CASE("JackknifeInfluence: one dominant observation (4/7 > 0.5) is unreliable",
-          "[JackknifeInfluence]")
-{
-    // dCubed = {4, 1, 1, 1}: sumAbsCubic=7
-    // frac[0]=4/7≈0.5714, frac[1..3]=1/7≈0.1429
-    // All same sign → cancellationRatio = |7|/7 = 1.0
-    const std::vector<double> dCubed = {4.0, 1.0, 1.0, 1.0};
-
-    auto result = JackknifeInfluence::compute(dCubed);
-
-    REQUIRE(result.isReliable()              == false);
-    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(4.0 / 7.0).epsilon(1e-12));
-    REQUIRE(result.getMaxInfluenceIndex()    == 0);
-    REQUIRE(result.getNDominant()            == 1);
-    REQUIRE(result.getCancellationRatio()    == Catch::Approx(1.0).epsilon(1e-12));
-    REQUIRE(result.isCancellationHeavy()     == false);
-}
-
-TEST_CASE("JackknifeInfluence: borderline frac exactly 0.5 is treated as reliable",
-          "[JackknifeInfluence]")
-{
-    // dCubed = {1, 1}: each frac = 1/2 = 0.5 exactly.
-    // Dominance condition is strictly > 0.5, so 0.5 is NOT dominant.
-    // Reliable=true, nDominant=0. cancellationRatio=1.0 (same sign).
-    const std::vector<double> dCubed = {1.0, 1.0};
-
-    auto result = JackknifeInfluence::compute(dCubed);
-
-    REQUIRE(result.isReliable()              == true);
-    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(0.5).epsilon(1e-12));
-    REQUIRE(result.getNDominant()            == 0);
-    REQUIRE(result.getCancellationRatio()    == Catch::Approx(1.0).epsilon(1e-12));
-}
-
-TEST_CASE("JackknifeInfluence: maxInfluenceIndex identifies correct observation",
-          "[JackknifeInfluence]")
-{
-    // dCubed = {1, 2, 8, 3}: sumAbsCubic=14, all positive
-    // fracs = {1/14, 2/14, 8/14, 3/14} = {0.0714, 0.1429, 0.5714, 0.2143}
-    // Dominant at index 2. cancellationRatio=1.0 (all same sign).
-    const std::vector<double> dCubed = {1.0, 2.0, 8.0, 3.0};
-
-    auto result = JackknifeInfluence::compute(dCubed);
-
-    REQUIRE(result.isReliable()              == false);
-    REQUIRE(result.getMaxInfluenceIndex()    == 2);
-    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(8.0 / 14.0).epsilon(1e-12));
-    REQUIRE(result.getNDominant()            == 1);
-    REQUIRE(result.getCancellationRatio()    == Catch::Approx(1.0).epsilon(1e-12));
-}
-
-TEST_CASE("JackknifeInfluence: negative dominant value detected via abs()",
-          "[JackknifeInfluence]")
-{
-    // dCubed = {-4, 1, 1, 1}: sumAbsCubic = 4+1+1+1 = 7
-    //
-    // Under the CORRECT absolute-sum denominator:
-    //   frac[0] = 4/7 ≈ 0.571 > 0.5  →  dominant
-    //   frac[1..3] = 1/7 ≈ 0.143 < 0.5  →  not dominant
-    //   → nDominant=1, reliable=false
-    //
-    // NOTE: the signed sum is -4+1+1+1 = -1, so:
-    //   cancellationRatio = |-1| / 7 ≈ 0.143  (partial cancellation)
-    //
-    // This is different from the old buggy behavior which used |signed sum|=1
-    // as denominator, giving fracs {4.0, 1.0, 1.0, 1.0} — all exceeding 1.0.
-    // The absolute-sum denominator correctly identifies only the negative
-    // observation as dominant, since it alone exceeds 50% of total abs influence.
-    const std::vector<double> dCubed = {-4.0, 1.0, 1.0, 1.0};
-
-    auto result = JackknifeInfluence::compute(dCubed);
-
-    REQUIRE(result.isReliable()              == false);
-    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(4.0 / 7.0).epsilon(1e-12));
-    REQUIRE(result.getMaxInfluenceIndex()    == 0);
-    REQUIRE(result.getNDominant()            == 1);
-    // cancellationRatio = |-1| / 7 ≈ 0.143 — partial cancellation but not heavy
-    REQUIRE(result.getCancellationRatio()    == Catch::Approx(1.0 / 7.0).epsilon(1e-12));
-    REQUIRE(result.isCancellationHeavy()     == false);
-}
-
-TEST_CASE("JackknifeInfluence: near-cancellation detected by cancellation ratio",
-          "[JackknifeInfluence]")
-{
-    // dCubed = {3, 3, -5}: sumAbsCubic = 3+3+5 = 11, sumSigned = 3+3-5 = 1
-    //
-    // Under the CORRECT absolute-sum denominator:
-    //   frac[0] = 3/11 ≈ 0.273, frac[1] = 3/11 ≈ 0.273, frac[2] = 5/11 ≈ 0.455
-    //   No fraction exceeds 0.5 → reliable=true, nDominant=0
-    //
-    // cancellationRatio = |1| / 11 ≈ 0.091 < kCancellationThreshold=0.1
-    //   → isCancellationHeavy=true
-    //
-    // This case illustrates the key design improvement: the old buggy denominator
-    // (|signed sum| = 1) would have given fracs {3.0, 3.0, 5.0}, all exceeding 1.0,
-    // and incorrectly labelled this as dominated. The corrected implementation
-    // correctly identifies that no single observation dominates — the signed sum
-    // is small because of cancellation among several comparable contributions,
-    // which is a separate diagnostic (isCancellationHeavy) not a dominance failure.
-    const std::vector<double> dCubed = {3.0, 3.0, -5.0};
-
-    auto result = JackknifeInfluence::compute(dCubed);
-
-    REQUIRE(result.isReliable()              == true);
-    REQUIRE(result.getNDominant()            == 0);
-    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(5.0 / 11.0).epsilon(1e-12));
-    REQUIRE(result.getMaxInfluenceIndex()    == 2);
-    // cancellationRatio = |1|/11 ≈ 0.091 → heavy cancellation
-    REQUIRE(result.getCancellationRatio()    == Catch::Approx(1.0 / 11.0).epsilon(1e-12));
-    REQUIRE(result.isCancellationHeavy()     == true);
-}
-
-TEST_CASE("JackknifeInfluence: well-conditioned positive data has cancellationRatio near 1",
-          "[JackknifeInfluence]")
-{
-    // All same sign → signed sum equals absolute sum → ratio = 1.0
-    // {5, 3, 7, 2, 4}: sumAbsCubic = 21, sumSigned = 21, ratio = 1.0
-    const std::vector<double> dCubed = {5.0, 3.0, 7.0, 2.0, 4.0};
-
-    auto result = JackknifeInfluence::compute(dCubed);
-
-    REQUIRE(result.getCancellationRatio() == Catch::Approx(1.0).epsilon(1e-12));
-    REQUIRE(result.isCancellationHeavy()  == false);
-    // maxFrac = 7/21 ≈ 0.333, reliable
+    REQUIRE(result.getAccel()             == Catch::Approx(1.0 / 12.0).epsilon(1e-12));
+    REQUIRE(result.isAccelMaterial()      == false);
     REQUIRE(result.isReliable()           == true);
+    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(0.25).epsilon(1e-12));
+    REQUIRE(result.getNDominant()         == 0);
+    REQUIRE(result.getCancellationRatio() == Catch::Approx(1.0).epsilon(1e-12));
+}
+
+TEST_CASE("JackknifeInfluence: materiality short-circuit — dominance fires but |â|<threshold → reliable",
+          "[JackknifeInfluence][MaterialityShortCircuit]")
+{
+    // THIS IS THE CENTRAL NEW BEHAVIOR: the cubic-share dominance metric
+    // fires (maxFrac > 0.5), but |â| is too small for the BCa correction to
+    // meaningfully affect the interval. The old rule would have rejected;
+    // the new rule correctly accepts.
+    //
+    // d = {3, 1, 1, -1, -1, -1}
+    //   Σd²  = 9+1+1+1+1+1 = 14
+    //   Σd³  = 27+1+1-1-1-1 = 26
+    //   Σ|d³|= 27+1+1+1+1+1 = 32
+    //   â    = 26 / (6·14^1.5) ≈ 0.0827    (NOT material: |â|<0.10)
+    //   maxFrac = 27/32 = 0.84375          (old rule → unreliable)
+    //   reliable = !material (true)        → reliable by short-circuit.
+    const std::vector<double> d = {3.0, 1.0, 1.0, -1.0, -1.0, -1.0};
+
+    auto result = JackknifeInfluence::compute(d);
+
+    REQUIRE(result.getAccel()             == Catch::Approx(0.082724).margin(1e-4));
+    REQUIRE(result.isAccelMaterial()      == false);
+    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(27.0 / 32.0).epsilon(1e-10));
+    REQUIRE(result.getMaxInfluenceIndex() == 0);
+    REQUIRE(result.getNDominant()         == 1);   // legacy diagnostic still fires
+    REQUIRE(result.isReliable()           == true); // but reliability is true
+}
+
+TEST_CASE("JackknifeInfluence: material â driven by one observation → unreliable",
+          "[JackknifeInfluence][SensitivityTest]")
+{
+    // Same pattern as above but scaled so |â| ≥ 0.10.
+    // d = {5, 1, 1, -1, -1, -1}
+    //   Σd²  = 25+1+1+1+1+1 = 30
+    //   Σd³  = 125+1+1-1-1-1 = 124
+    //   â    = 124 / (6·30^1.5) ≈ 0.1258   (material)
+    //   Removing d[0]=5: d_r = {1,1,-1,-1,-1}
+    //     Σd²_r = 5, Σd³_r = -1
+    //     â_r = -1 / (6·5^1.5) ≈ -0.0149   (sign flip)
+    //   relChange = |0.1258 − (−0.0149)| / 0.1258 ≈ 1.12 > 0.30
+    //   → sensitivityOk = false → unreliable.
+    const std::vector<double> d = {5.0, 1.0, 1.0, -1.0, -1.0, -1.0};
+
+    auto result = JackknifeInfluence::compute(d);
+
+    REQUIRE(result.getAccel()             == Catch::Approx(0.125773).margin(1e-4));
+    REQUIRE(result.isAccelMaterial()      == true);
+    REQUIRE(result.getAccelWithoutTop()   == Catch::Approx(-0.014907).margin(1e-4));
+    REQUIRE(result.getAccelRelativeChange() == Catch::Approx(1.1185).margin(1e-3));
+    REQUIRE(result.isSensitivityOk()      == false);
+    REQUIRE(result.isReliable()           == false);
+    REQUIRE(result.getMaxInfluenceIndex() == 0);
+}
+
+TEST_CASE("JackknifeInfluence: material â robust to top-observation removal → reliable",
+          "[JackknifeInfluence][SensitivityTest]")
+{
+    // Smooth, all-positive d: removing the largest barely changes â.
+    // d = {1.0, 0.5, 0.3}
+    //   Σd²  = 1.34, Σd³ = 1.152
+    //   â    = 1.152 / (6·1.34^1.5) ≈ 0.1238     (material)
+    //   Removing d[0]=1.0: d_r = {0.5, 0.3}
+    //     Σd²_r = 0.34, Σd³_r = 0.152
+    //     â_r = 0.152 / (6·0.34^1.5) ≈ 0.1278
+    //   relChange = |0.1238 − 0.1278| / 0.1238 ≈ 0.032 ≤ 0.30
+    //   → sensitivityOk = true → reliable, despite maxFrac ≈ 0.87.
+    //
+    // This is the case that demonstrates the sensitivity test is strictly
+    // better than the cubic-share proxy: "one observation holds most of
+    // the cubic mass" does NOT imply "one observation drives â."
+    const std::vector<double> d = {1.0, 0.5, 0.3};
+
+    auto result = JackknifeInfluence::compute(d);
+
+    REQUIRE(result.getAccel()             == Catch::Approx(0.123778).margin(1e-4));
+    REQUIRE(result.isAccelMaterial()      == true);
+    REQUIRE(result.getAccelWithoutTop()   == Catch::Approx(0.127783).margin(1e-4));
+    REQUIRE(result.getAccelRelativeChange() == Catch::Approx(0.0324).margin(5e-3));
+    REQUIRE(result.isSensitivityOk()      == true);
+    REQUIRE(result.isReliable()           == true);
+    // Dominance metric still reports the lopsided cubic shares...
+    REQUIRE(result.getMaxInfluenceFraction() > 0.5);
+    // ...but is no longer a gate.
+}
+
+TEST_CASE("JackknifeInfluence: negative dominant value correctly handled via |·|",
+          "[JackknifeInfluence]")
+{
+    // d = {-4, 1, 1, 1}
+    //   Σd²  = 16+1+1+1 = 19
+    //   Σd³  = -64+1+1+1 = -61
+    //   â    = -61 / (6·19^1.5) ≈ -0.1228  (material)
+    //   maxFrac = 64/67 ≈ 0.9552; max_idx = 0 (correctly found via |d³|).
+    //   Removing d[0]=-4: d_r = {1,1,1}
+    //     â_r = 3 / (6·3^1.5) ≈ 0.0962  (sign flip)
+    //   relChange ≈ 1.78 > 0.30 → unreliable.
+    const std::vector<double> d = {-4.0, 1.0, 1.0, 1.0};
+
+    auto result = JackknifeInfluence::compute(d);
+
+    REQUIRE(result.getAccel()               == Catch::Approx(-0.122758).margin(1e-4));
+    REQUIRE(result.isAccelMaterial()        == true);
+    REQUIRE(result.getMaxInfluenceIndex()   == 0);
+    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(64.0 / 67.0).epsilon(1e-10));
+    REQUIRE(result.getAccelWithoutTop()     == Catch::Approx(0.096225).margin(1e-4));
+    REQUIRE(result.getAccelRelativeChange() == Catch::Approx(1.7839).margin(1e-3));
+    REQUIRE(result.isSensitivityOk()        == false);
+    REQUIRE(result.isReliable()             == false);
+    // Partial cancellation: |Σd³|/Σ|d³| = 61/67 ≈ 0.910.
+    REQUIRE(result.getCancellationRatio()   == Catch::Approx(61.0 / 67.0).epsilon(1e-10));
+    REQUIRE(result.isCancellationHeavy()    == false);
+}
+
+TEST_CASE("JackknifeInfluence: heavy cancellation with â≈0 is reliable via short-circuit",
+          "[JackknifeInfluence]")
+{
+    // d = {3, 3, -3, -3, 0.01}
+    //   Σd³  ≈ 0 (27+27-27-27 plus negligible)
+    //   Σ|d³|= 108.000001
+    //   cancellationRatio ≈ 0 → isCancellationHeavy=true
+    //   â ≈ 0 → NOT material → reliable (materiality short-circuit).
+    //
+    // Note: relChange is numerically astronomical here because the denom
+    // clamps to 1e-6 while the numerator is small but non-zero. This is
+    // harmless — the short-circuit dominates. The test below pins that
+    // behavior: even with a huge relChange, reliable=true when â is tiny.
+    const std::vector<double> d = {3.0, 3.0, -3.0, -3.0, 0.01};
+
+    auto result = JackknifeInfluence::compute(d);
+
+    REQUIRE(std::fabs(result.getAccel())    < 1e-6);
+    REQUIRE(result.isAccelMaterial()        == false);
+    REQUIRE(result.isCancellationHeavy()    == true);
+    REQUIRE(result.isReliable()             == true);  // short-circuit wins
+}
+
+TEST_CASE("JackknifeInfluence: maxInfluenceIndex identifies top |d³| with mixed signs",
+          "[JackknifeInfluence]")
+{
+    // d = {1, -2, 3, -0.5}: |d³| = {1, 8, 27, 0.125}. Max at idx=2.
+    //   Σd²  = 1+4+9+0.25 = 14.25
+    //   Σd³  = 1-8+27-0.125 = 19.875
+    //   Σ|d³|= 36.125
+    //   â    = 19.875 / (6·14.25^1.5) ≈ 0.0615 — not material, reliable.
+    const std::vector<double> d = {1.0, -2.0, 3.0, -0.5};
+
+    auto result = JackknifeInfluence::compute(d);
+
+    REQUIRE(result.getMaxInfluenceIndex()   == 2);
+    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(27.0 / 36.125).epsilon(1e-10));
+    REQUIRE(result.isAccelMaterial()        == false);
+    REQUIRE(result.isReliable()             == true);
+}
+
+TEST_CASE("JackknifeInfluence: nDominant counts cubic-share hits for diagnostics",
+          "[JackknifeInfluence]")
+{
+    // nDominant is diagnostic-only under the new rule; this test pins
+    // that it still counts correctly for logging/observability.
+
+    // No dominance: fracs {9/19, 9/19, 1/19}.
+    {
+        const std::vector<double> d = {std::cbrt(9.0), std::cbrt(9.0), std::cbrt(1.0)};
+        auto r = JackknifeInfluence::compute(d);
+        REQUIRE(r.getNDominant() == 0);
+    }
+
+    // Exactly one dominant contributor: fracs {10/12, 1/12, 1/12}.
+    {
+        const std::vector<double> d = {std::cbrt(10.0), std::cbrt(1.0), std::cbrt(1.0)};
+        auto r = JackknifeInfluence::compute(d);
+        REQUIRE(r.getNDominant() == 1);
+    }
 }
 
 TEST_CASE("JackknifeInfluence: cancellationRatio boundary at kCancellationThreshold",
           "[JackknifeInfluence]")
 {
-    // Construct dCubed where |sumSigned| / sumAbsCubic = exactly 0.1
-    // {10, -9, 1}: sumSigned=2, sumAbs=20, ratio=2/20=0.1
-    // ratio = 0.1 is NOT < 0.1, so isCancellationHeavy=false (strict <)
-    const std::vector<double> dCubed = {10.0, -9.0, 1.0};
+    // Construct d where |Σd³| / Σ|d³| = exactly 0.1.
+    // d = {a, b, c} with d³ = {10, -9, 1} → sumSigned=2, sumAbs=20, ratio=0.1.
+    const std::vector<double> d = {
+        std::cbrt( 10.0),
+        std::cbrt( -9.0),
+        std::cbrt(  1.0)
+    };
 
-    auto result = JackknifeInfluence::compute(dCubed);
+    auto result = JackknifeInfluence::compute(d);
 
-    REQUIRE(result.getCancellationRatio() == Catch::Approx(0.1).epsilon(1e-12));
-    REQUIRE(result.isCancellationHeavy()  == false);  // exactly at threshold, NOT heavy
-    // frac[0] = 10/20 = 0.5 → NOT > 0.5, reliable
-    REQUIRE(result.isReliable()           == true);
-}
-
-TEST_CASE("JackknifeInfluence: nDominant counts all observations above threshold",
-          "[JackknifeInfluence]")
-{
-    // dCubed = {6, 5, 4, 1}: sumAbsCubic=16, all positive
-    // fracs = {6/16, 5/16, 4/16, 1/16} = {0.375, 0.3125, 0.25, 0.0625}
-    // None exceed 0.5 → reliable=true, nDominant=0
-    {
-        const std::vector<double> dCubed = {6.0, 5.0, 4.0, 1.0};
-        auto result = JackknifeInfluence::compute(dCubed);
-        REQUIRE(result.isReliable()   == true);
-        REQUIRE(result.getNDominant() == 0);
-        REQUIRE(result.getCancellationRatio() == Catch::Approx(1.0).epsilon(1e-12));
-    }
-
-    // dCubed = {9, 9, 1}: sumAbsCubic=19
-    // fracs = {9/19, 9/19, 1/19} ≈ {0.4737, 0.4737, 0.0526}
-    // None exceed 0.5 → reliable=true, nDominant=0
-    {
-        const std::vector<double> dCubed = {9.0, 9.0, 1.0};
-        auto result = JackknifeInfluence::compute(dCubed);
-        REQUIRE(result.isReliable()   == true);
-        REQUIRE(result.getNDominant() == 0);
-    }
-
-    // dCubed = {10, 10, 1}: sumAbsCubic=21
-    // fracs = {10/21, 10/21, 1/21} ≈ {0.4762, 0.4762, 0.0476}
-    // None exceed 0.5 → nDominant=0
-    {
-        const std::vector<double> dCubed = {10.0, 10.0, 1.0};
-        auto result = JackknifeInfluence::compute(dCubed);
-        REQUIRE(result.isReliable()   == true);
-        REQUIRE(result.getNDominant() == 0);
-    }
-
-    // dCubed = {11, 11, 1}: sumAbsCubic=23
-    // fracs = {11/23, 11/23, 1/23} ≈ {0.4783, 0.4783, 0.0435}
-    // Still none > 0.5 → nDominant=0
-    {
-        const std::vector<double> dCubed = {11.0, 11.0, 1.0};
-        auto result = JackknifeInfluence::compute(dCubed);
-        REQUIRE(result.isReliable()   == true);
-        REQUIRE(result.getNDominant() == 0);
-    }
-
-    // dCubed = {4, 4, -7}: sumAbsCubic=15, sumSigned=1
-    // fracs = {4/15, 4/15, 7/15} ≈ {0.267, 0.267, 0.467}
-    // None exceed 0.5 → reliable=true, nDominant=0
-    // But cancellationRatio = |1|/15 ≈ 0.067 → isCancellationHeavy=true
-    // NOTE: the old buggy denominator (|sumSigned|=1) gave fracs {4,4,7} — all > 0.5.
-    // The corrected implementation correctly identifies no dominance.
-    {
-        const std::vector<double> dCubed = {4.0, 4.0, -7.0};
-        auto result = JackknifeInfluence::compute(dCubed);
-        REQUIRE(result.isReliable()           == true);
-        REQUIRE(result.getNDominant()         == 0);
-        REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(7.0 / 15.0).epsilon(1e-12));
-        REQUIRE(result.getCancellationRatio() == Catch::Approx(1.0 / 15.0).epsilon(1e-12));
-        REQUIRE(result.isCancellationHeavy()  == true);
-    }
-}
-
-TEST_CASE("JackknifeInfluence: single dominant element in a longer vector",
-          "[JackknifeInfluence]")
-{
-    // Build a vector of 20 near-equal values with one dominant outlier at index 12.
-    // dCubed[0..11,13..19] = 0.01 (19 values at 0.01)
-    // dCubed[12] = 10.0
-    // sumAbsCubic = 19 * 0.01 + 10.0 = 10.19  (all positive, equals signed sum)
-    // frac[12] = 10.0 / 10.19 ≈ 0.9814 > 0.5 → dominant
-    // cancellationRatio = 10.19 / 10.19 = 1.0 (all positive, no cancellation)
-    std::vector<double> dCubed(20, 0.01);
-    dCubed[12] = 10.0;
-
-    const double sumAbsCubic = 19 * 0.01 + 10.0; // = 10.19
-    const double frac12      = 10.0 / sumAbsCubic;
-    const double fracRest    = 0.01 / sumAbsCubic;
-
-    auto result = JackknifeInfluence::compute(dCubed);
-
-    REQUIRE(result.isReliable()              == false);
-    REQUIRE(result.getMaxInfluenceIndex()    == 12);
-    REQUIRE(result.getMaxInfluenceFraction() == Catch::Approx(frac12).epsilon(1e-10));
-    REQUIRE(result.getNDominant()            == 1);
-    REQUIRE(result.getCancellationRatio()    == Catch::Approx(1.0).epsilon(1e-10));
-    REQUIRE(result.isCancellationHeavy()     == false);
-
-    // All non-dominant fractions are far below threshold
-    REQUIRE(fracRest < 0.01);
+    REQUIRE(result.getCancellationRatio() == Catch::Approx(0.1).epsilon(1e-10));
+    REQUIRE(result.isCancellationHeavy()  == false);  // strict <
 }
 
 // ============================================================================
 // BCaBootStrap::getAccelerationReliability() — integration tests
+//
+// Expected numerical values below are for the arithmetic-mean statistic
+// (IID delete-one jackknife) and were verified independently.
 // ============================================================================
 
 TEST_CASE("BCaBootStrap::getAccelerationReliability: degenerate all-equal data",
           "[BCaBootStrap][AccelerationReliability]")
 {
-    // All returns identical → all_equal early-exit path in calculateBCaBounds().
-    // â = 0, all dCubed = 0 → sumAbsCubic negligible → reliable=true.
-    // cancellationRatio = 1.0 by convention.
+    // all_equal early-exit path in calculateBCaBounds(): â=0, reliable=true.
     std::vector<DecimalType> returns(10, createDecimal("0.01"));
 
     BCaBootStrap<DecimalType> bca(returns, 500, 0.95);
     auto rel = bca.getAccelerationReliability();
 
     REQUIRE(rel.isReliable()              == true);
+    REQUIRE(rel.isAccelMaterial()         == false);
+    REQUIRE(rel.getAccel()                == Catch::Approx(0.0).margin(1e-12));
     REQUIRE(rel.getMaxInfluenceFraction() == Catch::Approx(0.0).margin(1e-15));
     REQUIRE(rel.getNDominant()            == 0);
     REQUIRE(rel.getCancellationRatio()    == Catch::Approx(1.0).epsilon(1e-12));
     REQUIRE(rel.isCancellationHeavy()     == false);
 }
 
-TEST_CASE("BCaBootStrap::getAccelerationReliability: diffuse influence data is reliable",
+TEST_CASE("BCaBootStrap::getAccelerationReliability: diffuse-influence data is reliable",
           "[BCaBootStrap][AccelerationReliability]")
 {
-    // DESIGN RATIONALE:
-    // For the arithmetic mean statistic, d[i] = (returns[i] - mean) / (n-1),
-    // so the dominance fraction simplifies to:
-    //
-    //   frac[i] = |returns[i] - mean|³ / Σ_j |returns[j] - mean|³
-    //
-    // The denominator is the SUM OF ABSOLUTE VALUES of cubed deviations —
-    // NOT |Σ(returns[j] - mean)³|. This ensures fracs are always in [0,1]
-    // and near-cancellation does not inflate them.
-    //
-    // reliable=true requires max frac[i] ≤ 0.5. This is achieved by a
-    // positively skewed distribution where no single observation dominates
-    // the total absolute cubic influence.
-    //
-    // This dataset is analytically verified under the CORRECTED absolute-sum
-    // denominator (Σ|d³|, not |Σd³|):
-    //   8 values at 0.002–0.008, 4 values at 0.035–0.038
+    // 8 values at 0.002–0.008, 4 values at 0.035–0.038. No single
+    // observation dominates. Analytically:
     //   mean ≈ 0.0155
-    //
-    //   dCubed signs: small-cluster observations are below the mean, so
-    //   removing them raises the LOO mean → d[i] < 0 → dCubed[i] < 0.
-    //   Large-cluster observations are above the mean → dCubed[i] > 0.
-    //   The cubic terms have MIXED SIGNS — this is why the denominator
-    //   choice matters: Σ|d³| > |Σd³|, so all fractions are smaller
-    //   under the corrected denominator than under the old buggy one.
-    //
-    //   Verified in Python (absolute-sum denominator):
-    //     sumSigned ≈ 2.04e-8, sumAbsCubic ≈ 3.57e-8
-    //     fracs (i=0..7):  0.052, 0.041, 0.032, 0.024, 0.024, 0.018, 0.013, 0.009
-    //     fracs (i=8..11): 0.156, 0.181, 0.209, 0.240
-    //     maxFrac ≈ 0.240 at idx=11 < 0.5  →  reliable=true, nDominant=0
-    //     cancellationRatio = |2.04e-8| / 3.57e-8 ≈ 0.573
-    //       (partial cancellation between negative small and positive large cubics)
+    //   â ≈ +0.0327 (not material)
+    //   maxFrac ≈ 0.2398 (idx=11, the largest return)
+    //   cancellationRatio ≈ 0.5729
+    //   relChange ≈ 0.2039 (below 0.30 threshold; also moot since not material)
     std::vector<DecimalType> returns = {
         createDecimal("0.002"), createDecimal("0.003"), createDecimal("0.004"),
         createDecimal("0.005"), createDecimal("0.005"), createDecimal("0.006"),
@@ -474,42 +488,26 @@ TEST_CASE("BCaBootStrap::getAccelerationReliability: diffuse influence data is r
     auto rel = bca.getAccelerationReliability();
 
     REQUIRE(rel.isReliable()              == true);
-    REQUIRE(rel.getMaxInfluenceFraction()  < 0.5);
-    REQUIRE(rel.getNDominant()            == 0);
-    // Analytically: maxFrac ≈ 0.240 (corrected from old 0.419 which used |Σd³| as denominator)
+    REQUIRE(rel.isAccelMaterial()         == false);
+    REQUIRE(rel.getAccel()                == Catch::Approx(0.0327).margin(0.002));
     REQUIRE(rel.getMaxInfluenceFraction() == Catch::Approx(0.240).margin(0.01));
-    // Partial cancellation between negative (small returns) and positive
-    // (large returns) cubic contributions → cancellationRatio ≈ 0.573
+    REQUIRE(rel.getNDominant()            == 0);
     REQUIRE(rel.getCancellationRatio()    == Catch::Approx(0.573).margin(0.05));
-    REQUIRE(rel.isCancellationHeavy()     == false);  // 0.573 >> kCancellationThreshold
+    REQUIRE(rel.isCancellationHeavy()     == false);
 }
 
 TEST_CASE("BCaBootStrap::getAccelerationReliability: single extreme outlier is unreliable",
-          "[BCaBootStrap][AccelerationReliability]")
+          "[BCaBootStrap][AccelerationReliability][SensitivityTest]")
 {
-    // Returns = {0.001 x4, 1.0}: one observation ~1000x larger than the rest.
+    // Returns = {0.001×4, 1.0}: outlier dwarfs everything.
+    //   d[0..3] = -0.04995, d[4] = +0.1998
+    //   â ≈ +0.1118   (MATERIAL, |â| ≥ 0.10)
+    //   maxFrac ≈ 0.9412 at idx=4
+    //   Removing d[4]: â_without_top ≈ -0.0833  (sign flips)
+    //   relChange ≈ 1.75 > 0.30 → sensitivityOk=false → unreliable.
     //
-    // IID delete-one jackknife on mean:
-    //   jk[0..3] = (4 * 0.001 + 1.0 - 0.001) / 4 = 1.003/4 = 0.25075
-    //   jk[4]    = (4 * 0.001) / 4               = 0.001
-    //   jk_avg                                    = 0.2008
-    //
-    //   d[0..3] = 0.2008 - 0.25075 = -0.04995
-    //   d[4]    = 0.2008 - 0.001   =  0.1998
-    //
-    //   dCubed[0..3] ≈ -0.0001246 each
-    //   dCubed[4]    ≈  0.007976
-    //
-    //   sumAbsCubic = 4 * 0.0001246 + 0.007976 = 0.008474
-    //   frac[4] = 0.007976 / 0.008474 ≈ 0.941 > 0.5  →  dominant
-    //
-    //   cancellationRatio = |sumSigned| / sumAbsCubic
-    //                     = |0.007477| / 0.008474 ≈ 0.882  (not heavy cancellation)
-    //
-    // Under the OLD buggy denominator (|sumSigned| = 0.007477):
-    //   frac[4] = 0.007976 / 0.007477 ≈ 1.067 — exceeded 1.0, showing the bug.
-    // Under the CORRECT absolute-sum denominator:
-    //   frac[4] ≈ 0.941 — still dominant, correctly identified.
+    // Confirms that a genuine single-point outlier with material â is
+    // still correctly rejected by the new rule.
     std::vector<DecimalType> returns = {
         createDecimal("0.001"), createDecimal("0.001"),
         createDecimal("0.001"), createDecimal("0.001"),
@@ -519,26 +517,64 @@ TEST_CASE("BCaBootStrap::getAccelerationReliability: single extreme outlier is u
     BCaBootStrap<DecimalType> bca(returns, 1000, 0.95);
     auto rel = bca.getAccelerationReliability();
 
-    REQUIRE(rel.isReliable()           == false);
-    REQUIRE(rel.getMaxInfluenceIndex() == 4);      // the outlier observation
-    REQUIRE(rel.getNDominant()         == 1);
-    // frac ≈ 0.941: dominant, well above threshold, bounded in [0,1]
-    REQUIRE(rel.getMaxInfluenceFraction() > 0.5);
+    REQUIRE(rel.isReliable()              == false);
+    REQUIRE(rel.isAccelMaterial()         == true);
+    REQUIRE(rel.isSensitivityOk()         == false);
+    REQUIRE(rel.getAccel()                == Catch::Approx( 0.1118).margin(1e-3));
+    REQUIRE(rel.getAccelWithoutTop()      == Catch::Approx(-0.0833).margin(1e-3));
+    REQUIRE(rel.getAccelRelativeChange()  > 1.0);  // ≈ 1.75
+    REQUIRE(rel.getMaxInfluenceIndex()    == 4);
     REQUIRE(rel.getMaxInfluenceFraction() == Catch::Approx(0.941).epsilon(0.01));
-    // Not heavy cancellation — outlier and regular observations have opposite-sign
-    // cubic contributions, but the outlier's magnitude is so dominant that the
-    // signed sum is still large relative to the absolute sum.
-    REQUIRE(rel.getCancellationRatio()    > 0.5);
-    REQUIRE(rel.isCancellationHeavy()     == false);
+    REQUIRE(rel.getNDominant()            == 1);
 }
 
-TEST_CASE("BCaBootStrap::getAccelerationReliability: isReliable is consistent with maxInfluenceFraction",
+TEST_CASE("BCaBootStrap::getAccelerationReliability: materiality short-circuit fixes user's reported case",
+          "[BCaBootStrap][AccelerationReliability][MaterialityShortCircuit]")
+{
+    // Real-data analog of the bug the user reported: n=6, a single
+    // moderately large return drives the cubic-share metric over 0.5,
+    // but the resulting |â| is well below the material threshold, so
+    // BCa's correction is negligible and the interval is fine.
+    //
+    // Returns = {-0.02, -0.01, 0, 0.01, 0.02, 0.05}
+    //   mean ≈ 0.00833
+    //   â ≈ +0.0447         (NOT material)
+    //   maxFrac ≈ 0.70 at idx=5  (old rule → REJECTED; new rule → accepted)
+    //
+    // Under the OLD fixed-0.5 dominance gate this would have been flagged
+    // "dominant jackknife observation" just like the user's production
+    // case with a = -0.047. Under the new rule, the materiality
+    // short-circuit correctly reports reliable.
+    std::vector<DecimalType> returns = {
+        createDecimal("-0.02"), createDecimal("-0.01"), createDecimal("0.0"),
+        createDecimal("0.01"),  createDecimal("0.02"),  createDecimal("0.05")
+    };
+
+    BCaBootStrap<DecimalType> bca(returns, 500, 0.95);
+    auto rel = bca.getAccelerationReliability();
+
+    // The key assertions: maxFrac would have tripped the old rule...
+    REQUIRE(rel.getMaxInfluenceFraction() > AccelerationReliability::kDominanceThreshold);
+    REQUIRE(rel.getNDominant()            >= 1);
+    // ...but |â| is below the material threshold...
+    REQUIRE(std::fabs(rel.getAccel()) < AccelerationReliability::kAccelMaterialThreshold);
+    REQUIRE(rel.isAccelMaterial()         == false);
+    // ...so the new rule correctly reports reliable.
+    REQUIRE(rel.isReliable()              == true);
+}
+
+TEST_CASE("BCaBootStrap::getAccelerationReliability: new invariant — reliable iff (!material OR sensitivityOk)",
           "[BCaBootStrap][AccelerationReliability]")
 {
-    // Structural invariant: isReliable() == (maxInfluenceFraction <= kDominanceThreshold).
-    const double threshold = AccelerationReliability::kDominanceThreshold;
+    // Under the new rule, this logical invariant must hold by construction.
+    // Verified on both a well-behaved and an outlier dataset.
 
-    // Reliable case
+    auto check_invariant = [](const AccelerationReliability& rel) {
+        const bool expected = (!rel.isAccelMaterial()) || rel.isSensitivityOk();
+        REQUIRE(rel.isReliable() == expected);
+    };
+
+    // Reliable dataset
     {
         std::vector<DecimalType> returns = {
             createDecimal("0.002"), createDecimal("0.003"), createDecimal("0.004"),
@@ -548,15 +584,10 @@ TEST_CASE("BCaBootStrap::getAccelerationReliability: isReliable is consistent wi
             createDecimal("0.037"), createDecimal("0.038")
         };
         BCaBootStrap<DecimalType> bca(returns, 500, 0.95);
-        auto rel = bca.getAccelerationReliability();
-
-        if (rel.getMaxInfluenceFraction() <= threshold)
-            REQUIRE(rel.isReliable() == true);
-        else
-            REQUIRE(rel.isReliable() == false);
+        check_invariant(bca.getAccelerationReliability());
     }
 
-    // Unreliable case (outlier-driven)
+    // Unreliable dataset
     {
         std::vector<DecimalType> returns = {
             createDecimal("0.001"), createDecimal("0.001"),
@@ -564,12 +595,7 @@ TEST_CASE("BCaBootStrap::getAccelerationReliability: isReliable is consistent wi
             createDecimal("1.0")
         };
         BCaBootStrap<DecimalType> bca(returns, 500, 0.95);
-        auto rel = bca.getAccelerationReliability();
-
-        if (rel.getMaxInfluenceFraction() <= threshold)
-            REQUIRE(rel.isReliable() == true);
-        else
-            REQUIRE(rel.isReliable() == false);
+        check_invariant(bca.getAccelerationReliability());
     }
 }
 
@@ -589,27 +615,32 @@ TEST_CASE("BCaBootStrap::getAccelerationReliability: result is stable across rep
     auto rel2 = bca.getAccelerationReliability();
     auto rel3 = bca.getAccelerationReliability();
 
+    // Core reliability + legacy diagnostics
     REQUIRE(rel1.isReliable()              == rel2.isReliable());
     REQUIRE(rel1.isReliable()              == rel3.isReliable());
     REQUIRE(rel1.getMaxInfluenceFraction() ==
             Catch::Approx(rel2.getMaxInfluenceFraction()).epsilon(1e-15));
-    REQUIRE(rel1.getMaxInfluenceFraction() ==
-            Catch::Approx(rel3.getMaxInfluenceFraction()).epsilon(1e-15));
     REQUIRE(rel1.getMaxInfluenceIndex()    == rel2.getMaxInfluenceIndex());
-    REQUIRE(rel1.getMaxInfluenceIndex()    == rel3.getMaxInfluenceIndex());
     REQUIRE(rel1.getNDominant()            == rel2.getNDominant());
-    REQUIRE(rel1.getNDominant()            == rel3.getNDominant());
     REQUIRE(rel1.getCancellationRatio()    ==
             Catch::Approx(rel2.getCancellationRatio()).epsilon(1e-15));
-    REQUIRE(rel1.getCancellationRatio()    ==
-            Catch::Approx(rel3.getCancellationRatio()).epsilon(1e-15));
+
+    // New fields must also be stable
+    REQUIRE(rel1.getAccel()                ==
+            Catch::Approx(rel2.getAccel()).epsilon(1e-15));
+    REQUIRE(rel1.getAccelWithoutTop()      ==
+            Catch::Approx(rel3.getAccelWithoutTop()).epsilon(1e-15));
+    REQUIRE(rel1.getAccelRelativeChange()  ==
+            Catch::Approx(rel2.getAccelRelativeChange()).epsilon(1e-15));
+    REQUIRE(rel1.isAccelMaterial()         == rel2.isAccelMaterial());
+    REQUIRE(rel1.isSensitivityOk()         == rel3.isSensitivityOk());
 }
 
 TEST_CASE("BCaBootStrap::getAccelerationReliability: larger well-behaved dataset is reliable",
           "[BCaBootStrap][AccelerationReliability]")
 {
     // n=50 with a realistic mix of small positive and negative returns.
-    // No single observation should dominate the total absolute cubic influence.
+    // Analytically: â ≈ -0.035 (not material), maxFrac ≈ 0.159.
     std::vector<DecimalType> returns;
     returns.reserve(50);
     for (int i = 0; i < 50; ++i)
@@ -623,12 +654,17 @@ TEST_CASE("BCaBootStrap::getAccelerationReliability: larger well-behaved dataset
     BCaBootStrap<DecimalType> bca(returns, 1000, 0.95);
     auto rel = bca.getAccelerationReliability();
 
-    REQUIRE(rel.isReliable()   == true);
-    REQUIRE(rel.getNDominant() == 0);
-    // With 50 observations, max fraction should be well below 0.5
+    REQUIRE(rel.isReliable()              == true);
+    REQUIRE(rel.isAccelMaterial()         == false);
+    REQUIRE(rel.getNDominant()            == 0);
     REQUIRE(rel.getMaxInfluenceFraction() < 0.3);
-    // cancellationRatio is finite and in [0,1]
-    REQUIRE(std::isfinite(rel.getCancellationRatio()));
+
+    // The "a_wo" and "relChange" fields are computed from the (n-1)-sized
+    // jackknife with the top contributor removed; still finite and sensible.
+    REQUIRE(std::isfinite(rel.getAccelWithoutTop()));
+    REQUIRE(std::isfinite(rel.getAccelRelativeChange()));
+
+    // Sanity on dominance/cancellation diagnostics
     REQUIRE(rel.getCancellationRatio() >= 0.0);
     REQUIRE(rel.getCancellationRatio() <= 1.0);
 }
@@ -636,8 +672,10 @@ TEST_CASE("BCaBootStrap::getAccelerationReliability: larger well-behaved dataset
 TEST_CASE("BCaBootStrap::getAccelerationReliability: StationaryBlockResampler path",
           "[BCaBootStrap][AccelerationReliability][Stationary]")
 {
-    // Verify the reliability diagnostic works through the StationaryBlockResampler
-    // path (block jackknife, not delete-one).
+    // Verify the reliability diagnostic works through the stationary-block
+    // jackknife (delete-block, not delete-one). With L=3 and n=60 the
+    // block means are all equal (each block contains {0.004, 0.004, -0.003}),
+    // so d ≈ 0 → â ≈ 0 → not material → reliable.
     using Policy = StationaryBlockResampler<DecimalType>;
 
     std::vector<DecimalType> returns;
@@ -647,7 +685,6 @@ TEST_CASE("BCaBootStrap::getAccelerationReliability: StationaryBlockResampler pa
         returns.push_back(createDecimal("0.004"));
         returns.push_back(createDecimal("-0.003"));
     }
-    // n=60, mild autocorrelation pattern
 
     Policy pol(3);
     BCaBootStrap<DecimalType, Policy> bca(returns, 1000, 0.95,
@@ -655,14 +692,12 @@ TEST_CASE("BCaBootStrap::getAccelerationReliability: StationaryBlockResampler pa
                                           pol);
     auto rel = bca.getAccelerationReliability();
 
-    // Block jackknife: floor(60/3)=20 pseudo-values.
-    // Each block contains identical content {0.004, 0.004, -0.003}, so all
-    // block means are equal → d=0 → dCubed=0 → negligible sumAbsCubic → reliable.
-    REQUIRE(rel.isReliable()   == true);
-    REQUIRE(rel.getNDominant() == 0);
+    REQUIRE(rel.isReliable()              == true);
+    REQUIRE(rel.isAccelMaterial()         == false);
+    REQUIRE(rel.getNDominant()            == 0);
     REQUIRE(rel.getMaxInfluenceFraction() < 0.5);
 
-    // Diagnostic fields are self-consistent
+    // Diagnostic fields self-consistent
     REQUIRE(std::isfinite(rel.getMaxInfluenceFraction()));
     REQUIRE(rel.getMaxInfluenceFraction() >= 0.0);
     REQUIRE(std::isfinite(rel.getCancellationRatio()));

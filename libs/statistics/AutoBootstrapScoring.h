@@ -524,16 +524,25 @@ namespace palvalidator
           if (candidate.getN() < AutoBootstrapConfiguration::kBcaMinSampleSize)
             return false;
 
-	  // Data-adaptive acceleration reliability gate.
-	  // Supplements the kBcaMinSampleSize floor with a data-driven check:
-	  // BCaBootStrap::getAccelerationReliability() reports whether any single
-	  // LOO observation contributed more than 50% of |Σd³|. When it did, â
-	  // reflects that observation's artifact rather than a distributional
-	  // property — regardless of â's magnitude, z0, or skew_boot.
-	  // This correctly handles n=9 strategies with diffuse influence (pass)
-	  // and n=25 strategies with one dominant outlier trade (fail).
-	  if (!candidate.getAccelIsReliable())
-	    return false;
+	  // NOTE: getAccelIsReliable() is NO LONGER a hard gate here. Under
+	  // the Tier-1/2 reliability rule (see BiasCorrectedBootstrap.h), the
+	  // flag only reports false when BOTH of these hold:
+	  //   (a) |â| is material — i.e. |â| ≥ kAccelMaterialThreshold, so
+	  //       the BCa correction is numerically non-trivial, and
+	  //   (b) the leave-one-out sensitivity test fails — i.e. removing
+	  //       the top-|d³| observation changes â by more than
+	  //       kSensitivityThreshold relative.
+	  // That combination degrades BCa's trustworthiness but does not
+	  // invalidate the interval. Unreliability is now applied as a soft
+	  // stability penalty in AutoBootstrapSelector::summarizeBCa() (see
+	  // the kBcaAccelUnreliablePenalty block there). BCa then competes
+	  // fairly against MOutOfN in scoring rather than being disqualified
+	  // outright — which was producing spurious rejections of small-|â|
+	  // cases at n≈18 (see the BiasCorrectedBootstrap.h comment history).
+	  //
+	  // The getAccelIsReliable() flag continues to feed into
+	  // SelectionDiagnostics via Candidate::getAccelIsReliable() and into
+	  // AutoBootstrapSelector::analyzeBcaRejection() for logging.
 
           // High bootstrap skewness renders the Edgeworth expansion on which
           // BCa is based unreliable. This is a hard gate, not a soft penalty:

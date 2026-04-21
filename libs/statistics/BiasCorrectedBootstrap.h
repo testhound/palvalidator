@@ -590,40 +590,58 @@ struct IIDResampler
    *
    *   â = Σd³ / (6 × (Σd²)^1.5)
    *
-   * where d_i = jk_avg − jk_i. This class diagnoses two distinct failure modes
-   * in that estimate, which must be kept separate:
+   * where d_i = jk_avg − jk_i. This class diagnoses stability of that estimate
+   * and exposes several related diagnostics:
    *
    * -----------------------------------------------------------------------
-   * FAILURE MODE 1 — Single-point dominance (isReliable)
+   * AUTHORITATIVE RELIABILITY DECISION — isReliable()
    * -----------------------------------------------------------------------
-   * If one observation contributes more than kDominanceThreshold of the
-   * TOTAL ABSOLUTE cubic influence Σ|d³|, then â is being driven by that
-   * single data point rather than by a genuine distributional property.
+   * The reliability flag is determined by a two-stage rule:
    *
-   *   maxInfluenceFraction = max_i ( |d_i³| / Σ_j |d_j³| )
+   *   1. MATERIALITY SHORT-CIRCUIT
+   *      If |â| < kAccelMaterialThreshold, the BCa correction applied by
+   *      â is numerically negligible (the adjusted-percentile denominator
+   *      1 − â·(z₀ + z_α) stays within roughly [0.84, 1.16] at 95% CI).
+   *      In this regime BCa is essentially equivalent to plain BC, so the
+   *      acceleration cannot meaningfully destabilise the interval
+   *      regardless of any dominance pathology. isReliable() returns true.
    *
-   * NOTE: the denominator is Σ|d³|, NOT |Σd³|. Using the signed net sum as
-   * denominator causes fractions to explode when positive and negative cubic
-   * terms partially cancel — making the metric fire spuriously on healthy
-   * mixed-return data. The absolute sum is the correct normaliser.
+   *   2. LEAVE-ONE-OUT SENSITIVITY TEST
+   *      If |â| is material, reliability is determined by the direct
+   *      stability test: recompute â with the top-|d³| observation removed
+   *      and compare to â on the full sample:
+   *
+   *        relChange = |â_full − â_minus_top| / max(|â_full|, ε)
+   *
+   *      isReliable() returns true iff relChange ≤ kSensitivityThreshold.
+   *      This test directly measures "is â driven by one observation?"
+   *      rather than inferring it from the cubic-share proxy, and it
+   *      auto-scales with both n and |â|.
+   *
+   * Rationale for the two-stage rule: a fixed cubic-share threshold
+   * (e.g. kDominanceThreshold = 0.5) is known to produce 16–49% Type-I
+   * error at n=18 on well-behaved i.i.d. data, because cubic amplification
+   * of order-statistic fluctuations concentrates naturally at small n.
+   * Gating on |â| eliminates the spurious rejections whose underlying â
+   * would not actually move the interval, and the sensitivity test
+   * measures the real quantity of interest when â is large enough to
+   * matter.
    *
    * -----------------------------------------------------------------------
-   * FAILURE MODE 2 — Sign cancellation (isCancellationHeavy)
+   * RELATED DIAGNOSTICS (not folded into isReliable)
    * -----------------------------------------------------------------------
-   * Even when no single observation dominates, the signed cubic terms can
-   * largely cancel, leaving â precariously balanced near zero. The
-   * cancellation ratio measures how far the signed sum has been eroded:
+   * Dominance:      maxInfluenceFraction = max_i(|d_i³|) / Σ|d_j³|
+   *                 Retained as an observability-only metric. Note the
+   *                 denominator is Σ|d³|, NOT |Σd³|: using the signed net
+   *                 sum would cause fractions to inflate under cancellation.
+   *                 getMaxInfluenceFraction(), getMaxInfluenceIndex(),
+   *                 getNDominant() expose the raw values for logging.
    *
-   *   cancellationRatio = |Σd³| / Σ|d³|
-   *
-   * Near 1.0 → cubic terms mostly agree in sign (well-conditioned numerator).
-   * Near 0.0 → large positive and negative terms cancel (precariously balanced).
-   *
-   * When cancellationRatio is near zero, â is numerically near zero and BCa
-   * degenerates to plain BC. This is generally acceptable behaviour — the
-   * interval is not incorrect, just less corrected. isCancellationHeavy()
-   * exposes this as a diagnostic so callers can inspect it, but it is NOT
-   * folded into isReliable() since degeneration to BC is not a hard failure.
+   * Cancellation:   cancellationRatio = |Σd³| / Σ|d³|
+   *                 Near 1.0 → cubic terms agree in sign (well-conditioned).
+   *                 Near 0.0 → large opposite-sign terms cancel, â ≈ 0 and
+   *                 BCa degenerates to plain BC. isCancellationHeavy() flags
+   *                 this as a soft warning; it is NOT a hard failure.
    *
    * -----------------------------------------------------------------------
    * There is no default constructor. Every instance is produced by
@@ -633,60 +651,130 @@ struct IIDResampler
   class AccelerationReliability
   {
   public:
-    /// Fraction of Σ|d³| above which a single observation is considered dominant.
-    /// Uses the total absolute cubic sum as denominator, not the signed net sum,
-    /// so near-cancellation among balanced observations does not inflate fractions.
+    /// Legacy dominance threshold. RETAINED for the diagnostic-only
+    /// getNDominant() counter and any external code that inspects it.
+    /// No longer used by isReliable(); the leave-one-out sensitivity test
+    /// (kSensitivityThreshold) is the authoritative criterion.
     static constexpr double kDominanceThreshold = 0.5;
 
     /// Cancellation ratio below which the signed cubic sum is considered
     /// heavily cancelled: cancellationRatio = |Σd³| / Σ|d³|.
     static constexpr double kCancellationThreshold = 0.1;
 
+    /// Materiality threshold for |â|. Below this, the BCa correction applied
+    /// by â is numerically negligible relative to plain BC, so any dominance
+    /// or sensitivity finding is not actionable. isReliable() short-circuits
+    /// to true whenever |â| < kAccelMaterialThreshold.
+    ///
+    /// Derivation: at |â| = 0.10, the adjusted-percentile denominator
+    /// 1 − â·(z₀ + z_α) at 95% CI (z_α ≈ ±1.96, small z₀) stays within
+    /// [0.84, 1.16], corresponding to a <3 percentage-point shift in the
+    /// adjusted CDF — below the second-order accuracy floor BCa is trying
+    /// to achieve. Well below Efron's |â| > 0.25 Edgeworth-expansion concern.
+    static constexpr double kAccelMaterialThreshold = 0.10;
+
+    /// Relative-change threshold for the leave-one-out sensitivity test.
+    /// When |â| is material, â is considered driven by a single observation
+    /// iff |â_full − â_minus_top| / max(|â_full|, ε) exceeds this value.
+    ///
+    /// Rationale: removing ~50% of the cubic share (the old dominance
+    /// threshold) typically changes â by ~40%, so 0.30 is comparable in
+    /// strictness but more directly interpretable. Callers may tighten or
+    /// loosen this after validation against their actual distributions.
+    static constexpr double kSensitivityThreshold = 0.30;
+
     /**
      * @brief Constructs a fully-computed reliability result.
      *
-     * @param isReliable           True if no single observation exceeds kDominanceThreshold
-     *                             of the total absolute cubic influence Σ|d³|.
-     * @param maxInfluenceFraction max_i( |d_i³| / Σ|d_j³| ) — fraction of total absolute
-     *                             cubic influence from the most influential observation.
-     * @param maxInfluenceIndex    Index of the observation with maxInfluenceFraction.
-     * @param nDominant            Number of observations whose fraction exceeds kDominanceThreshold.
-     * @param cancellationRatio    |Σd³| / Σ|d³|. Near 1 = well-conditioned, near 0 = heavy
-     *                             cancellation. Set to 1.0 when Σ|d³| is negligible.
+     * @param isReliable            Authoritative reliability flag: true iff
+     *                              |â| < kAccelMaterialThreshold OR the
+     *                              leave-one-out sensitivity test passes.
+     * @param maxInfluenceFraction  max_i( |d_i³| / Σ|d_j³| ) — diagnostic only.
+     * @param maxInfluenceIndex     Index of the top-|d³| observation
+     *                              (the one removed in the sensitivity test).
+     * @param nDominant             Number of observations whose fraction exceeds
+     *                              kDominanceThreshold. Diagnostic only.
+     * @param cancellationRatio     |Σd³| / Σ|d³|. Near 1 = well-conditioned,
+     *                              near 0 = heavy cancellation.
+     * @param accel                 â computed from the full jackknife.
+     * @param accelWithoutTop       â recomputed with the top-|d³| observation
+     *                              removed (perturbed jackknife).
+     * @param accelRelativeChange   |accel − accelWithoutTop| / max(|accel|, ε).
+     *                              ∞ when either value is non-finite.
+     * @param accelMaterial         |accel| ≥ kAccelMaterialThreshold.
+     * @param sensitivityOk         accelRelativeChange ≤ kSensitivityThreshold.
      */
     AccelerationReliability(bool        isReliable,
                             double      maxInfluenceFraction,
                             std::size_t maxInfluenceIndex,
                             std::size_t nDominant,
-                            double      cancellationRatio)
+                            double      cancellationRatio,
+                            double      accel,
+                            double      accelWithoutTop,
+                            double      accelRelativeChange,
+                            bool        accelMaterial,
+                            bool        sensitivityOk)
       : m_isReliable(isReliable),
         m_maxInfluenceFraction(maxInfluenceFraction),
         m_maxInfluenceIndex(maxInfluenceIndex),
         m_nDominant(nDominant),
-        m_cancellationRatio(cancellationRatio)
+        m_cancellationRatio(cancellationRatio),
+        m_accel(accel),
+        m_accelWithoutTop(accelWithoutTop),
+        m_accelRelativeChange(accelRelativeChange),
+        m_accelMaterial(accelMaterial),
+        m_sensitivityOk(sensitivityOk)
     {}
 
-    /// True if no single jackknife observation dominates the total absolute
-    /// cubic influence. This is one diagnostic among several — see also
-    /// the z0, acceleration, and skewness gates in AutoBootstrapSelector.
+    /// Authoritative reliability flag. True iff:
+    ///   (|â| < kAccelMaterialThreshold)   — BCa correction is negligible
+    ///   OR
+    ///   (relative change under top-observation removal ≤ kSensitivityThreshold)
+    ///
+    /// See the class comment for the rationale behind the two-stage rule.
     bool        isReliable()              const { return m_isReliable; }
 
     /// Largest fraction of Σ|d³| contributed by any single LOO observation.
-    /// Range [0, 1] when no cancellation is present; can exceed 1.0 only if
-    /// computed incorrectly with the signed net sum — this implementation uses
-    /// the absolute sum so fractions are always in [0, 1].
+    /// Diagnostic only — no longer a gate. Range [0, 1].
     double      getMaxInfluenceFraction() const { return m_maxInfluenceFraction; }
 
     /// Index (into the original sample) of the most influential LOO observation.
+    /// This is the observation removed by the sensitivity test.
     std::size_t getMaxInfluenceIndex()    const { return m_maxInfluenceIndex; }
 
     /// Number of observations whose absolute cubic fraction exceeds kDominanceThreshold.
+    /// Diagnostic only.
     std::size_t getNDominant()            const { return m_nDominant; }
 
     /// |Σd³| / Σ|d³|. Near 1.0: cubic terms agree in sign (well-conditioned).
-    /// Near 0.0: strong cancellation among opposite-sign contributions.
-    /// Always in [0, 1]. Set to 1.0 when Σ|d³| is negligible (no cubic signal).
+    /// Near 0.0: strong cancellation. Always in [0, 1]. Set to 1.0 when Σ|d³|
+    /// is negligible (no cubic signal).
     double      getCancellationRatio()    const { return m_cancellationRatio; }
+
+    /// BCa acceleration â from the full jackknife. Numerically identical (up
+    /// to floating-point rounding) to BCaBootStrap::getAcceleration().
+    double      getAccel()                const { return m_accel; }
+
+    /// BCa acceleration â recomputed with the top-|d³| observation removed.
+    /// The reliability decision (when |â| is material) is based on how far
+    /// this has drifted from getAccel().
+    double      getAccelWithoutTop()      const { return m_accelWithoutTop; }
+
+    /// Relative change in â when the top-influence observation is removed:
+    ///   |accel − accelWithoutTop| / max(|accel|, ε).
+    /// Small values → â is robust to single-point perturbation.
+    /// Large values → â is driven by one observation (BCa unreliable).
+    /// Returns ∞ if either accel or accelWithoutTop is non-finite.
+    double      getAccelRelativeChange()  const { return m_accelRelativeChange; }
+
+    /// True iff |â| ≥ kAccelMaterialThreshold. When false, the BCa correction
+    /// is negligible and isReliable() is forced to true regardless of any
+    /// dominance or sensitivity finding.
+    bool        isAccelMaterial()         const { return m_accelMaterial; }
+
+    /// True iff the leave-one-out sensitivity test passes. Meaningful only
+    /// when isAccelMaterial() is true.
+    bool        isSensitivityOk()         const { return m_sensitivityOk; }
 
     /// True if cancellationRatio < kCancellationThreshold, indicating that the
     /// signed cubic sum is severely eroded by cancellation. When true, â is
@@ -704,105 +792,194 @@ struct IIDResampler
     std::size_t m_maxInfluenceIndex;
     std::size_t m_nDominant;
     double      m_cancellationRatio;
+    double      m_accel;
+    double      m_accelWithoutTop;
+    double      m_accelRelativeChange;
+    bool        m_accelMaterial;
+    bool        m_sensitivityOk;
   };
 
   /**
    * @class JackknifeInfluence
-   * @brief Single-responsibility utility for computing jackknife influence
-   * diagnostics on BCa acceleration estimates.
+   * @brief Computes jackknife influence diagnostics and the authoritative
+   * reliability decision for the BCa acceleration parameter â.
    *
-   * This class knows nothing about BCa, resampling, or statistics. Its sole
-   * responsibility is: given the signed cubic contributions d_i² × d_i from
-   * the jackknife loop, compute the two influence diagnostics described by
-   * AccelerationReliability:
+   * Given the raw leave-one-out jackknife deviations d_i = jk_avg − jk_i,
+   * this class computes:
    *
-   *   1. Single-point dominance: max_i(|d_i³| / Σ|d_j³|) > kDominanceThreshold
-   *   2. Sign cancellation:      |Σd³| / Σ|d³| < kCancellationThreshold
+   *   1. â from the full jackknife, using the same formula as
+   *      BCaBootStrap::calculateBCaBounds:
+   *          â = Σd³ / (6 × (Σd²)^1.5)
    *
-   * The denominator for the dominance check is Σ|d³| (total absolute cubic
-   * influence), NOT |Σd³| (absolute value of the net signed sum). The signed
-   * net sum collapses toward zero when positive and negative contributions
-   * cancel — which is common for mixed-return strategies — causing fractions
-   * to inflate spuriously. The absolute sum is the mathematically correct
-   * normaliser for "share of total cubic influence."
+   *   2. Dominance and cancellation diagnostics (reported, not gating):
+   *          maxInfluenceFraction = max_i(|d_i³|) / Σ|d_j³|
+   *          cancellationRatio    = |Σd³| / Σ|d³|
+   *      The denominator for dominance is Σ|d³| (total absolute cubic
+   *      influence), NOT |Σd³|; the signed net sum would inflate fractions
+   *      under cancellation.
+   *
+   *   3. Leave-one-out sensitivity test on â itself:
+   *          â_minus_top = (Σd³ − top_d³) / (6 × (Σd² − top_d²)^1.5)
+   *          relChange   = |â − â_minus_top| / max(|â|, ε)
+   *      where top_d is the observation with the largest |d³|. This measures
+   *      directly whether a single observation drives â, rather than
+   *      inferring it from the cubic-share proxy.
+   *
+   *   4. The authoritative isReliable() flag:
+   *          reliable = (|â| < kAccelMaterialThreshold)
+   *                     OR (relChange ≤ kSensitivityThreshold)
+   *      The materiality short-circuit prevents spurious rejections when â
+   *      is too small for any correction it applies to affect the interval.
+   *      When â is material, the sensitivity test is the primary criterion.
    *
    * Called from BCaBootStrap::calculateBCaBounds() after the jackknife loop.
-   * The result is stored as std::optional<AccelerationReliability> and exposed
-   * via BCaBootStrap::getAccelerationReliability().
+   * The result is stored and exposed via BCaBootStrap::getAccelerationReliability().
    *
-   * Reference: Efron, B. (1987). JASA 82(397), eq. 6.7; see also the review
-   * discussion of dominance vs. cancellation failure modes.
+   * Reference: Efron, B. (1987). JASA 82(397), eq. 6.7.
    */
   class JackknifeInfluence
   {
   public:
     /**
-     * @brief Computes acceleration reliability from signed cubic LOO contributions.
+     * @brief Computes the full reliability result from raw jackknife deviations.
      *
-     * Computes two diagnostics:
-     *   - Single-point dominance: does any observation contribute > 50% of Σ|d³|?
-     *   - Cancellation ratio:     how much has the signed sum been eroded by cancellation?
-     *
-     * @param dCubed  Per-observation signed cubic values (d_i² × d_i) from the
-     *                jackknife loop. Their sum is the BCa numerator Σd³.
-     * @return        AccelerationReliability with dominance and cancellation diagnostics.
+     * @param d  Per-observation jackknife deviations d_i = jk_avg − jk_i from
+     *           the jackknife loop.
+     * @return   AccelerationReliability populated with â, the perturbed â
+     *           (top-observation removed), their relative change, the
+     *           materiality flag, the sensitivity flag, the legacy dominance
+     *           diagnostics, and the authoritative reliability decision.
      */
-    static AccelerationReliability compute(const std::vector<double>& dCubed)
+    static AccelerationReliability compute(const std::vector<double>& d)
     {
-      // Empty input: no jackknife information available. No dominance possible.
-      // Cancellation ratio 1.0 by convention (no signal to cancel).
-      if (dCubed.empty())
-        return AccelerationReliability(true, 0.0, 0, 0, 1.0);
+      const std::size_t n = d.size();
 
-      // Accumulate both the signed sum (for cancellation ratio) and the
-      // absolute sum (for dominance fractions) in a single pass.
-      double sumSignedCubic = 0.0;
-      double sumAbsCubic    = 0.0;
-      for (double v : dCubed)
+      // Empty input: no jackknife information. No dominance possible,
+      // â = 0 by convention, reliability vacuously true.
+      if (n == 0)
         {
-          sumSignedCubic += v;
-          sumAbsCubic    += std::fabs(v);
+          return AccelerationReliability(true, 0.0, 0, 0, 1.0,
+                                         0.0, 0.0, 0.0, false, true);
+        }
+
+      // Single pass: accumulate signed cubic, absolute cubic, and squared
+      // sums while tracking the top-|d³| observation.
+      double      sumSignedCubic = 0.0;
+      double      sumAbsCubic    = 0.0;
+      double      sumD2          = 0.0;
+      double      maxAbsCubic    = 0.0;
+      std::size_t maxIdx         = 0;
+
+      for (std::size_t i = 0; i < n; ++i)
+        {
+          const double di   = d[i];
+          const double d2i  = di * di;
+          const double d3i  = d2i * di;
+          const double abs3 = std::fabs(d3i);
+
+          sumSignedCubic += d3i;
+          sumAbsCubic    += abs3;
+          sumD2          += d2i;
+
+          if (abs3 > maxAbsCubic)
+            {
+              maxAbsCubic = abs3;
+              maxIdx      = i;
+            }
         }
 
       // Total absolute cubic influence negligible: every LOO contribution is
       // negligible, so â ≈ 0 and BCa degenerates to plain BC. No meaningful
-      // dominance is possible. Cancellation ratio 1.0 by convention.
+      // dominance or sensitivity possible. Cancellation ratio 1.0 by
+      // convention; material/sensitivityOk reflect the near-zero â.
       if (sumAbsCubic <= 1e-100)
-        return AccelerationReliability(true, 0.0, 0, 0, 1.0);
+        {
+          return AccelerationReliability(true, 0.0, 0, 0, 1.0,
+                                         0.0, 0.0, 0.0, false, true);
+        }
 
-      // Cancellation ratio: how much of Σ|d³| survives after sign cancellation.
-      // Near 1.0 → cubic terms mostly agree in sign (well-conditioned numerator).
-      // Near 0.0 → large opposite-sign terms cancel (precariously balanced).
-      // Always in [0, 1] because |Σd³| ≤ Σ|d³| by the triangle inequality.
+      // Cancellation ratio: |Σd³| / Σ|d³|. Near 1 → well-conditioned.
       const double cancellationRatio = std::fabs(sumSignedCubic) / sumAbsCubic;
 
-      // Dominance check: does any single observation contribute more than
-      // kDominanceThreshold of the total absolute cubic influence?
-      //
-      // IMPORTANT: denominator is sumAbsCubic = Σ|d³|, NOT fabs(sumSignedCubic).
-      // Using the signed net sum as denominator would cause fractions to inflate
-      // when positive and negative cubics partially cancel — a common situation
-      // for mixed-return strategies — leading to spurious rejections of valid BCa
-      // runs where no single observation actually dominates.
-      double      maxFrac   = 0.0;
-      std::size_t maxIdx    = 0;
-      std::size_t nDominant = 0;
+      // Dominance fraction (diagnostic only — no longer a gate).
+      const double maxFrac = maxAbsCubic / sumAbsCubic;
 
-      for (std::size_t i = 0; i < dCubed.size(); ++i)
+      // Legacy dominance count: observations with fraction >= the old
+      // kDominanceThreshold. Retained for observability; no effect on
+      // the reliability decision.
+      std::size_t nDominant = 0;
+      for (std::size_t i = 0; i < n; ++i)
         {
-          const double frac = std::fabs(dCubed[i]) / sumAbsCubic;
-          if (frac > maxFrac)
-            {
-              maxFrac = frac;
-              maxIdx  = i;
-            }
-          if (frac > AccelerationReliability::kDominanceThreshold)
+          const double d2i  = d[i] * d[i];
+          const double abs3 = std::fabs(d2i * d[i]);
+          if (abs3 / sumAbsCubic > AccelerationReliability::kDominanceThreshold)
             ++nDominant;
         }
 
-      const bool reliable = (maxFrac <= AccelerationReliability::kDominanceThreshold);
-      return AccelerationReliability(reliable, maxFrac, maxIdx, nDominant,
-                                     cancellationRatio);
+      // â from the full jackknife. Matches BCaBootStrap's computation
+      // byte-for-byte (modulo Decimal↔double rounding).
+      double a = 0.0;
+      if (sumD2 > 1e-100)
+        {
+          const double d15 = std::pow(sumD2, 1.5);
+          if (d15 > 1e-100)
+            a = sumSignedCubic / (6.0 * d15);
+        }
+
+      // TIER 1 — materiality short-circuit condition.
+      const bool accelMaterial =
+        std::isfinite(a) &&
+        std::fabs(a) >= AccelerationReliability::kAccelMaterialThreshold;
+
+      // TIER 2 — leave-one-out sensitivity test. Recompute â with the
+      // top-|d³| observation removed and compare magnitude.
+      double aWithoutTop = 0.0;
+      {
+        const double topD  = d[maxIdx];
+        const double topD2 = topD * topD;
+        const double topD3 = topD2 * topD;
+        const double numR  = sumSignedCubic - topD3;
+        const double denR  = sumD2          - topD2;
+
+        if (denR > 1e-100)
+          {
+            const double dr15 = std::pow(denR, 1.5);
+            if (dr15 > 1e-100)
+              aWithoutTop = numR / (6.0 * dr15);
+          }
+      }
+
+      // Floor on the relative-change denominator so that tiny â values do
+      // not produce spuriously large relChange from numerical noise.
+      // In practice accelMaterial gates this downstream, but computing a
+      // sensible value keeps the diagnostic output interpretable.
+      constexpr double kAccelFloor = 1e-6;
+      const double relChange =
+        (std::isfinite(a) && std::isfinite(aWithoutTop))
+          ? std::fabs(a - aWithoutTop)
+              / std::max(std::fabs(a), kAccelFloor)
+          : std::numeric_limits<double>::infinity();
+
+      const bool sensitivityOk =
+        std::isfinite(relChange) &&
+        relChange <= AccelerationReliability::kSensitivityThreshold;
+
+      // AUTHORITATIVE RELIABILITY DECISION
+      //   If â is not material, BCa correction is negligible regardless of
+      //   any dominance pathology, so the interval is not at risk → reliable.
+      //   Otherwise, use the sensitivity test as the primary criterion.
+      const bool reliable = !accelMaterial || sensitivityOk;
+
+      return AccelerationReliability(reliable,
+                                     maxFrac,
+                                     maxIdx,
+                                     nDominant,
+                                     cancellationRatio,
+                                     a,
+                                     aWithoutTop,
+                                     relChange,
+                                     accelMaterial,
+                                     sensitivityOk);
     }
   };
 
@@ -1645,9 +1822,19 @@ struct IIDResampler
 	  m_z0             = 0.0;
 	  m_accel          = DecimalConstants<Decimal>::DecimalZero;
 	  // Degenerate bootstrap: â = 0 by construction. Acceleration has no
-	  // effect on the interval. No dominance possible; cancellation ratio 1.0
-	  // by convention (no cubic signal to cancel).
-	  m_accelReliability = AccelerationReliability(true, 0.0, 0, 0, 1.0);
+	  // effect on the interval. No dominance or sensitivity pathology
+	  // possible; cancellation ratio 1.0 by convention (no cubic signal
+	  // to cancel); accel is not material so reliability is vacuously true.
+	  m_accelReliability = AccelerationReliability(true,  // reliable
+	                                               0.0,   // maxInfluenceFraction
+	                                               0,     // maxInfluenceIndex
+	                                               0,     // nDominant
+	                                               1.0,   // cancellationRatio
+	                                               0.0,   // accel
+	                                               0.0,   // accelWithoutTop
+	                                               0.0,   // accelRelativeChange
+	                                               false, // accelMaterial
+	                                               true); // sensitivityOk
 	  // BCa transform is never applied in the degenerate case.
 	  // isStable and isMonotone are both true by convention; denominator
 	  // values are reported as 1.0 (the a=0 limit of 1 − a·(z₀ + zα)).
@@ -1695,10 +1882,10 @@ struct IIDResampler
       double num_d = 0.0;  // Σ d³
       double den_d = 0.0;  // Σ d²
 
-      // Per-observation signed cubic contributions for influence analysis.
-      // Collected alongside the existing d² / d³ accumulation at zero extra
-      // passes through jk_stats. Passed to JackknifeInfluence::compute() below.
-      std::vector<double> dCubed(n_jk);
+      // Per-observation raw jackknife deviations d_i = jk_avg − jk_stats[i].
+      // JackknifeInfluence uses these to compute the dominance / cancellation
+      // diagnostics AND the Tier-2 leave-one-out sensitivity test on â.
+      std::vector<double> d_values(n_jk);
 
       for (std::size_t i = 0; i < n_jk; ++i)
 	{
@@ -1706,7 +1893,7 @@ struct IIDResampler
 	  const double d2 = d * d;
 	  den_d      += d2;
 	  num_d      += d2 * d;
-	  dCubed[i]   = d2 * d;  // signed cubic contribution of observation i
+	  d_values[i] = d;
 	}
 
       Decimal a = DecimalConstants<Decimal>::DecimalZero;
@@ -1718,12 +1905,14 @@ struct IIDResampler
 	}
       m_accel = a;
 
-      // Influence analysis: did any single LOO observation dominate Σd³?
-      // JackknifeInfluence has sole responsibility for this computation.
-      // The result is stored as optional so the accessor can assert it is
-      // populated before returning, catching any future code path that
-      // bypasses this line.
-      m_accelReliability = JackknifeInfluence::compute(dCubed);
+      // Influence analysis + authoritative reliability decision.
+      // JackknifeInfluence::compute() computes â internally from d_values
+      // using the same formula above, applies the materiality short-circuit
+      // (|â| < kAccelMaterialThreshold ⇒ reliable), and runs the leave-one-out
+      // sensitivity test on â when â is material. The cubic-share dominance
+      // and cancellation diagnostics are still reported (getMaxInfluenceFraction,
+      // getCancellationRatio, etc.) but no longer gate reliability directly.
+      m_accelReliability = JackknifeInfluence::compute(d_values);
 
       // (5) Adjusted percentiles → bounds
       //

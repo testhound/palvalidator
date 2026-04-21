@@ -556,7 +556,22 @@ struct MockBCaEngine
 
     mkc_timeseries::AccelerationReliability getAccelerationReliability() const
     {
-      return mkc_timeseries::AccelerationReliability(true, 0.0, 0, 0, 1.0);
+      // Returns a well-behaved default matching a "no pathology" BCa run:
+      // a=0 so not material, no dominance, no cancellation, sensitivity
+      // check trivially passes. Matches the construction used by
+      // JackknifeInfluence::compute() for empty/zero-signal input and by
+      // BCaBootStrap::calculateBCaBounds() on the degenerate-case path.
+      return mkc_timeseries::AccelerationReliability(
+          true,   // isReliable          -- vacuously true (a is not material)
+          0.0,    // maxInfluenceFraction
+          0,      // maxInfluenceIndex
+          0,      // nDominant
+          1.0,    // cancellationRatio   -- no cubic signal to cancel
+          0.0,    // accel               -- matches accel_val default
+          0.0,    // accelWithoutTop
+          0.0,    // accelRelativeChange
+          false,  // accelMaterial       -- |a|=0 < kAccelMaterialThreshold
+          true);  // sensitivityOk       -- vacuously (no perturbation signal)
     }
 
     // Returns a well-behaved (stable, monotone) transform stability object.

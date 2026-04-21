@@ -796,8 +796,12 @@ namespace palvalidator
 	    if (candidate.getN() < AutoBootstrapConfiguration::kBcaMinSampleSize)
 	      mask |= CandidateReject::BcaMinSampleSize;
 
-	    if (!candidate.getAccelIsReliable())
-	      mask |= CandidateReject::BcaAccelUnreliable;
+	    // NOTE: !getAccelIsReliable() no longer sets a rejection mask bit.
+	    // Under the Tier-1/2 rule it's a soft signal applied as a stability
+	    // penalty in summarizeBCa() (kBcaAccelUnreliablePenalty); a BCa
+	    // candidate whose flag is false can still win. The
+	    // CandidateReject::BcaAccelUnreliable enum value is retained for
+	    // backward compatibility but is no longer raised here.
 
 	    if (!candidate.getBcaTransformMonotone())
 	      mask |= CandidateReject::BcaTransformNonMonotone;
@@ -1362,6 +1366,39 @@ namespace palvalidator
 	              << " denom_hi=" << transform_stability.getDenomHi() << ")\n";
 	}
 
+	// ACCELERATION UNRELIABILITY SOFT PENALTY
+	// getAccelIsReliable()==false means the Tier-2 leave-one-out sensitivity
+	// test on â failed while â was material (Tier-1 materiality check in
+	// JackknifeInfluence::compute()). BCa remains computable and the interval
+	// remains valid, but â is being driven by a single observation and the
+	// correction is less trustworthy than a clean BCa run. Apply a soft
+	// penalty so BCa competes fairly against MOutOfN in scoring rather than
+	// being summarily disqualified by CandidateGateKeeper.
+	//
+	// This replaces the pre-Tier-3 behaviour where
+	// CandidateGateKeeper::isBcaCandidateValid() hard-rejected on
+	// !accelIsReliable — a gate that was producing spurious rejections at
+	// small n (≈18) for small-|â| data, because the underlying cubic-share
+	// metric naturally concentrates on small samples. The Tier-1/2 rule makes
+	// the flag itself much more targeted; this change lets the scoring pipeline
+	// take the flag into account proportionally rather than as a veto.
+	if (!accel_is_reliable)
+	{
+	    stability_penalty +=
+	        AutoBootstrapConfiguration::kBcaAccelUnreliablePenalty;
+	    if (os)
+	    {
+	        const auto& reliability = bca.getAccelerationReliability();
+	        (*os) << "[BCa] Acceleration-unreliable penalty applied: "
+	              << AutoBootstrapConfiguration::kBcaAccelUnreliablePenalty
+	              << " (accel="         << reliability.getAccel()
+	              << "  accelWithoutTop=" << reliability.getAccelWithoutTop()
+	              << "  relChange="     << reliability.getAccelRelativeChange()
+	              << "  maxFrac="       << reliability.getMaxInfluenceFraction()
+	              << ")\n";
+	    }
+	}
+
 	// algorithmIsReliable: AND-gate over both BCa-specific failure modes.
 	// accel_is_reliable   — jackknife acceleration not dominated by a single outlier.
 	// transform_monotone  — BCa percentile mapping preserved order (α₁ ≤ α₂).
@@ -1720,7 +1757,14 @@ namespace palvalidator
             rejected_for_instability = true;
           }
 
-	  // Data-adaptive acceleration reliability gate
+	  // Data-adaptive acceleration reliability: no longer a hard gate;
+	  // treated as instability for diagnostic purposes, consistent with
+	  // the non-monotone transform handling below. The soft penalty in
+	  // summarizeBCa() (kBcaAccelUnreliablePenalty) already down-weighted
+	  // this candidate during scoring; this flag surfaces the event in
+	  // SelectionDiagnostics::wasBCaRejectedForInstability() when BCa
+	  // lost to another method, so users can see that an accel-unreliable
+	  // signal contributed to the loss.
 	  if (!bca.getAccelIsReliable())
 	    {
 	      rejected_for_instability = true;
