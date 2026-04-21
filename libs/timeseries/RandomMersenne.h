@@ -13,6 +13,8 @@
 #include "BoundedRandom.h"
 #include <random>
 #include <array>
+#include <limits>
+#include <stdexcept>
 
 using uint32 = unsigned int;
 
@@ -129,31 +131,45 @@ static RandomMersenne withSeed(uint64_t seed)
   }
 
   /**
-     * @brief Draws a random unsigned 32-bit integer within the exclusive upper
-     *        bound range [0, exclusiveUpperBound - 1].
-     *
-     * This method is particularly useful for generating indices for zero-based
-     * containers like vectors.
-     *
-     * @param exclusiveUpperBound The exclusive upper bound of the range.
-     *        The generated number will be less than this value.
-     *
-     * @return A random unsigned 32-bit integer within the specified range.
-     * @throws std::invalid_argument if exclusiveUpperBound == 0.
-     */
-    uint32 DrawNumberExclusive(size_t exclusiveUpperBound)
-    {
-      assert(exclusiveUpperBound <= std::numeric_limits<uint32_t>::max()
-             && "exclusiveUpperBound exceeds uint32 range");
-      return mkc::random_util::bounded_rand(mRandGen.engine(),
-					    static_cast<uint32_t>(exclusiveUpperBound));
-    }
+   * @brief Draws a random unsigned 32-bit integer within the exclusive upper
+   *        bound range [0, exclusiveUpperBound - 1].
+   *
+   * This method is particularly useful for generating indices for zero-based
+   * containers like vectors.
+   *
+   * @param exclusiveUpperBound The exclusive upper bound of the range.
+   *        The generated number will be less than this value.
+   *
+   * @return A random unsigned 32-bit integer within the specified range.
+   *
+   * @throws std::out_of_range if exclusiveUpperBound exceeds the maximum value
+   *         representable as uint32_t. This check was previously a debug-only
+   *         assertion; in release builds (NDEBUG) the assert vanished and an
+   *         out-of-range size_t silently truncated to uint32_t, which would
+   *         introduce non-uniform bias when indexing into containers larger
+   *         than 2^32 elements. Promoted to an unconditional throw so the
+   *         failure mode is identical across build configurations.
+   * @throws std::invalid_argument if exclusiveUpperBound == 0 (propagated
+   *         from mkc::random_util::bounded_rand).
+   */
+  uint32 DrawNumberExclusive(size_t exclusiveUpperBound)
+  {
+    if (exclusiveUpperBound > std::numeric_limits<uint32_t>::max())
+      {
+	throw std::out_of_range(
+				"RandomMersenne::DrawNumberExclusive: exclusiveUpperBound exceeds uint32 range");
+      }
 
-    void seed_stream(uint64_t seed, uint64_t stream_id)
-{
+    return mkc::random_util::bounded_rand(mRandGen.engine(),
+					  static_cast<uint32_t>(exclusiveUpperBound));
+  }
+
+  void seed_stream(uint64_t seed, uint64_t stream_id)
+  {
     // PCG32 stream is controlled by the increment (must be odd)
     mRandGen.engine().seed(seed, stream_id | 1ULL);
-}
+  }
+
 private:
   randutils::random_generator<pcg32> mRandGen;
   };

@@ -778,3 +778,45 @@ TEST_CASE("SyntheticTimeSeries N0 vs N1: structural policy difference (OHLC tupl
     REQUIRE(tupleBroken);
   }
 }
+
+// --- Section 2 additions: fisherYatesSubrange precondition ---
+
+TEST_CASE("shuffle_detail::fisherYatesSubrange: throws when firstShufflable > v.size()",
+          "[detail][FisherYates]")
+{
+  std::vector<int> v = {1, 2, 3};
+  RandomMersenne rng;
+  // firstShufflable == 4, size == 3 → strict misuse
+  REQUIRE_THROWS_AS(shuffle_detail::fisherYatesSubrange(v, 4u, rng), std::out_of_range);
+}
+
+TEST_CASE("shuffle_detail::fisherYatesSubrange: firstShufflable == v.size() is a valid no-op",
+          "[detail][FisherYates]")
+{
+  // Boundary case: firstShufflable equal to size means "everything is anchored,
+  // nothing to shuffle" — this is a well-defined request and must NOT throw.
+  std::vector<int> v = {1, 2, 3};
+  const auto expected = v;
+  RandomMersenne rng;
+  REQUIRE_NOTHROW(shuffle_detail::fisherYatesSubrange(v, 3u, rng));
+  REQUIRE(v == expected);
+}
+
+// --- Section 3 addition: generatePermutation precondition ---
+
+TEST_CASE("shuffle_detail::generatePermutation: throws when firstShufflable > n",
+          "[detail][generatePermutation]")
+{
+  RandomMersenne rng;
+  // n = 3, firstShufflable = 5 → strict misuse
+  REQUIRE_THROWS_AS(shuffle_detail::generatePermutation(3u, 5u, rng), std::out_of_range);
+}
+
+TEST_CASE("shuffle_detail::generatePermutation: firstShufflable == n is a valid identity return",
+          "[detail][generatePermutation]")
+{
+  RandomMersenne rng;
+  auto perm = shuffle_detail::generatePermutation(3u, 3u, rng);
+  REQUIRE(perm == std::vector<size_t>({0u, 1u, 2u}));
+}
+
