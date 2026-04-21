@@ -501,3 +501,24 @@ TEST_CASE("Move assignment transfers state to moved-to instance",
                 == reference.DrawNumberExclusive(bound));
     }
 }
+
+TEST_CASE("RandomMersenne::DrawNumberExclusive: throws when bound exceeds uint32 range",
+          "[RandomMersenne]")
+{
+  RandomMersenne rng;
+  // On 32-bit platforms size_t == uint32_t and this precondition cannot be
+  // violated, so the test is meaningful only on 64-bit builds.
+  if constexpr (sizeof(size_t) > sizeof(uint32_t))
+  {
+    const size_t tooLarge = static_cast<size_t>(std::numeric_limits<uint32_t>::max()) + 1u;
+    REQUIRE_THROWS_AS(rng.DrawNumberExclusive(tooLarge), std::out_of_range);
+  }
+}
+
+TEST_CASE("RandomMersenne::DrawNumberExclusive: uint32 max boundary does not throw",
+          "[RandomMersenne]")
+{
+  RandomMersenne rng;
+  const size_t atMax = static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+  REQUIRE_NOTHROW(rng.DrawNumberExclusive(atMax));
+}

@@ -13,6 +13,7 @@
 #include <numeric>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <boost/thread/mutex.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include "TimeSeries.h"
@@ -131,23 +132,34 @@ namespace mkc_timeseries
      * Elements at indices [0 .. firstShufflable-1] are left untouched (anchor).
      * Passing firstShufflable = 1 is the standard "keep index 0 fixed" case used
      * throughout this file.
+     *
+     * @throws std::out_of_range if firstShufflable > v.size(). Passing a start
+     *         index past the end of the vector is a caller bug rather than a
+     *         meaningful request; we fail loudly rather than silently no-op.
      */
     template <class T>
     void fisherYatesSubrange(std::vector<T>& v,
-                             size_t          firstShufflable,
-                             RandomMersenne& rng)
+			     size_t          firstShufflable,
+			     RandomMersenne& rng)
     {
       const size_t n = v.size();
+      if (firstShufflable > n)
+	{
+	  throw std::out_of_range(
+				  "fisherYatesSubrange: firstShufflable exceeds vector size");
+	}
+
       if (n < firstShufflable + 2)
-      {
-        return; // nothing to shuffle
-      }
+	{
+	  return; // nothing to shuffle
+	}
+
       for (size_t i = n - 1; i > firstShufflable; --i)
-      {
-        // j uniformly in [firstShufflable .. i]
-        const size_t j = rng.DrawNumberExclusive(i - firstShufflable + 1) + firstShufflable;
-        std::swap(v[i], v[j]);
-      }
+	{
+	  // j uniformly in [firstShufflable .. i]
+	  const size_t j = rng.DrawNumberExclusive(i - firstShufflable + 1) + firstShufflable;
+	  std::swap(v[i], v[j]);
+	}
     }
 
     /**
@@ -163,15 +175,7 @@ namespace mkc_timeseries
     {
       std::vector<size_t> idx(n);
       std::iota(idx.begin(), idx.end(), size_t{0});
-      if (n < firstShufflable + 2)
-      {
-        return idx;
-      }
-      for (size_t i = n - 1; i > firstShufflable; --i)
-      {
-        const size_t j = rng.DrawNumberExclusive(i - firstShufflable + 1) + firstShufflable;
-        std::swap(idx[i], idx[j]);
-      }
+      fisherYatesSubrange(idx, firstShufflable, rng);
       return idx;
     }
 
