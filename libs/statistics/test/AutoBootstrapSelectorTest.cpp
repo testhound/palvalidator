@@ -443,9 +443,25 @@ struct MockBCaEngine
     double  getConfidenceLevel() const { return cl; }
     unsigned int getNumResamples() const { return static_cast<unsigned int>(B); }
     std::size_t getSampleSize() const { return n; }
+    
   mkc_timeseries::AccelerationReliability getAccelerationReliability() const
     {
-      return mkc_timeseries::AccelerationReliability(true, 0.0, 0, 0, 1.0);
+        // Returns a well-behaved default matching a "no pathology" BCa run:
+      // a=0 so not material, no dominance, no cancellation, sensitivity
+      // check trivially passes. Matches the construction used by
+      // JackknifeInfluence::compute() for empty/zero-signal input and by
+      // BCaBootStrap::calculateBCaBounds() on the degenerate-case path.
+      return mkc_timeseries::AccelerationReliability(
+          true,   // isReliable          -- vacuously true (a is not material)
+          0.0,    // maxInfluenceFraction
+          0,      // maxInfluenceIndex
+          0,      // nDominant
+          1.0,    // cancellationRatio   -- no cubic signal to cancel
+          0.0,    // accel               -- matches accel_val default
+          0.0,    // accelWithoutTop
+          0.0,    // accelRelativeChange
+          false,  // accelMaterial       -- |a|=0 < kAccelMaterialThreshold
+          true);  // sensitivityOk       -- vacuously (no perturbation signal)
     }
 
     // Returns a well-behaved (stable, monotone) transform stability object.
@@ -683,6 +699,214 @@ TEST_CASE("AutoBootstrapSelector: BCa Hard Gate Rejection",
         REQUIRE(result.getChosenMethod() == MethodId::PercentileT);
         REQUIRE(result.getBootstrapMedian() == Catch::Approx(0.08));  // NEW: PercT's median (BCa rejected)
         REQUIRE(result.getDiagnostics().wasBCaRejectedForInstability() == true);
+    }
+}
+
+TEST_CASE("AutoBootstrapSelector: BCa with unreliable acceleration is no longer hard-rejected (Tier 3 regression)",
+          "[AutoBootstrapSelector][Selection][Tier3][Regression]")
+{
+    // Regression test for the Tier 3 change.
+    //
+    // BEFORE Tier 3:
+    //   CandidateGateKeeper::isBcaCandidateValid() returned false whenever
+    //   candidate.getAccelIsReliable()==false. The BCa candidate was
+    //   filtered out of the tournament entirely, regardless of its score.
+    //
+    // AFTER Tier 3:
+    //   That hard gate is removed. Accel-unreliability is applied as a
+    //   soft stability penalty (AutoBootstrapConfiguration::kBcaAccelUnreliablePenalty
+    //   = 0.5 raw → 2.0 normalized at kRefStability=0.25) inside
+    //   summarizeBCa(). BCa enters the tournament and either wins or loses
+    //   based on score.
+    //
+    // The mock engine below reports accelIsReliable=false with internally
+    // consistent Tier-2 state — material |â|=0.15, sign-flip on top-obs
+    // removal giving relChange≈1.33 > kSensitivityThreshold. All other
+    // BCa diagnostics are clean (transform monotone, z0=0, accel=0 in the
+    // hard-gate sense, symmetric bootstrap distribution → skew≈0).
+
+    struct MockBCaEngineAccelUnreliable
+    {
+        Decimal mean  =  0.0;
+        Decimal lower = -1.0;
+        Decimal upper =  1.0;
+        double  cl    =  0.95;
+        std::size_t B = 1000;
+        std::size_t n = 100;
+        double  z0    = 0.0;
+        // NOTE: getAcceleration() returns 0.0 so computeBCaStabilityPenalty
+        // adds no z0/accel/skew-based penalty.  The AccelerationReliability
+        // object returned below reports accel=0.15 inside itself to keep
+        // accelMaterial=true internally consistent; the two are independent
+        // queries (same precedent as MockBCaEngineUnreliableAccel in
+        // AutoBootstrapSelectorTransformStabilityTest.cpp).
+        Decimal accel = 0.0;
+        // Bootstrap statistics — populated in the test body. Must be large
+        // enough to pass CandidateGateKeeper::passesEffectiveBGate, which
+        // requires effective_B >= max(kMinEffectiveBAbsolute=200,
+        // ceil(kBcaMinEffectiveFraction * B) = ceil(0.90 * 1000) = 900) = 900.
+        // Symmetric/linearly-spaced content keeps skew_boot ≈ 0 so
+        // computeBCaStabilityPenalty contributes 0 and the only stability
+        // penalty on the Candidate is kBcaAccelUnreliablePenalty.
+        std::vector<Decimal> stats;
+
+        Decimal      getMean()            const { return mean;  }
+        Decimal      getLowerBound()      const { return lower; }
+        Decimal      getUpperBound()      const { return upper; }
+        double       getConfidenceLevel() const { return cl;    }
+        unsigned int getNumResamples()    const { return static_cast<unsigned int>(B); }
+        std::size_t  getSampleSize()      const { return n;     }
+        double       getZ0()              const { return z0;    }
+        Decimal      getAcceleration()    const { return accel; }
+        const std::vector<Decimal>& getBootstrapStatistics() const { return stats; }
+
+        mkc_timeseries::AccelerationReliability getAccelerationReliability() const
+        {
+            // Tier-2 failure mode: material |â|, driven by one observation
+            // (sign flip under top-|d³| removal) → sensitivityOk=false →
+            // isReliable=false. This is precisely the regime the Tier 3
+            // change is meant to rescue.
+            return mkc_timeseries::AccelerationReliability(
+                false,    // isReliable          -- what we're testing
+                0.72,     // maxInfluenceFraction
+                2,        // maxInfluenceIndex
+                1,        // nDominant
+                0.85,     // cancellationRatio
+                0.15,     // accel               -- material
+               -0.05,     // accelWithoutTop     -- sign flip
+                1.333,    // accelRelativeChange -- |0.15 − (−0.05)| / 0.15
+                true,     // accelMaterial
+                false);   // sensitivityOk
+        }
+
+        mkc_timeseries::BcaTransformStability getBcaTransformStability() const
+        {
+            // Clean transform: only the accel-reliability flag is bad.
+            return mkc_timeseries::BcaTransformStability(true, true, 1.0, 1.0);
+        }
+    };
+
+    MockBCaEngineAccelUnreliable engine;
+
+    // Fill in 1000 symmetric, linearly-spaced bootstrap statistics spanning
+    // [-1, 1]. This satisfies two constraints at once:
+    //   1. effective_B = 1000 >= ceil(0.90 * B=1000) = 900, so the BCa
+    //      candidate clears CandidateGateKeeper::passesEffectiveBGate.
+    //   2. The distribution is perfectly symmetric around 0, so skew_boot ≈ 0
+    //      and computeBCaStabilityPenalty contributes no additional penalty.
+    //      The only stability contribution is the new kBcaAccelUnreliablePenalty
+    //      soft penalty, which makes the REQUIRE(stabilityPenalty == k...)
+    //      assertion below exact.
+    engine.stats.reserve(1000);
+    for (int i = 0; i < 1000; ++i)
+    {
+        engine.stats.push_back(-1.0 + (2.0 * static_cast<double>(i)) / 999.0);
+    }
+
+    Candidate bca = Selector::summarizeBCa(engine);
+
+    // ------------------------------------------------------------------
+    // Sanity on what summarizeBCa produced from the flagged engine
+    // ------------------------------------------------------------------
+    // The accel-unreliable flag propagated into the Candidate.
+    REQUIRE(bca.getAccelIsReliable()         == false);
+    // algorithmIsReliable is the AND of accel and transform_monotone; since
+    // accel is false, algorithmIsReliable must also be false. (Kept as a
+    // diagnostic field — does not gate selection.)
+    REQUIRE(bca.getAlgorithmIsReliable()     == false);
+    // Transform is clean.
+    REQUIRE(bca.getBcaTransformMonotone()    == true);
+    // The soft penalty was added. Engine reports z0=0, accel=0, and the
+    // bootstrap distribution is symmetric so skew_boot≈0 → computeBCaStabilityPenalty
+    // contributes 0. The only addition is kBcaAccelUnreliablePenalty = 0.5.
+    REQUIRE(bca.getStabilityPenalty()
+            == Catch::Approx(AutoBootstrapConfiguration::kBcaAccelUnreliablePenalty));
+
+    // ------------------------------------------------------------------
+    // (A) Eligibility proof: BCa can now WIN when it has the lower score.
+    //     Under the pre-Tier-3 behavior, BCa would have been filtered out
+    //     by isBcaCandidateValid and PercentileT would have won by default,
+    //     regardless of how bad PercentileT's score was.
+    // ------------------------------------------------------------------
+    SECTION("BCa wins when its score beats the competitor's, despite accelIsReliable=false")
+    {
+        // Weak PercentileT — high ordering penalty. Scales argument from the
+        // existing "BCa Grey Zone Tournament" test: at wStability=1.0, raw
+        // ordering 0.002 normalises to contribution ≈ 0.2; raw 0.03 normalises
+        // to ≈ 3.0, which is above BCa's ≈ 2.0 stability contribution.
+        Candidate percT_weak(MethodId::PercentileT,
+                             0.0, -1.1, 1.1, 0.95, 100, 1000, 0, 1000, 0,
+                             0.1, 0.0,
+                             0.05,                 // median_boot
+                             0.0, 1.0,
+                             /*ordering*/  0.03,   // Large → contribution ~3.0
+                             /*length*/    0.0,
+                             /*stability*/ 0.0,
+                             0.0, 0.0, 0.0);
+
+        std::vector<Candidate> cands = { percT_weak, bca };
+        auto result = Selector::select(cands);
+
+        // BCa made it into the tournament (not filtered by isBcaCandidateValid).
+        REQUIRE(result.getDiagnostics().hasBCaCandidate() == true);
+        // BCa won on score despite the accel-unreliable penalty.
+        REQUIRE(result.getChosenMethod()                   == MethodId::BCa);
+        REQUIRE(result.getDiagnostics().isBCaChosen()      == true);
+        // Diagnostic: since BCa was chosen, no rejection flags fire.
+        REQUIRE(result.getDiagnostics().wasBCaRejectedForInstability() == false);
+    }
+
+    // ------------------------------------------------------------------
+    // (B) Paired case: BCa loses ON SCORE (not on hard rejection) when the
+    //     competitor is stronger. The soft penalty correctly down-weights
+    //     BCa without eliminating it — exactly the intent of Tier 3.
+    // ------------------------------------------------------------------
+    SECTION("BCa loses on score, not on hard rejection, when competitor is stronger")
+    {
+        // Strong PercentileT: raw ordering 0.002 → contribution ~0.2,
+        // well below BCa's ~2.0.
+        Candidate percT_strong(MethodId::PercentileT,
+                               0.0, -1.1, 1.1, 0.95, 100, 1000, 0, 1000, 0,
+                               0.1, 0.0,
+                               0.05,                 // median_boot
+                               0.0, 1.0,
+                               /*ordering*/  0.002,  // Small → contribution ~0.2
+                               /*length*/    0.0,
+                               /*stability*/ 0.0,
+                               0.0, 0.0, 0.0);
+
+        std::vector<Candidate> cands = { percT_strong, bca };
+        auto result = Selector::select(cands);
+
+        REQUIRE(result.getDiagnostics().hasBCaCandidate()  == true);
+        REQUIRE(result.getChosenMethod()                    == MethodId::PercentileT);
+        REQUIRE(result.getDiagnostics().isBCaChosen()       == false);
+
+        // BCa lost via scoring, not via hard rejection. The
+        // wasBCaRejectedForInstability() flag still surfaces the
+        // accel-unreliable signal diagnostically (per analyzeBcaRejection),
+        // consistent with how the non-monotone transform is treated. That
+        // behavior is intentional — callers querying the diagnostic still
+        // see "BCa had an instability signal that contributed to its loss,"
+        // even though BCa competed fairly rather than being vetoed.
+        REQUIRE(result.getDiagnostics().wasBCaRejectedForInstability() == true);
+    }
+
+    // ------------------------------------------------------------------
+    // (C) Single-candidate eligibility: BCa is the only candidate, and the
+    //     selector does not throw AllGatesFailed. Pre-Tier-3 behavior:
+    //     isBcaCandidateValid filters BCa out, selector has no valid
+    //     candidates, throws. Post-Tier-3 behavior: BCa is valid, becomes
+    //     the winner by default.
+    // ------------------------------------------------------------------
+    SECTION("BCa is the sole candidate: selector does not throw AllGatesFailed")
+    {
+        std::vector<Candidate> cands = { bca };
+        REQUIRE_NOTHROW(Selector::select(cands));
+
+        auto result = Selector::select(cands);
+        REQUIRE(result.getChosenMethod()              == MethodId::BCa);
+        REQUIRE(result.getDiagnostics().isBCaChosen() == true);
     }
 }
 

@@ -149,6 +149,44 @@ namespace AutoBootstrapConfiguration
   /// exclude every parameter combination that can trigger a near-zero denominator.
   constexpr double kBcaTransformNonMonotonePenalty = 0.5;
 
+  /// Soft stability penalty added to a BCa candidate whose data-adaptive
+  /// acceleration reliability flag is false — i.e.
+  /// BCaBootStrap::getAccelerationReliability().isReliable() == false.
+  ///
+  /// Under the Tier-1/2 rule in JackknifeInfluence::compute() (see
+  /// BiasCorrectedBootstrap.h) the flag only goes false when BOTH hold:
+  ///   (a) |â| ≥ kAccelMaterialThreshold — the BCa correction is
+  ///       numerically non-trivial, AND
+  ///   (b) the leave-one-out sensitivity test fails — i.e. removing the
+  ///       top-|d³| jackknife observation changes â by more than
+  ///       kSensitivityThreshold relative.
+  /// In that regime â is being driven by a single observation and the
+  /// correction is less trustworthy than a clean BCa run — but the
+  /// interval remains computable and valid, so this is NOT a hard gate.
+  ///
+  /// Magnitude rationale: set equal to kBcaTransformNonMonotonePenalty (0.5).
+  /// Both diagnostics represent "BCa's correction machinery has an issue
+  /// but the interval is still meaningful," so parity is the defensible
+  /// default. At kRefStability=0.25 the raw penalty of 0.5 normalises to
+  /// 2.0 — 8× the reference — which makes a soft-flagged BCa candidate
+  /// noticeably less competitive than a clean BCa run without eliminating
+  /// it when no better-scoring alternative exists.
+  ///
+  /// This constant replaces the pre-Tier-3 hard rejection in
+  /// CandidateGateKeeper::isBcaCandidateValid(), which was producing
+  /// spurious disqualifications at small n (≈18) for small-|â| data
+  /// because the underlying cubic-share metric concentrates naturally on
+  /// small samples. Tier-1/2 narrowed the flag to actionable cases; this
+  /// constant then lets the scoring pipeline weigh the flag proportionally
+  /// rather than veto outright.
+  ///
+  /// Tuning: if BCa keeps winning in your data when the flag fires and
+  /// you'd prefer MOutOfN to win in those cases, increase this value.
+  /// If BCa never wins when flagged and you think it should sometimes,
+  /// decrease it. Empirical tuning is recommended over theoretical
+  /// calibration.
+  constexpr double kBcaAccelUnreliablePenalty = 0.5;
+
   // Floating-point tie tolerance scale used in ImprovedTournamentSelector
   constexpr double kRelativeTieEpsilonScale = 1e-10;
 

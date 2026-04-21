@@ -97,7 +97,22 @@ struct MockBCaEngineMonotone
 
     mkc_timeseries::AccelerationReliability getAccelerationReliability() const
     {
-        return mkc_timeseries::AccelerationReliability(true, 0.0, 0, 0, 1.0);
+        // Returns a well-behaved default matching a "no pathology" BCa run:
+      // a=0 so not material, no dominance, no cancellation, sensitivity
+      // check trivially passes. Matches the construction used by
+      // JackknifeInfluence::compute() for empty/zero-signal input and by
+      // BCaBootStrap::calculateBCaBounds() on the degenerate-case path.
+      return mkc_timeseries::AccelerationReliability(
+          true,   // isReliable          -- vacuously true (a is not material)
+          0.0,    // maxInfluenceFraction
+          0,      // maxInfluenceIndex
+          0,      // nDominant
+          1.0,    // cancellationRatio   -- no cubic signal to cancel
+          0.0,    // accel               -- matches accel_val default
+          0.0,    // accelWithoutTop
+          0.0,    // accelRelativeChange
+          false,  // accelMaterial       -- |a|=0 < kAccelMaterialThreshold
+          true);  // sensitivityOk       -- vacuously (no perturbation signal)
     }
 
     // Well-behaved transform: denominators safely positive, alpha1 <= alpha2.
@@ -135,9 +150,24 @@ struct MockBCaEngineNonMonotone
     Decimal      getAcceleration()    const { return accel; }
     const std::vector<Decimal>& getBootstrapStatistics() const { return stats; }
 
+    // Well-behaved acceleration diagnostic: a=0 so not material, no
+    // dominance, no cancellation, sensitivity check trivially passes.
+    // Matches the construction used by JackknifeInfluence::compute() for
+    // empty/zero-signal input and by BCaBootStrap::calculateBCaBounds()
+    // on the degenerate-case path.
     mkc_timeseries::AccelerationReliability getAccelerationReliability() const
     {
-        return mkc_timeseries::AccelerationReliability(true, 0.0, 0, 0, 1.0);
+      return mkc_timeseries::AccelerationReliability(
+          true,   // isReliable          -- vacuously true (a is not material)
+          0.0,    // maxInfluenceFraction
+          0,      // maxInfluenceIndex
+          0,      // nDominant
+          1.0,    // cancellationRatio   -- no cubic signal to cancel
+          0.0,    // accel               -- matches accel_val default
+          0.0,    // accelWithoutTop
+          0.0,    // accelRelativeChange
+          false,  // accelMaterial       -- |a|=0 < kAccelMaterialThreshold
+          true);  // sensitivityOk       -- vacuously (no perturbation signal)
     }
 
     // Non-monotone transform: alpha1 > alpha2 — mapping inverted, bounds silently
@@ -177,15 +207,28 @@ struct MockBCaEngineUnreliableAccel
     Decimal      getAcceleration()    const { return accel; }
     const std::vector<Decimal>& getBootstrapStatistics() const { return stats; }
 
-    // Single observation dominates Σ|d³|: acceleration is an artifact of that outlier.
+    // Scenario: acceleration is material (|â| ≥ kAccelMaterialThreshold), but
+    // the estimate is driven by one observation — removing the top-|d³|
+    // contributor swings â materially (sign flip here), so the leave-one-out
+    // sensitivity test fails. This is the Tier-2 failure mode that produces
+    // isReliable=false under the new rule.
+    //
+    // The legacy dominance diagnostic (maxInfluenceFraction=0.72, nDominant=1)
+    // is preserved so any downstream log/observability paths still see a
+    // consistent picture.
     mkc_timeseries::AccelerationReliability getAccelerationReliability() const
     {
         return mkc_timeseries::AccelerationReliability(
-            false,  // isReliable       -- single observation dominant
-            0.72,   // maxInfluenceFrac -- 72% of total absolute cubic influence
-            3,      // maxInfluenceIdx
-            1,      // nDominant
-            0.85);  // cancellationRatio
+            false,    // isReliable          -- sensitivity test failed
+            0.72,     // maxInfluenceFraction -- 72% of Σ|d³| on one obs
+            3,        // maxInfluenceIndex
+            1,        // nDominant
+            0.85,     // cancellationRatio
+            0.15,     // accel               -- material (below hard limit 0.25)
+           -0.05,     // accelWithoutTop     -- sign flip after removing top obs
+            1.333,    // accelRelativeChange -- |0.15 − (−0.05)| / 0.15
+            true,     // accelMaterial       -- |â| ≥ kAccelMaterialThreshold
+            false);   // sensitivityOk       -- relChange > kSensitivityThreshold
     }
 
     // Transform is fine.
@@ -521,9 +564,22 @@ TEST_CASE("summarizeBCa: algorithmIsReliable is AND of accel reliability and tra
             Decimal getAcceleration() const { return accel; }
             const std::vector<Decimal>& getBootstrapStatistics() const { return stats; }
 
+            // Scenario: material â driven by a single observation (Tier-2
+            // sensitivity test fails) AND the BCa percentile transform is
+            // non-monotone. Both diagnostic layers fail simultaneously.
             mkc_timeseries::AccelerationReliability getAccelerationReliability() const
             {
-                return mkc_timeseries::AccelerationReliability(false, 0.9, 0, 1, 0.9);
+                return mkc_timeseries::AccelerationReliability(
+                    false,    // isReliable
+                    0.9,      // maxInfluenceFraction
+                    0,        // maxInfluenceIndex
+                    1,        // nDominant
+                    0.9,      // cancellationRatio
+                    0.18,     // accel               -- material
+                   -0.08,     // accelWithoutTop     -- sign flip
+                    1.444,    // accelRelativeChange -- |0.18 − (−0.08)| / 0.18
+                    true,     // accelMaterial
+                    false);   // sensitivityOk      -- relChange > threshold
             }
             mkc_timeseries::BcaTransformStability getBcaTransformStability() const
             {

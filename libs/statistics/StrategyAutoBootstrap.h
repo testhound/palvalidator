@@ -714,8 +714,15 @@ namespace palvalidator
 		  (*os) << "disqualified: interval violates domain constraints\n";
 		else if (diagnostics.wasBCaRejectedForInstability())
 		  {
-		    // wasBCaRejectedForInstability() fires for two distinct causes;
-		    // inspect the BCa candidate directly to emit the specific message.
+		    // wasBCaRejectedForInstability() fires for two distinct
+		    // categories under the Tier-3 rule:
+		    //   SOFT penalties (BCa competed, was down-weighted, lost on
+		    //   score): !getAccelIsReliable(), !getBcaTransformMonotone()
+		    //   HARD gates (BCa never entered the tournament): z0/accel
+		    //   above hard limits, skew above hard limit, n below
+		    //   kBcaMinSampleSize, effective-B below gate.
+		    // We inspect the BCa candidate to tell the user which category
+		    // applied. "penalized" for soft; "disqualified" for hard.
 		    bool accel_bad   = false;
 		    bool nonmono_bad = false;
 		    for (const auto& cand : result.getCandidates())
@@ -727,32 +734,43 @@ namespace palvalidator
 		      }
 
 		    if (accel_bad && nonmono_bad)
-		      (*os) << "disqualified: dominant jackknife observation"
-			       " + non-monotone BCa transform\n";
+		      (*os) << "penalized: unreliable acceleration"
+			       " + non-monotone transform;"
+			       " outscored by winner\n";
 		    else if (accel_bad)
-		      (*os) << "disqualified: dominant jackknife observation"
-			       " in acceleration estimate\n";
+		      (*os) << "penalized: acceleration driven by a single"
+			       " observation (Tier-2 sensitivity test failed);"
+			       " outscored by winner\n";
 		    else if (nonmono_bad)
-		      (*os) << "disqualified: BCa percentile-transform"
-			       " mapping reversed direction\n";
+		      (*os) << "penalized: BCa percentile-transform mapping"
+			       " reversed direction; outscored by winner\n";
 		    else
-		      (*os) << "disqualified: BCa parameter instability"
-			       " (sample size or skew gate)\n";
+		      (*os) << "disqualified: parameter instability"
+			       " (hard z0/accel/skew limit, sample-size floor,"
+			       " or effective-B gate)\n";
 		  }
 		else if (diagnostics.wasBCaRejectedForLength())
 		  (*os) << "disqualified: interval too wide\n";
 		else
 		  (*os) << "outscored by winner\n";
 
-		// When BCa was disqualified for instability, print the parameters
-		// that triggered the gates.  Two independent failure modes can set
-		// wasBCaRejectedForInstability(); both are surfaced here:
+		// When wasBCaRejectedForInstability() fired, print the parameters
+		// that contributed. Under the Tier-3 rule, "instability" groups
+		// both hard-gate disqualifications (z0/accel hard limits, skew
+		// hard limit, sample-size floor) AND soft-penalty signals (accel
+		// unreliable, non-monotone transform) that down-weighted BCa but
+		// let it compete. The per-field annotations below label each as
+		// hard or soft so the caller can see which was the actual cause.
 		//
-		//   getAccelIsReliable()      — false if a single jackknife LOO
-		//     observation contributed > 50% of the total absolute cubic
-		//     influence Σ|d³|.  The acceleration estimate is then an
-		//     artifact of that observation, not a distributional property,
-		//     regardless of â's magnitude, z0, or skew_boot.
+		//   getAccelIsReliable()      — false when the jackknife
+		//     acceleration is driven by a single observation under the
+		//     Tier-1/2 rule (see BiasCorrectedBootstrap.h). Specifically,
+		//     |â| is material (≥ kAccelMaterialThreshold) AND the
+		//     leave-one-out sensitivity test fails (removing the
+		//     top-|d³| observation changes â by more than
+		//     kSensitivityThreshold relative). A soft penalty of
+		//     kBcaAccelUnreliablePenalty is applied in the tournament;
+		//     this detail line makes the event visible in the log.
 		//
 		//   getBcaTransformMonotone() — false if the BCa percentile-transform
 		//     mapping produced α₁ > α₂ (inverted order).  The bounds are still
@@ -797,8 +815,19 @@ namespace palvalidator
 			(*os) << "\n";
 
 			(*os) << "   [AutoCI]     accel reliable:   "
-			      << (cand.getAccelIsReliable() ? "yes" : "NO — dominant jackknife observation")
+			      << (cand.getAccelIsReliable()
+				    ? "yes"
+				    : "NO — acceleration driven by one observation"
+				      " (Tier-2 sensitivity test failed)")
 			      << "\n";
+			// When accel is unreliable, note that a soft penalty was
+			// already applied in the tournament so the caller knows the
+			// stability_penalty below already incorporates
+			// kBcaAccelUnreliablePenalty.
+			if (!cand.getAccelIsReliable())
+			  (*os) << "   [AutoCI]       (stability_penalty includes "
+				<< AutoBootstrapConfiguration::kBcaAccelUnreliablePenalty
+				<< " accel-unreliable soft penalty)\n";
 
 			(*os) << "   [AutoCI]     transform monotone: "
 			      << (cand.getBcaTransformMonotone()
