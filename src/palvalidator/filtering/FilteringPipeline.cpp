@@ -102,9 +102,10 @@ namespace palvalidator::filtering
                                         FilteringSummary& summary,
                                         BootstrapFactory& bootstrapFactory,
                                         std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer,
-                                        bool tradeLevelBootstrapping)
+                                        bool tradeLevelBootstrapping,
+                                        palvalidator::analysis::BCaSelectionAggregator<Num>* bcaAggregator)
     : mBacktestingStage()
-    , mBootstrapStage(confidenceLevel, numResamples, bootstrapFactory, tradeLevelBootstrapping)
+    , mBootstrapStage(confidenceLevel, numResamples, bootstrapFactory, tradeLevelBootstrapping, bcaAggregator)
     , mHurdleStage(hurdleCalc)
     , mRobustnessStage(robustnessConfig, summary, bootstrapFactory)
     , mLSensitivityStage(lSensitivityConfig, numResamples, confidenceLevel, bootstrapFactory)

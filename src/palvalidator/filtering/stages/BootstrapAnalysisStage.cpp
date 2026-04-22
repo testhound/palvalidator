@@ -260,11 +260,13 @@ namespace palvalidator::filtering::stages
   BootstrapAnalysisStage::BootstrapAnalysisStage(const Num& confidenceLevel,
                                                  unsigned int numResamples,
                                                  BootstrapFactory& bootstrapFactory,
-						 bool performTradeLevelBootstrapping)
+						 bool performTradeLevelBootstrapping,
+						 palvalidator::analysis::BCaSelectionAggregator<Num>* bcaAggregator)
     : mConfidenceLevel(confidenceLevel),
       mNumResamples(numResamples),
       mBootstrapFactory(bootstrapFactory),
-      mTradeLevelBootstrapping(performTradeLevelBootstrapping)
+      mTradeLevelBootstrapping(performTradeLevelBootstrapping),
+      mBcaAggregator(bcaAggregator)
   {
   }
 
@@ -1009,7 +1011,7 @@ namespace palvalidator::filtering::stages
 
     try
       {
-        AutoCI result = autoGeo.run(logBars, &os);
+        AutoCI result = autoGeo.run(logBars, &os, "GeoMean", mBcaAggregator);
         return populateAndLogGeoResult(result, out, ctx, "bar-level GeoMean", os);
       }
     catch (const palvalidator::StrategyAutoBootstrapException& ex)
@@ -1087,7 +1089,7 @@ namespace palvalidator::filtering::stages
       {
         // run() receives logTrades; GeoMeanFromLogBarsStat::operator()(vector<Trade>)
         // flattens them into a single log-bar vector and computes the geometric mean.
-        AutoCI result = autoGeo.run(logTrades, &os);
+        AutoCI result = autoGeo.run(logTrades, &os, "GeoMean", mBcaAggregator);
         return populateAndLogGeoResult(result, out, ctx, "trade-level GeoMean", os);
       }
     catch (const palvalidator::StrategyAutoBootstrapException& ex)
@@ -1235,7 +1237,7 @@ namespace palvalidator::filtering::stages
 
     try
       {
-        AutoCI result = autoPF.run(logBars, &os);
+        AutoCI result = autoPF.run(logBars, &os, "PF", mBcaAggregator);
         return populateAndLogPFResult(result, out, ctx, "bar-level PF", os);
       }
     catch (const palvalidator::StrategyAutoBootstrapException& ex)
@@ -1310,7 +1312,7 @@ namespace palvalidator::filtering::stages
       {
         // run() receives logTrades; PFSampler::operator()(vector<Trade>) flattens
         // them and computes log(PF) directly.
-        AutoCI result = autoPF.run(logTrades, &os);
+        AutoCI result = autoPF.run(logTrades, &os, "PF", mBcaAggregator);
         return populateAndLogPFResult(result, out, ctx, "trade-level PF", os);
       }
     catch (const palvalidator::StrategyAutoBootstrapException& ex)

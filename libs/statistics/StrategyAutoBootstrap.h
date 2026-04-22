@@ -17,6 +17,12 @@
 #include <ostream>
 #include <stdexcept>
 #include <cmath>
+#include <mutex>
+#include <map>
+#include <string>
+#include <algorithm>
+#include <numeric>
+#include <iomanip>
 #include "BootstrapTypes.h"
 #include "TradingBootstrapFactory.h"
 #include "AutoBootstrapSelector.h"
@@ -209,6 +215,567 @@ namespace palvalidator
     };
 
     /**
+     * @brief Cross-strategy aggregator that records BCa tournament outcomes
+     * and produces a summary report after all strategies have been bootstrapped.
+     *
+     * Designed to answer questions such as:
+     *   - How many strategies ended up NOT choosing BCa? What percentage?
+     *   - Of those, how many were "BCa competed and was outscored" vs. "BCa
+     *     was penalized for Tier-2/3 instability" vs. "BCa was hard-disqualified"?
+     *   - When BCa lost, did it typically lose to PercentileT or MOutOfN?
+     *   - Does trade count correlate with BCa selection rate? (i.e. is the
+     *     "BCa struggles at low n" theory supported by the data?)
+     *   - Do different statistics (GeoMean vs PF) produce different BCa selection
+     *     patterns on the same strategies?
+     *
+     * Usage:
+     *   BCaSelectionAggregator<Decimal> agg;
+     *   for (each strategy) {
+     *     auto result = strategy.run(returns, os, "PF", &agg);   // pass &agg
+     *   }
+     *   agg.summarize(std::cout);                                 // at end
+     *
+     * Thread-safety: record() is mutex-guarded, so the same aggregator can be
+     * passed to StrategyAutoBootstrap instances running concurrently across a
+     * thread pool. Contention is negligible since record() is called once per
+     * strategy run and completes in microseconds.
+     *
+     * The aggregator is template-parameterized on Decimal so it matches the
+     * Candidate/Diagnostics types produced by StrategyAutoBootstrap<Decimal, …>.
+     * All StrategyAutoBootstrap instantiations that share a Decimal type can
+     * write to the same aggregator.
+     */
+    template <class Decimal>
+    class BCaSelectionAggregator
+    {
+    public:
+      using Result     = AutoCIResult<Decimal>;
+      using MethodId   = typename Result::MethodId;
+      using Candidate  = typename Result::Candidate;
+
+      /// Why BCa wasn't the winner. The first four values mirror the branches
+      /// of the existing per-strategy "BCa not selected — …" log block.
+      /// kChosen means BCa won; the aggregator still records these so the
+      /// summary can report a BCa-win rate.
+      enum class Outcome
+      {
+        kChosen,                    // BCa won the tournament
+        kOutscoredCleanly,          // BCa competed cleanly; lost on score
+        kPenalizedAccelUnreliable,  // Tier-2 sensitivity failed; competed; lost
+        kPenalizedNonMonotone,      // Tier-2 transform reversed; competed; lost
+        kPenalizedBoth,             // Both soft penalties; competed; lost
+        kDisqualifiedHard,          // Hard gate (z0/accel/skew/n/B_eff)
+        kDisqualifiedLength,        // Interval too wide
+        kDisqualifiedNonFinite,     // Non-finite z0/accel
+        kDisqualifiedDomain,        // Domain constraint violated
+        kNoBCaCandidate             // BCa didn't even produce a candidate
+      };
+
+      /// One row per strategy.run() call. Stored verbatim for post-hoc analysis.
+      struct Record
+      {
+        std::string statistic_name;   // caller-supplied (e.g. "GeoMean", "PF")
+        std::size_t n_trades = 0;
+        MethodId    winning_method = MethodId::BCa;  // actually chosen method
+        Outcome     outcome = Outcome::kChosen;
+
+        // BCa candidate diagnostics (valid when a BCa candidate existed, i.e.
+        // outcome != kNoBCaCandidate). Stored regardless of win/loss so the
+        // summary can compare winning-BCa distributions to losing-BCa ones.
+        bool        has_bca_candidate = false;
+        double      bca_z0 = 0.0;
+        double      bca_accel = 0.0;
+        double      bca_skew_boot = 0.0;
+        bool        bca_accel_reliable = true;
+        bool        bca_transform_monotone = true;
+        double      bca_stability_penalty = 0.0;
+        double      bca_score = 0.0;
+
+        // Winner's score (even when BCa won, this equals bca_score).
+        double      winner_score = 0.0;
+      };
+
+      BCaSelectionAggregator() = default;
+
+      /// Thread-safe. Extracts diagnostics from @p result and stores one Record.
+      /// If @p statistic_name is empty, stores "unspecified".
+      void record(const Result& result,
+                  std::size_t n_trades,
+                  std::string statistic_name = "")
+      {
+        Record rec;
+        rec.statistic_name = statistic_name.empty() ? "unspecified"
+                                                    : std::move(statistic_name);
+        rec.n_trades = n_trades;
+
+        const auto& diag = result.getDiagnostics();
+        rec.winning_method = diag.getChosenMethod();
+        rec.winner_score   = diag.getChosenScore();
+
+        rec.has_bca_candidate = diag.hasBCaCandidate();
+
+        if (rec.has_bca_candidate)
+        {
+          // Find the BCa candidate to harvest z0/accel/skew/reliability fields.
+          for (const auto& cand : result.getCandidates())
+          {
+            if (cand.getMethod() != MethodId::BCa) continue;
+            rec.bca_z0                  = cand.getZ0();
+            rec.bca_accel               = cand.getAccel();
+            rec.bca_skew_boot           = cand.getSkewBoot();
+            rec.bca_accel_reliable      = cand.getAccelIsReliable();
+            rec.bca_transform_monotone  = cand.getBcaTransformMonotone();
+            rec.bca_stability_penalty   = cand.getStabilityPenalty();
+            rec.bca_score               = cand.getScore();
+            break;
+          }
+        }
+
+        rec.outcome = classifyOutcome(diag, rec);
+
+        {
+          std::lock_guard<std::mutex> lk(m_mutex);
+          m_records.push_back(std::move(rec));
+        }
+      }
+
+      /// Number of strategies recorded across all statistics.
+      std::size_t size() const
+      {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        return m_records.size();
+      }
+
+      /// Copy of all records. Primarily for testing / ad-hoc analysis.
+      std::vector<Record> getRecords() const
+      {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        return m_records;
+      }
+
+      /// Human-readable label for an Outcome enum value.
+      static const char* outcomeLabel(Outcome o)
+      {
+        switch (o)
+        {
+          case Outcome::kChosen:                    return "BCa chosen";
+          case Outcome::kOutscoredCleanly:          return "outscored (clean BCa, no instability)";
+          case Outcome::kPenalizedAccelUnreliable:  return "penalized: accel unreliable (Tier-2)";
+          case Outcome::kPenalizedNonMonotone:      return "penalized: non-monotone transform";
+          case Outcome::kPenalizedBoth:             return "penalized: accel unreliable + non-monotone";
+          case Outcome::kDisqualifiedHard:          return "hard-disqualified (z0/accel/skew/n/B_eff gate)";
+          case Outcome::kDisqualifiedLength:        return "hard-disqualified: interval too wide";
+          case Outcome::kDisqualifiedNonFinite:     return "hard-disqualified: non-finite z0/accel";
+          case Outcome::kDisqualifiedDomain:        return "hard-disqualified: domain violation";
+          case Outcome::kNoBCaCandidate:            return "no BCa candidate produced";
+        }
+        return "unknown";
+      }
+
+      /// Emit the full summary report to @p os. Safe to call from any thread
+      /// once all record() calls have completed.
+      void summarize(std::ostream& os) const
+      {
+        std::lock_guard<std::mutex> lk(m_mutex);
+
+        // RAII stream-state guard.
+        // The ostream we receive may have arbitrary std::setfill / std::setw
+        // / flags / precision set by earlier code in the caller. In particular,
+        // if a prior formatter set std::setfill('0') (common for zero-padded
+        // numeric output) and never restored it, every std::setw padded field
+        // emitted below would be filled with '0' characters instead of spaces
+        // — producing output like "GeoMean00000000" everywhere. Guard against
+        // that by forcing a known clean state at entry and restoring the
+        // caller's state at exit.
+        struct StreamStateGuard
+        {
+          std::ostream& s;
+          std::ios::fmtflags flags;
+          std::streamsize    prec;
+          std::streamsize    width;
+          char               fill;
+          explicit StreamStateGuard(std::ostream& o)
+            : s(o), flags(o.flags()), prec(o.precision()),
+              width(o.width()), fill(o.fill())
+          {
+            s.fill(' ');
+            s.unsetf(std::ios::adjustfield | std::ios::floatfield |
+                     std::ios::basefield);
+            s << std::dec;
+          }
+          ~StreamStateGuard()
+          {
+            s.flags(flags);
+            s.precision(prec);
+            s.width(width);
+            s.fill(fill);
+          }
+        } guard(os);
+
+        os << "\n";
+        os << "========================================================================\n";
+        os << "                   BCa Selection Summary Report\n";
+        os << "========================================================================\n";
+
+        if (m_records.empty())
+        {
+          os << "No strategies recorded.\n";
+          os << "========================================================================\n";
+          return;
+        }
+
+        // Section 1: Overall outcome breakdown
+        emitOverallBreakdown(os);
+
+        // Section 2: Per-statistic breakdown (so GeoMean vs PF can be compared)
+        emitPerStatisticBreakdown(os);
+
+        // Section 3: Who won when BCa lost (BCa vs PercentileT vs MOutOfN)
+        emitHeadToHeadBreakdown(os);
+
+        // Section 4: Trade-count analysis — is "BCa loses at low n" supported?
+        emitTradeCountAnalysis(os);
+
+        // Section 5: BCa diagnostic distribution when BCa lost
+        emitBcaLostDiagnostics(os);
+
+        os << "========================================================================\n";
+      }
+
+    private:
+      // Determine the Outcome category from diagnostics plus harvested BCa fields.
+      // Mirrors the logic of the per-strategy "BCa not selected — …" log block in
+      // run() (see lines 707–756 of this file) to keep reporting consistent.
+      static Outcome classifyOutcome(
+          const typename Result::SelectionDiagnostics& diag,
+          const Record& rec)
+      {
+        if (diag.isBCaChosen())
+          return Outcome::kChosen;
+
+        if (!diag.hasBCaCandidate())
+          return Outcome::kNoBCaCandidate;
+
+        if (diag.wasBCaRejectedForNonFiniteParameters())
+          return Outcome::kDisqualifiedNonFinite;
+        if (diag.wasBCaRejectedForDomain())
+          return Outcome::kDisqualifiedDomain;
+
+        if (diag.wasBCaRejectedForInstability())
+        {
+          // Same categorisation as in run(): inspect the BCa candidate to
+          // distinguish SOFT penalty cases (BCa competed, lost on score) from
+          // HARD gate cases (BCa never entered the tournament).
+          const bool accel_bad   = !rec.bca_accel_reliable;
+          const bool nonmono_bad = !rec.bca_transform_monotone;
+
+          if (accel_bad && nonmono_bad) return Outcome::kPenalizedBoth;
+          if (accel_bad)                return Outcome::kPenalizedAccelUnreliable;
+          if (nonmono_bad)              return Outcome::kPenalizedNonMonotone;
+          return Outcome::kDisqualifiedHard;   // z0/accel/skew/n/B_eff hard gate
+        }
+
+        if (diag.wasBCaRejectedForLength())
+          return Outcome::kDisqualifiedLength;
+
+        // BCa competed, no instability flags, no length disqualification — just
+        // outscored by another method.
+        return Outcome::kOutscoredCleanly;
+      }
+
+      // --- Summary section helpers (no locking — caller holds the mutex) ---
+
+      static std::string methodName(MethodId m)
+      {
+        return Result::methodIdToString(m);
+      }
+
+      // Formats "n (pct%)" with 1 decimal place on the percentage.
+      static std::string fmtCountPct(std::size_t n, std::size_t denom)
+      {
+        std::ostringstream oss;
+        oss << n;
+        if (denom > 0)
+        {
+          const double pct = 100.0 * static_cast<double>(n) /
+                             static_cast<double>(denom);
+          oss << " (" << std::fixed << std::setprecision(1) << pct << "%)";
+        }
+        return oss.str();
+      }
+
+      void emitOverallBreakdown(std::ostream& os) const
+      {
+        const std::size_t N = m_records.size();
+        os << "\n-- Overall (" << N << " strategy-statistic pairs recorded) --\n";
+
+        std::map<Outcome, std::size_t> counts;
+        for (const auto& r : m_records) ++counts[r.outcome];
+
+        // Compute BCa chosen vs not for the headline ratio
+        const std::size_t n_chosen = counts[Outcome::kChosen];
+        const std::size_t n_not    = N - n_chosen;
+
+        os << "  BCa chosen:     " << fmtCountPct(n_chosen, N) << "\n";
+        os << "  BCa not chosen: " << fmtCountPct(n_not,    N) << "\n";
+
+        // Per-outcome breakdown for the non-chosen cases
+        if (n_not > 0)
+        {
+          os << "\n  Breakdown of cases where BCa was NOT chosen:\n";
+          static constexpr Outcome kOrder[] = {
+            Outcome::kOutscoredCleanly,
+            Outcome::kPenalizedAccelUnreliable,
+            Outcome::kPenalizedNonMonotone,
+            Outcome::kPenalizedBoth,
+            Outcome::kDisqualifiedHard,
+            Outcome::kDisqualifiedLength,
+            Outcome::kDisqualifiedNonFinite,
+            Outcome::kDisqualifiedDomain,
+            Outcome::kNoBCaCandidate,
+          };
+          for (Outcome o : kOrder)
+          {
+            const std::size_t c = counts[o];
+            if (c == 0) continue;
+            os << "    " << std::left << std::setw(48) << outcomeLabel(o)
+               << fmtCountPct(c, n_not) << "\n";
+          }
+        }
+      }
+
+      void emitPerStatisticBreakdown(std::ostream& os) const
+      {
+        // Group by statistic_name and emit a mini-table per statistic
+        std::map<std::string, std::vector<const Record*>> by_stat;
+        for (const auto& r : m_records) by_stat[r.statistic_name].push_back(&r);
+
+        if (by_stat.size() <= 1) return;  // Nothing interesting to show
+
+        // Column widths tuned for typical labels:
+        //   Statistic  (GeoMean, PF, logPF)       : 10
+        //   N          (counts up to 9999)        :  7
+        //   chosen / not-chosen (formatted pct)   : 16 each
+        os << "\n-- Per-statistic breakdown --\n";
+        os << "  " << std::left
+           << std::setw(10) << "Statistic"
+           << std::setw(7)  << "N"
+           << std::setw(16) << "chosen"
+           << std::setw(16) << "not chosen" << "\n";
+
+        for (const auto& [stat, records] : by_stat)
+        {
+          const std::size_t N = records.size();
+          std::size_t n_chosen = 0;
+          for (const Record* r : records)
+            if (r->outcome == Outcome::kChosen) ++n_chosen;
+          const std::size_t n_not = N - n_chosen;
+
+          os << "  " << std::left
+             << std::setw(10) << stat
+             << std::setw(7)  << N
+             << std::setw(16) << fmtCountPct(n_chosen, N)
+             << std::setw(16) << fmtCountPct(n_not, N) << "\n";
+        }
+      }
+
+      void emitHeadToHeadBreakdown(std::ostream& os) const
+      {
+        // When BCa lost, who won?
+        std::map<MethodId, std::size_t> winners_when_lost;
+        std::size_t total_lost = 0;
+
+        for (const auto& r : m_records)
+        {
+          if (r.outcome == Outcome::kChosen) continue;
+          if (!r.has_bca_candidate) continue;   // Only count BCa-vs-X comparisons
+          ++winners_when_lost[r.winning_method];
+          ++total_lost;
+        }
+
+        if (total_lost == 0) return;
+
+        os << "\n-- When BCa lost, who won? (" << total_lost
+           << " head-to-head outcomes) --\n";
+        for (const auto& [m, c] : winners_when_lost)
+        {
+          os << "  vs. " << std::left << std::setw(14) << methodName(m)
+             << " " << fmtCountPct(c, total_lost) << "\n";
+        }
+      }
+
+      void emitTradeCountAnalysis(std::ostream& os) const
+      {
+        // Bucket by trade-count band to see if BCa selection correlates with n.
+        // Buckets: [<10], [10-14], [15-19], [20-29], [30-49], [50+]
+        struct Bucket
+        {
+          const char*   label;
+          std::size_t   lo;
+          std::size_t   hi;   // inclusive
+          std::size_t   n_total = 0;
+          std::size_t   n_bca_chosen = 0;
+          std::size_t   n_bca_lost_competed = 0;  // competed and lost on score
+          std::size_t   n_bca_hard = 0;           // hard-disqualified
+          std::vector<std::size_t> trade_counts;  // for median/mean per bucket
+        };
+        std::vector<Bucket> buckets = {
+          {"< 10",     0,   9,   0, 0, 0, 0, {}},
+          {"10 - 14",  10,  14,  0, 0, 0, 0, {}},
+          {"15 - 19",  15,  19,  0, 0, 0, 0, {}},
+          {"20 - 29",  20,  29,  0, 0, 0, 0, {}},
+          {"30 - 49",  30,  49,  0, 0, 0, 0, {}},
+          {"50+",      50,  static_cast<std::size_t>(-1), 0, 0, 0, 0, {}},
+        };
+
+        for (const auto& r : m_records)
+        {
+          for (auto& b : buckets)
+          {
+            if (r.n_trades < b.lo || r.n_trades > b.hi) continue;
+            ++b.n_total;
+            b.trade_counts.push_back(r.n_trades);
+            if      (r.outcome == Outcome::kChosen)                     ++b.n_bca_chosen;
+            else if (r.outcome == Outcome::kOutscoredCleanly
+                     || r.outcome == Outcome::kPenalizedAccelUnreliable
+                     || r.outcome == Outcome::kPenalizedNonMonotone
+                     || r.outcome == Outcome::kPenalizedBoth)           ++b.n_bca_lost_competed;
+            else if (r.outcome != Outcome::kNoBCaCandidate)             ++b.n_bca_hard;
+            break;
+          }
+        }
+
+        os << "\n-- BCa selection rate by trade count"
+              " (tests 'BCa struggles at low n' theory) --\n";
+        os << "  " << std::left
+           << std::setw(10) << "n"
+           << std::setw(8)  << "count"
+           << std::setw(15) << "BCa chosen"
+           << std::setw(18) << "lost on score"
+           << std::setw(16) << "hard-rejected" << "\n";
+
+        for (const auto& b : buckets)
+        {
+          if (b.n_total == 0) continue;
+          os << "  " << std::left
+             << std::setw(10) << b.label
+             << std::setw(8)  << b.n_total
+             << std::setw(15) << fmtCountPct(b.n_bca_chosen,         b.n_total)
+             << std::setw(18) << fmtCountPct(b.n_bca_lost_competed,  b.n_total)
+             << std::setw(16) << fmtCountPct(b.n_bca_hard,           b.n_total)
+             << "\n";
+        }
+
+        // If the "BCa struggles at low n" theory holds, BCa-chosen% rises
+        // monotonically (or at least non-decreasing overall) with n. Print a
+        // one-line interpretation aid.
+        os << "\n  Interpretation: if the low-n theory is supported,"
+              " 'BCa chosen' % should\n"
+              "  rise with trade count. Flat or inverse pattern would suggest"
+              " n is not the\n"
+              "  primary driver of BCa selection on this corpus.\n";
+      }
+
+      // Five-number summary (min, p25, median, p75, max) of a vector of doubles.
+      struct FiveNum
+      {
+        double min, p25, median, p75, max, mean;
+        std::size_t n;
+      };
+      static FiveNum fiveNumber(std::vector<double> xs)
+      {
+        FiveNum f{0,0,0,0,0,0,xs.size()};
+        if (xs.empty()) return f;
+        std::sort(xs.begin(), xs.end());
+        auto pick = [&](double q) {
+          if (xs.size() == 1) return xs[0];
+          const double idx = q * (xs.size() - 1);
+          const std::size_t lo = static_cast<std::size_t>(std::floor(idx));
+          const std::size_t hi = std::min(lo + 1, xs.size() - 1);
+          const double frac = idx - lo;
+          return xs[lo] * (1.0 - frac) + xs[hi] * frac;
+        };
+        f.min    = xs.front();
+        f.max    = xs.back();
+        f.p25    = pick(0.25);
+        f.median = pick(0.50);
+        f.p75    = pick(0.75);
+        f.mean   = std::accumulate(xs.begin(), xs.end(), 0.0) /
+                   static_cast<double>(xs.size());
+        return f;
+      }
+
+      void emitBcaLostDiagnostics(std::ostream& os) const
+      {
+        std::vector<double> z0, accel, skew, stab;
+        std::size_t n_accel_unreliable = 0;
+        std::size_t n_nonmonotone = 0;
+        std::size_t total = 0;
+
+        for (const auto& r : m_records)
+        {
+          if (r.outcome == Outcome::kChosen) continue;
+          if (!r.has_bca_candidate) continue;
+          ++total;
+          z0.push_back(r.bca_z0);
+          accel.push_back(r.bca_accel);
+          skew.push_back(r.bca_skew_boot);
+          stab.push_back(r.bca_stability_penalty);
+          if (!r.bca_accel_reliable)     ++n_accel_unreliable;
+          if (!r.bca_transform_monotone) ++n_nonmonotone;
+        }
+
+        if (total == 0) return;
+
+        os << "\n-- BCa diagnostic distribution when BCa did NOT win ("
+           << total << " cases) --\n";
+        os << "  Flag rates:\n";
+        os << "    " << std::left << std::setw(32)
+           << "accel_is_reliable = false:"
+           << fmtCountPct(n_accel_unreliable, total) << "\n";
+        os << "    " << std::left << std::setw(32)
+           << "transform_monotone = false:"
+           << fmtCountPct(n_nonmonotone, total) << "\n";
+
+        // Helper: format a single "label=value" unit padded to fixed width.
+        // We build each unit with an ostringstream so label+value travel as
+        // one token and the padding between tokens is uniform regardless of
+        // how many digits the value itself took.
+        auto formatStat = [](const char* tag, double v) {
+          std::ostringstream o;
+          o << std::fixed << std::setprecision(4) << tag << "=" << v;
+          std::string s = o.str();
+          // Pad to width 14 so columns line up even when values have differing
+          // magnitudes (e.g. "-0.1546" vs "1.0160"). 14 = max label "min=" (4)
+          // + max value width "-0.1234" (7) + small trailing gap (3).
+          if (s.size() < 14) s.append(14 - s.size(), ' ');
+          return s;
+        };
+
+        auto emit = [&](const char* label, const std::vector<double>& xs) {
+          const auto f = fiveNumber(xs);
+          os << "    " << std::left << std::setw(22) << label
+             << formatStat("min", f.min)
+             << formatStat("p25", f.p25)
+             << formatStat("med", f.median)
+             << formatStat("p75", f.p75)
+             << formatStat("max", f.max)
+             << "\n";
+        };
+
+        os << "  Five-number summaries:\n";
+        emit("z0",                  z0);
+        emit("accel",               accel);
+        emit("|accel|",             [&]{ auto v=accel; for(auto& x:v) x=std::fabs(x); return v; }());
+        emit("skew(boot)",          skew);
+        emit("stability_penalty",   stab);
+      }
+
+      mutable std::mutex  m_mutex;
+      std::vector<Record> m_records;
+    };
+
+    /**
      * @brief Orchestrates running multiple bootstrap engines for a given strategy/statistic.
      *
      * Responsibilities:
@@ -268,17 +835,26 @@ namespace palvalidator
       /**
        * @brief Run all configured bootstrap engines on @p returns and select the best CI.
        *
-       * @param returns  Bar-level return series (SampleType = Decimal) or trade-level
-       *                 series (SampleType = Trade<Decimal>). The element type must match
-       *                 the SampleType template parameter of this class.
-       * @param os       Optional logging stream. If non-null, engine failures are logged.
+       * @param returns         Bar-level return series (SampleType = Decimal) or trade-level
+       *                        series (SampleType = Trade<Decimal>). The element type must match
+       *                        the SampleType template parameter of this class.
+       * @param os              Optional logging stream. If non-null, engine failures are logged.
+       * @param statistic_name  Optional label (e.g. "GeoMean", "PF", "logPF"). Only used when
+       *                        @p aggregator is non-null, to tag the recorded outcome so the
+       *                        summary report can break results down by statistic.
+       * @param aggregator      Optional cross-strategy aggregator. When non-null, the tournament
+       *                        outcome for this strategy is recorded (thread-safely) for later
+       *                        summarisation via aggregator->summarize(). Pass nullptr to disable.
        *
        * @return AutoCIResult<Decimal> encapsulating the chosen method and all candidates.
        *
        * @throws std::invalid_argument if @p returns contains fewer than 2 elements.
        * @throws std::runtime_error if no engine produced a usable candidate.
        */
-      Result run(const std::vector<SampleType>& returns, std::ostream* os = nullptr)
+      Result run(const std::vector<SampleType>& returns,
+                 std::ostream* os = nullptr,
+                 const std::string& statistic_name = std::string{},
+                 BCaSelectionAggregator<Decimal>* aggregator = nullptr)
       {
 	// CONCERN-B: verify that the runtime flag in BootstrapConfiguration agrees
 	// with the compile-time SampleType deduction.
@@ -877,7 +1453,17 @@ namespace palvalidator
 		  << "  numCandidates="          << diagnostics.getNumCandidates()
 		  << "\n";
 	  }
- 
+
+	// Cross-strategy aggregation (optional). Recording is thread-safe and
+	// lightweight; the per-strategy log block above is unaffected.
+	if (aggregator)
+	  {
+	    const auto& chosen = result.getChosenCandidate();
+	    aggregator->record(result,
+	                       static_cast<std::size_t>(chosen.getN()),
+	                       statistic_name);
+	  }
+
 	return result;
       }
       
