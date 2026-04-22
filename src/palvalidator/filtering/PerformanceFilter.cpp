@@ -83,6 +83,14 @@ namespace palvalidator
       // Reset summary for new filtering run
       mFilteringSummary = FilteringSummary();
 
+      // Note: mBcaAggregator is NOT reset here. It accumulates across the full
+      // lifetime of this PerformanceFilter instance. Since filterByPerformance()
+      // is typically called exactly once per instance, this produces the same
+      // effect as a per-call reset for the common usage pattern. If a caller
+      // needs a fresh aggregator for a new run, they should construct a new
+      // PerformanceFilter rather than reuse one — the aggregator's purpose is
+      // to collect data, so clearing it defeats the point.
+
       // Display version information first
       outputStream << "PalValidator version " << palvalidator::Version::getVersion() << "\n";
       
@@ -170,6 +178,18 @@ namespace palvalidator
       outputStream << "          Survivors by direction → Long: " << survivorsLong
 		   << ", Short: " << survivorsShort << "\n";
 
+      // Emit the cross-strategy BCa selection summary. This aggregates every
+      // autoGeo.run() / autoPF.run() call made through BootstrapAnalysisStage
+      // during this filterByPerformance() invocation and reports:
+      //   - Overall BCa-chosen vs not-chosen rates
+      //   - Breakdown by reason (clean loss vs Tier-2 soft penalty vs hard gate)
+      //   - Per-statistic breakdown (GeoMean vs PF)
+      //   - Head-to-head winner counts (BCa vs PercentileT vs MOutOfN)
+      //   - Trade-count bucketed selection rates (for small-n theory testing)
+      //   - Five-number summaries of BCa diagnostics when BCa did not win
+      // See BCaSelectionAggregator<Decimal>::summarize() for the full layout.
+      mBcaAggregator.summarize(outputStream);
+
       return filteredStrategies;
     }
     
@@ -203,7 +223,8 @@ namespace palvalidator
         mFilteringSummary,
   *mBootstrapFactory,
         mObserver,
-        mTradeLevelBootstrapping
+        mTradeLevelBootstrapping,
+        &mBcaAggregator
       );
     }
 

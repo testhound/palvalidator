@@ -8,6 +8,13 @@
 #include "diagnostics/IBootstrapObserver.h"
 #include "diagnostics/IBootstrapObserver.h"
 
+// Forward declaration for optional cross-strategy BCa selection aggregator.
+// Full definition lives in StrategyAutoBootstrap.h (only included by the .cpp).
+namespace palvalidator {
+namespace analysis {
+  template <class Decimal> class BCaSelectionAggregator;
+}}
+
 namespace palvalidator::filtering::stages
 {
   using namespace palvalidator::filtering;
@@ -60,7 +67,8 @@ namespace palvalidator::filtering::stages
     BootstrapAnalysisStage(const Num& confidenceLevel,
 			   unsigned int numResamples,
 			   BootstrapFactory& bootstrapFactory,
-			   bool performTradeLevelBootstrapping = false);
+			   bool performTradeLevelBootstrapping = false,
+			   palvalidator::analysis::BCaSelectionAggregator<Num>* bcaAggregator = nullptr);
 
     bool isTradeLevelBootStrapping() const
     {
@@ -446,6 +454,14 @@ namespace palvalidator::filtering::stages
     BootstrapFactory& mBootstrapFactory;
     bool mTradeLevelBootstrapping;
     std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> mObserver;
+    /// Non-owning pointer to an optional cross-strategy BCa tournament outcome
+    /// aggregator. When non-null, every autoGeo.run() / autoPF.run() call in
+    /// this stage forwards its result to the aggregator tagged with a statistic
+    /// label ("GeoMean" or "PF"). When null (default), the stage runs unchanged.
+    /// The aggregator's lifetime is owned by PerformanceFilter; this stage
+    /// receives a raw pointer since stages are constructed and destroyed on a
+    /// per-strategy basis while the aggregator spans the whole batch.
+    palvalidator::analysis::BCaSelectionAggregator<Num>* mBcaAggregator;
   };
 
 } // namespace palvalidator::filtering::stages

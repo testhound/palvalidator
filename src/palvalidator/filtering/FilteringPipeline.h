@@ -15,6 +15,14 @@
 #include <ostream>
 #include <memory>
 
+// Forward declaration for optional cross-strategy BCa selection aggregator.
+// Full definition lives in StrategyAutoBootstrap.h (not transitively included
+// here to keep this header lightweight).
+namespace palvalidator {
+namespace analysis {
+  template <class Decimal> class BCaSelectionAggregator;
+}}
+
 namespace palvalidator::filtering
 {
     /**
@@ -62,7 +70,8 @@ namespace palvalidator::filtering
                            FilteringSummary& summary,
                            BootstrapFactory& bootstrapFactory,
                            std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> observer,
-                           bool tradeLevelBootstrapping = false);
+                           bool tradeLevelBootstrapping = false,
+                           palvalidator::analysis::BCaSelectionAggregator<Num>* bcaAggregator = nullptr);
 
     /**
      * @brief Execute complete filtering pipeline for a single strategy

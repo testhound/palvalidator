@@ -16,6 +16,7 @@
 #include "RegimeMixStress.h"
 #include "filtering/BootstrapConfig.h"
 #include "diagnostics/IBootstrapObserver.h"
+#include "StrategyAutoBootstrap.h"
 
 namespace palvalidator
 {
@@ -157,6 +158,13 @@ namespace palvalidator
       std::unique_ptr<BootstrapFactory> mBootstrapFactory;
       std::shared_ptr<palvalidator::diagnostics::IBootstrapObserver> mObserver;
       bool mTradeLevelBootstrapping;                 ///< Whether to use trade-level bootstrapping
+
+      /// Cross-strategy aggregator for BCa tournament outcomes. Collects one
+      /// record per (strategy, statistic) pair across the entire
+      /// filterByPerformance() run, then emits a combined summary at the end.
+      /// Reset at the start of each filterByPerformance() call so batch
+      /// statistics reflect only the current invocation.
+      palvalidator::analysis::BCaSelectionAggregator<Num> mBcaAggregator;
     };
 
   } // namespace filtering
