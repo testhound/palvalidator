@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(PalValidator VERSION 2.5.2 LANGUAGES CXX)
+project(PalValidator VERSION 2.5.3 LANGUAGES CXX)
 
 # Extract Git information for version header
 find_package(Git QUIET)
