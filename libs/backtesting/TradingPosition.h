@@ -406,6 +406,23 @@ namespace mkc_timeseries
     virtual const Decimal& getProfitTarget() const = 0;
     virtual const Decimal& getStopLoss() const = 0;
 
+    // Maximum Favorable Excursion (MFE): non-negative percentage move from entry
+    // price in the direction favorable to the position. For a long position this
+    // is the highest percent gain observed since entry. For a short position this
+    // is the largest percent drop below entry observed since entry.
+    //
+    // Maximum Adverse Excursion (MAE): non-negative percentage move from entry
+    // price in the direction adverse to the position. For a long this is the
+    // largest percent drop below entry. For a short this is the largest percent
+    // rise above entry.
+    //
+    // Both quantities are returned as non-negative values (zero if no favorable
+    // or adverse movement has occurred). Under the purist first-bar convention
+    // used by this library, the entry bar's own high and low do not contribute
+    // to MFE or MAE; only post-entry bars do.
+    virtual Decimal getMaxFavorableExcursion() const = 0;
+    virtual Decimal getMaxAdverseExcursion() const = 0;
+
     // NOTE: To implement these in the ClosePositonState pass the open position to closed
     // position at creation time
     virtual TradingPositionState::ConstPositionBarIterator beginPositionBarHistory() const = 0;
@@ -444,7 +461,9 @@ namespace mkc_timeseries
       mBarsInPosition(1),
       mNumBarsSinceEntry(0),
       mProfitTarget(DecimalConstants<Decimal>::DecimalZero),
-      mStopLoss(DecimalConstants<Decimal>::DecimalZero)
+      mStopLoss(DecimalConstants<Decimal>::DecimalZero),
+      mHighWaterMark(entryPrice),
+      mLowWaterMark(entryPrice)
     {
       if (entryPrice <= DecimalConstants<Decimal>::DecimalZero)
 	throw TradingPositionException (std::string("OpenPosition constructor: entry price < 0"));
@@ -568,12 +587,42 @@ namespace mkc_timeseries
 	return mStopLoss;
       }
 
+    // Raw-price water marks maintained across the life of the position.
+    // - mHighWaterMark is initialized to the entry price and updated to the
+    //   maximum bar High observed across all post-entry bars (purist
+    //   convention: the entry bar's own High does not contribute).
+    // - mLowWaterMark is initialized to the entry price and updated to the
+    //   minimum bar Low observed across all post-entry bars.
+    //
+    // These are direction-agnostic; OpenLongPosition and OpenShortPosition
+    // interpret them into MFE/MAE via getMaxFavorableExcursion() and
+    // getMaxAdverseExcursion().
+    const Decimal& getHighWaterMark() const
+      {
+	return mHighWaterMark;
+      }
+
+    const Decimal& getLowWaterMark() const
+      {
+	return mLowWaterMark;
+      }
+
   private:
     void addBar(const OpenPositionBar<Decimal>& positionBar)
     {
       mPositionBarHistory.addBar(positionBar);
       mBarsInPosition++;
       mNumBarsSinceEntry++;
+
+      // Maintain water marks using the new bar's High and Low.
+      // Because water marks were initialized to the entry price and this
+      // function is only called for post-entry bars (the entry bar is
+      // inserted by OpenPositionHistory's constructor), the purist
+      // first-bar convention is preserved automatically.
+      const Decimal& barHigh = positionBar.getHighValue();
+      const Decimal& barLow  = positionBar.getLowValue();
+      if (barHigh > mHighWaterMark) mHighWaterMark = barHigh;
+      if (barLow  < mLowWaterMark)  mLowWaterMark  = barLow;
     }
 
   private:
@@ -585,6 +634,8 @@ namespace mkc_timeseries
     unsigned int mNumBarsSinceEntry;
     Decimal mProfitTarget;
     Decimal mStopLoss;
+    Decimal mHighWaterMark;
+    Decimal mLowWaterMark;
   };
 
   /**
@@ -648,6 +699,29 @@ namespace mkc_timeseries
     bool isLosingPosition() const
     {
       return !isWinningPosition();
+    }
+
+    // MFE for a long: percent rise of the high water mark above the entry
+    // price. Returns zero if the water mark never rose above entry.
+    Decimal getMaxFavorableExcursion() const override
+    {
+      const Decimal& entry = OpenPosition<Decimal>::getEntryPrice();
+      const Decimal& hwm   = OpenPosition<Decimal>::getHighWaterMark();
+      if (hwm > entry)
+	return ((hwm - entry) / entry) * DecimalConstants<Decimal>::DecimalOneHundred;
+      return DecimalConstants<Decimal>::DecimalZero;
+    }
+
+    // MAE for a long: percent drop of the low water mark below the entry
+    // price, expressed as a non-negative number. Returns zero if the water
+    // mark never fell below entry.
+    Decimal getMaxAdverseExcursion() const override
+    {
+      const Decimal& entry = OpenPosition<Decimal>::getEntryPrice();
+      const Decimal& lwm   = OpenPosition<Decimal>::getLowWaterMark();
+      if (lwm < entry)
+	return ((entry - lwm) / entry) * DecimalConstants<Decimal>::DecimalOneHundred;
+      return DecimalConstants<Decimal>::DecimalZero;
     }
 
     void ClosePosition (TradingPosition<Decimal>* position,
@@ -729,6 +803,30 @@ namespace mkc_timeseries
     bool isLosingPosition() const
     {
       return !isWinningPosition();
+    }
+
+    // MFE for a short: percent drop of the low water mark below the entry
+    // price (favorable for a short). Returns zero if the water mark never
+    // fell below entry.
+    Decimal getMaxFavorableExcursion() const override
+    {
+      const Decimal& entry = OpenPosition<Decimal>::getEntryPrice();
+      const Decimal& lwm   = OpenPosition<Decimal>::getLowWaterMark();
+      if (lwm < entry)
+	return ((entry - lwm) / entry) * DecimalConstants<Decimal>::DecimalOneHundred;
+      return DecimalConstants<Decimal>::DecimalZero;
+    }
+
+    // MAE for a short: percent rise of the high water mark above the entry
+    // price (adverse for a short). Returns zero if the water mark never
+    // rose above entry.
+    Decimal getMaxAdverseExcursion() const override
+    {
+      const Decimal& entry = OpenPosition<Decimal>::getEntryPrice();
+      const Decimal& hwm   = OpenPosition<Decimal>::getHighWaterMark();
+      if (hwm > entry)
+	return ((hwm - entry) / entry) * DecimalConstants<Decimal>::DecimalOneHundred;
+      return DecimalConstants<Decimal>::DecimalZero;
     }
 
     void ClosePosition (TradingPosition<Decimal>* position,
@@ -852,6 +950,21 @@ namespace mkc_timeseries
       {
 	return mOpenPosition->getStopLoss();
       }
+
+    // MFE/MAE on a closed position are delegated to the stored open position
+    // state, which in turn resolves direction via polymorphism on the
+    // concrete OpenLongPosition / OpenShortPosition type. The values reflect
+    // the full life of the trade since the bar history and water marks are
+    // preserved on the open state after close.
+    Decimal getMaxFavorableExcursion() const override
+    {
+      return mOpenPosition->getMaxFavorableExcursion();
+    }
+
+    Decimal getMaxAdverseExcursion() const override
+    {
+      return mOpenPosition->getMaxAdverseExcursion();
+    }
 
     void setProfitTarget(const Decimal& /* profitTarget */)
       {
@@ -1335,6 +1448,25 @@ namespace mkc_timeseries
 	return mPositionState->getStopLoss();
       }
 
+    // Maximum Favorable Excursion: non-negative percent move from entry in
+    // the direction favorable to this position. For a long, this is the
+    // highest percent gain observed since entry. For a short, the largest
+    // percent drop below entry observed since entry. Zero if no favorable
+    // move has occurred yet.
+    Decimal getMaxFavorableExcursion() const
+    {
+      return mPositionState->getMaxFavorableExcursion();
+    }
+
+    // Maximum Adverse Excursion: non-negative percent move from entry in
+    // the direction adverse to this position. For a long, this is the
+    // largest percent drop below entry. For a short, the largest percent
+    // rise above entry. Zero if no adverse move has occurred yet.
+    Decimal getMaxAdverseExcursion() const
+    {
+      return mPositionState->getMaxAdverseExcursion();
+    }
+
     // NOTE: To implement these in the ClosePositonState pass the open position to closed
     // position at creation time
     ConstPositionBarIterator beginPositionBarHistory() const
@@ -1726,5 +1858,3 @@ namespace mkc_timeseries
 
 }
 #endif
-
-
